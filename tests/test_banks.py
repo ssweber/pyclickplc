@@ -87,7 +87,7 @@ class TestBankConfig:
     def test_sparse_ranges_structure(self):
         assert len(_SPARSE_RANGES) == 10
         assert _SPARSE_RANGES[0] == (1, 16)
-        assert _SPARSE_RANGES[-1] == (821, 836)
+        assert _SPARSE_RANGES[-1] == (801, 816)
 
     def test_interleaved_pairs(self):
         assert BANKS["T"].interleaved_with == "TD"
@@ -190,7 +190,7 @@ class TestIsValidAddress:
         assert is_valid_address("X", 1) is True
         assert is_valid_address("X", 16) is True
         assert is_valid_address("X", 101) is True
-        assert is_valid_address("Y", 821) is True
+        assert is_valid_address("Y", 801) is True
 
     def test_sparse_invalid_gap(self):
         assert is_valid_address("X", 17) is False
