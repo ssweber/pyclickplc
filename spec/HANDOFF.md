@@ -4,32 +4,42 @@ See `ARCHITECTURE.md` for full module layout, dependency graph, and design decis
 
 ---
 
-## Starting Point
+## Current State
 
-- pyclickplc: empty `src/pyclickplc/__init__.py`, no code yet
+- **Step 1 complete** (commit `7094c46` on `dev`)
 - ClickNick: working app, Phase 0 (unique block names) done
 - Specs written: `CLICKDEVICE_SPEC.md` (client), `CLICKSERVER_SPEC.md` (server)
 
-## Step 1: `banks.py` + `addresses.py` in pyclickplc
+### What exists in pyclickplc
 
-Build the foundation directly in pyclickplc — don't fix ClickNick first.
+| Module | Contents |
+|---|---|
+| `banks.py` | `DataType` enum, `BankConfig` frozen dataclass, `BANKS` (16 banks), `_SPARSE_RANGES`, `MEMORY_TYPE_BASES`, `_INDEX_TO_TYPE`, `DEFAULT_RETENTIVE`, interleaved/paired dicts, `NON_EDITABLE_TYPES`, `BIT_ONLY_TYPES`, `MEMORY_TYPE_TO_DATA_TYPE`, `is_valid_address()` |
+| `addresses.py` | `get_addr_key`/`parse_addr_key`, XD/YD helpers, `format_address_display`, `parse_address_display` (lenient, MDB), `parse_address` (strict, display), `normalize_address`, `AddressRecord` frozen dataclass |
+| `validation.py` | `FORBIDDEN_CHARS`/`RESERVED_NICKNAMES` (frozenset), numeric limits, `validate_nickname` (format-only), `validate_comment` (length-only), `validate_initial_value` |
+| `__init__.py` | Re-exports public API (XD/YD helpers excluded) |
 
-- `BankConfig` frozen dataclass with `valid_ranges` for sparse X/Y
-- `DataType` enum (canonical, from ClickNick's existing `DataType`)
-- All bank definitions (`BANKS` dict)
-- Address parsing/formatting functions (one parser, shared by all consumers)
-- Sparse address validation using `valid_ranges`
-- `AddressRecord` frozen dataclass
-- `validation.py` (nickname/comment/initial value rules)
+93 tests across `test_banks.py`, `test_addresses.py`, `test_validation.py`. Lint clean.
 
-Test thoroughly — this is the foundation everything else builds on.
+## ~~Step 1~~ Done
 
-## Step 2: Wire ClickNick to pyclickplc
+## Step 1.5 (optional): Plan Step 2 in detail
 
-- Replace `from ..models.constants import ADDRESS_RANGES, DataType, ...` with pyclickplc imports
-- Update ClickNick's X/Y display to filter using `BankConfig.valid_ranges`
-- Delete moved code from ClickNick's `constants.py` and `address_row.py`
-- Run ClickNick's existing tests to verify nothing broke
+Read the ClickNick codebase to plan the exact import replacements before starting Step 2.
+
+## ~~Step 2~~ Done
+
+Wired ClickNick to import from pyclickplc:
+
+- Deleted `models/constants.py` entirely (all constants now from pyclickplc)
+- Slimmed `models/address_row.py`: removed 9 helper functions, kept `AddressRow` dataclass
+- Updated imports in 15 source files + 5 test files
+- Replaced `ADDRESS_RANGES` dict with `BANKS` (using `.min_addr`/`.max_addr`) in 4 files
+- XD/YD helpers imported from `pyclickplc.addresses` (not re-exported from `__init__`)
+- `validate_initial_value` re-exported from pyclickplc via `validation.py`
+- `validate_nickname`/`validate_comment` stay in ClickNick (have uniqueness params)
+- Added 11 pre-switch tests (`TestAddressRowDerivedProperties`) before migration
+- 558 ClickNick tests + 93 pyclickplc tests pass, lint clean
 
 ## Step 3: `blocks.py` + `nicknames.py` + `dataview.py`
 
