@@ -340,7 +340,7 @@ class AddressAccessor:
         # Read current register to preserve the other byte
         regs = await self._plc._read_registers(reg_addr, 1, "TXT")
         reg_val = regs[0]
-        byte_val = ord(char) & 0xFF
+        byte_val = ord(char) & 0xFF if char else 0
 
         if index % 2 == 1:
             # Odd: low byte

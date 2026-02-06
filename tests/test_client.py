@@ -16,7 +16,7 @@ from pyclickplc.client import (
     ClickClient,
     TagInterface,
 )
-from pyclickplc.modbus import pack_value
+from pyclickplc.modbus import MODBUS_MAPPINGS, pack_value
 
 # ==============================================================================
 # Helpers
@@ -481,6 +481,16 @@ class TestAddressAccessorTxtWrite:
         plc._read_registers = AsyncMock(return_value=[0])
         await plc.txt.write(1, "A")
         plc._write_registers.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_write_empty_string_clears_txt(self):
+        plc = _make_plc()
+        plc._read_registers = AsyncMock(return_value=[0x4142])  # "AB"
+        await plc.txt.write(1, "")
+        # Empty string → null byte in low position, high byte preserved
+        plc._write_registers.assert_called_once_with(
+            MODBUS_MAPPINGS["TXT"].base, [0x4100]
+        )
 
     @pytest.mark.asyncio
     async def test_write_txt_list(self):
