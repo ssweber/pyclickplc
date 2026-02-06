@@ -60,6 +60,17 @@ from .dataview import (
     save_cdv,
     storage_to_display,
 )
+from .modbus import (
+    MODBUS_MAPPINGS,
+    MODBUS_SIGNED,
+    MODBUS_WIDTH,
+    STRUCT_FORMATS,
+    ModbusMapping,
+    modbus_to_plc,
+    pack_value,
+    plc_to_modbus,
+    unpack_value,
+)
 from .nicknames import (
     CSV_COLUMNS,
     DATA_TYPE_CODE_TO_STR,
@@ -124,6 +135,16 @@ __all__ = [
     "find_block_range_indices",
     "compute_all_block_ranges",
     "validate_block_span",
+    # modbus
+    "ModbusMapping",
+    "MODBUS_MAPPINGS",
+    "MODBUS_WIDTH",
+    "MODBUS_SIGNED",
+    "STRUCT_FORMATS",
+    "plc_to_modbus",
+    "modbus_to_plc",
+    "pack_value",
+    "unpack_value",
     # dataview
     "TypeCode",
     "DataviewRow",
