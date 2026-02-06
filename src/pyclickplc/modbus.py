@@ -324,6 +324,39 @@ def _reverse_register(address: int) -> tuple[str, int] | None:
     return None
 
 
+def modbus_to_plc_register(address: int) -> tuple[str, int, int] | None:
+    """Extended reverse register mapping.
+
+    Unlike modbus_to_plc(is_coil=False), this does NOT return None for
+    mid-value registers of width-2 types. Instead it returns the
+    reg_position (0 or 1) within the value.
+
+    Needed by the server for FC 06 on width-2 types (read-modify-write).
+
+    Returns:
+        (bank, index, reg_position) or None if unmapped
+    """
+    for bank, mapping in _REGISTER_MAPPINGS:
+        if bank in ("XD", "YD"):
+            max_display = 8
+            end = mapping.base + max_display * 2 + 1
+            if mapping.base <= address < end:
+                offset = address - mapping.base
+                if offset % 2 != 0:
+                    return None  # Upper byte slot
+                return bank, offset // 2, 0
+            continue
+
+        max_addr = BANKS[bank].max_addr
+        end = mapping.base + mapping.width * max_addr
+        if mapping.base <= address < end:
+            offset = address - mapping.base
+            index = offset // mapping.width + 1
+            reg_position = offset % mapping.width
+            return bank, index, reg_position
+    return None
+
+
 # ==============================================================================
 # Pack / Unpack
 # ==============================================================================

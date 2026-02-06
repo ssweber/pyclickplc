@@ -50,7 +50,7 @@ class TestBankConfig:
     def test_frozen(self):
         bank = BANKS["DS"]
         with pytest.raises(FrozenInstanceError):
-            bank.name = "other"  # type: ignore[misc]
+            bank.name = "other"
 
     def test_all_16_banks_defined(self):
         assert len(BANKS) == 16

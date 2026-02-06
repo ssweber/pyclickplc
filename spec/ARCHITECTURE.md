@@ -14,7 +14,7 @@ High-level plan for the `pyclickplc` package — shared CLICK PLC knowledge cons
 | BlockTag parsing & computation | ClickNick, pyrung |
 | DataView CDV file I/O | ClickNick |
 | Nickname/field validation | ClickNick |
-| Modbus client (ClickDriver) | pyrung, standalone |
+| Modbus client (ClickClient) | pyrung, standalone |
 | Modbus server (ClickServer) | pyrung (testing), standalone |
 
 ---
@@ -31,7 +31,7 @@ pyclickplc/
 ├── nicknames.py         # Nickname CSV read/write, NicknameProject
 ├── dataview.py          # DataView .cdv file I/O
 ├── modbus.py            # Modbus mapping, register packing, sparse logic
-├── client.py            # ClickDriver (Modbus TCP client)
+├── client.py            # ClickClient (Modbus TCP client)
 └── server.py            # ClickServer (Modbus TCP server)
 ```
 
@@ -149,12 +149,12 @@ New code (from CLICKDEVICE_SPEC / CLICKSERVER_SPEC):
 
 Note: Sparse addressing *validity* (which addresses exist) is in `banks.py`. Sparse *Modbus offset calculation* (mapping valid addresses to sequential coil numbers) is here.
 
-### `client.py` — ClickDriver
+### `client.py` — ClickClient
 
 Depends on: `modbus.py`, `nicknames.py` (optional, for tag loading)
 
 From CLICKDEVICE_SPEC:
-- `ClickDriver` class (async Modbus TCP client)
+- `ClickClient` class (async Modbus TCP client)
 - `AddressAccessor` — `plc.df.read(1)`
 - `AddressInterface` — `plc.addr.read('df1')`
 - `TagInterface` — `plc.tag.read('MyTag')`
@@ -385,7 +385,7 @@ XD and YD are byte-grouped views of X/Y inputs/outputs exposed by the CLICK prog
 
 **Module:** `client.py`
 
-- New code — `ClickDriver` per CLICKDEVICE_SPEC
+- New code — `ClickClient` per CLICKDEVICE_SPEC
 - `AddressAccessor`, `AddressInterface`, `TagInterface`
 - Uses `modbus.py` for mapping/packing, `nicknames.py` for tag loading
 - Tests with mocked Modbus client
@@ -402,7 +402,7 @@ XD and YD are byte-grouped views of X/Y inputs/outputs exposed by the CLICK prog
 ### Phase 7: Integration
 
 - Update ClickNick imports (mechanical find-and-replace)
-- Integration tests: ClickDriver ↔ ClickServer round-trips
+- Integration tests: ClickClient ↔ ClickServer round-trips
 - Wire into pyrung
 - Delete moved code from ClickNick
 
@@ -442,6 +442,6 @@ from pyclickplc.nicknames import read_csv, write_csv, load_nickname_file, Nickna
 from pyclickplc.dataview import read_cdv, write_cdv
 
 # Modbus (import-guarded, requires pyclickplc[modbus])
-from pyclickplc.client import ClickDriver
+from pyclickplc.client import ClickClient
 from pyclickplc.server import ClickServer, MemoryDataProvider, DataProvider
 ```

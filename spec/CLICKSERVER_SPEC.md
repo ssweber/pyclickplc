@@ -44,12 +44,12 @@ async with ClickServer(provider, port=5020) as server:
 ```
 
 ```python
-# Integration test with ClickDriver
+# Integration test with ClickClient
 provider = MemoryDataProvider()
 provider.set('DF1', 3.14)
 
 async with ClickServer(provider, port=5020) as server:
-    async with ClickDriver('localhost:5020') as plc:
+    async with ClickClient('localhost:5020') as plc:
         value = await plc.df.read(1)   # Returns 3.14
         await plc.ds.write(1, 42)
 
@@ -83,7 +83,7 @@ Modbus Client                    ClickServer                      DataProvider
 
 ### Shared Core (`pyclickplc.core`)
 
-The following components are shared between ClickDriver and ClickServer. They are currently defined in the [ClickDevice Spec](CLICKDEVICE_SPEC.md) and must be extracted into a shared core module:
+The following components are shared between ClickClient and ClickServer. They are currently defined in the [ClickDevice Spec](CLICKDEVICE_SPEC.md) and must be extracted into a shared core module:
 
 - `AddressType` dataclass (frozen)
 - All address type configurations (x, y, c, t, ct, sc, ds, dd, dh, df, td, ctd, sd, txt)
@@ -563,7 +563,7 @@ The server never crashes due to a DataProvider error.
 81. Provider `write()` raises → Modbus `SlaveDeviceFailure` returned
 82. Server continues operating after provider error
 
-### Integration (ClickDriver ↔ ClickServer)
+### Integration (ClickClient ↔ ClickServer)
 
 83. Driver writes DF, provider sees value via `get()`
 84. Provider `set()` value, driver reads it

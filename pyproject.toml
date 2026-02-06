@@ -39,6 +39,7 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
+    "pymodbus>=3.8",
 ]
 
 
@@ -47,6 +48,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
+    "pytest-asyncio>=1.0",
     "ruff>=0.11.0",
     "codespell>=2.4.1",
     "rich>=13.9.4",
@@ -159,3 +161,4 @@ testpaths = [
 ]
 norecursedirs = []
 filterwarnings = []
+asyncio_mode = "auto"

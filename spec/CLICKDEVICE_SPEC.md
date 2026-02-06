@@ -10,7 +10,7 @@ A Python driver for AutomationDirect CLICK Plcs using Modbus TCP/IP.
 2. [Dependencies](#dependencies)
 3. [Data Structures](#data-structures)
 4. [Address Types & Configuration](#address-types--configuration)
-5. [ClickDriver Class](#clickclient-class)
+5. [ClickClient Class](#clickclient-class)
 6. [AddressAccessor Class](#addressaccessor-class)
 7. [AddressInterface Class](#addressinterface-class)
 8. [TagInterface Class](#taginterface-class)
@@ -35,7 +35,7 @@ The driver provides asynchronous communication with AutomationDirect CLICK Plcs 
 ### Interface Summary
 
 ```python
-async with ClickDriver('192.168.1.100') as plc:
+async with ClickClient('192.168.1.100') as plc:
     # Category accessors (recommended for raw addresses)
     value = await plc.df.read(1)           # Single value
     values = await plc.df.read(1, 10)      # Range (inclusive)
@@ -120,7 +120,7 @@ The following address types must be supported:
 
 ---
 
-## ClickDriver Class
+## ClickClient Class
 
 Inherits from `AsyncioModbusClient`.
 
@@ -170,7 +170,7 @@ Provides method-based access to a specific address banks.
 ### Constructor
 
 ```python
-def __init__(self, plc: ClickDriver, bank: str)
+def __init__(self, plc: ClickClient, bank: str)
 ```
 
 ### Methods
@@ -213,7 +213,7 @@ Provides string-based access to raw PLC addresses.
 ### Constructor
 
 ```python
-def __init__(self, plc: ClickDriver)
+def __init__(self, plc: ClickClient)
 ```
 
 ### Methods
@@ -254,7 +254,7 @@ Provides access via tag nicknames. Requires tags to be loaded.
 ### Constructor
 
 ```python
-def __init__(self, plc: ClickDriver)
+def __init__(self, plc: ClickClient)
 ```
 
 ### Methods

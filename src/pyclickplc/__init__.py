@@ -42,6 +42,7 @@ from .blocks import (
     strip_block_tag,
     validate_block_span,
 )
+from .client import ClickClient
 from .dataview import (
     MAX_DATAVIEW_ROWS,
     MEMORY_TYPE_TO_CODE,
@@ -67,6 +68,7 @@ from .modbus import (
     STRUCT_FORMATS,
     ModbusMapping,
     modbus_to_plc,
+    modbus_to_plc_register,
     pack_value,
     plc_to_modbus,
     unpack_value,
@@ -79,6 +81,7 @@ from .nicknames import (
     read_mdb_csv,
     write_csv,
 )
+from .server import ClickServer, MemoryDataProvider
 from .validation import (
     COMMENT_MAX_LENGTH,
     FLOAT_MAX,
@@ -135,6 +138,8 @@ __all__ = [
     "find_block_range_indices",
     "compute_all_block_ranges",
     "validate_block_span",
+    # client
+    "ClickClient",
     # modbus
     "ModbusMapping",
     "MODBUS_MAPPINGS",
@@ -143,8 +148,12 @@ __all__ = [
     "STRUCT_FORMATS",
     "plc_to_modbus",
     "modbus_to_plc",
+    "modbus_to_plc_register",
     "pack_value",
     "unpack_value",
+    # server
+    "ClickServer",
+    "MemoryDataProvider",
     # dataview
     "TypeCode",
     "DataviewRow",

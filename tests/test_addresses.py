@@ -201,7 +201,7 @@ class TestAddressRecord:
     def test_frozen(self):
         rec = AddressRecord(memory_type="DS", address=1, data_type=DataType.INT)
         with pytest.raises(FrozenInstanceError):
-            rec.nickname = "test"  # type: ignore[misc]
+            rec.nickname = "test"
 
     def test_replace(self):
         rec = AddressRecord(memory_type="DS", address=1, data_type=DataType.INT)

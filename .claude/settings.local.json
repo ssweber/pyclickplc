@@ -4,6 +4,8 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(make:*)",
+      "Bash(uv sync:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }
