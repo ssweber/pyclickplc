@@ -218,10 +218,10 @@ class TestStorageToDatatype:
         assert val < 0
 
     def test_txt_values(self):
-        assert storage_to_datatype("48", TypeCode.TXT) == 48
-        assert storage_to_datatype("65", TypeCode.TXT) == 65
-        assert storage_to_datatype("90", TypeCode.TXT) == 90
-        assert storage_to_datatype("32", TypeCode.TXT) == 32
+        assert storage_to_datatype("48", TypeCode.TXT) == "0"
+        assert storage_to_datatype("65", TypeCode.TXT) == "A"
+        assert storage_to_datatype("90", TypeCode.TXT) == "Z"
+        assert storage_to_datatype("32", TypeCode.TXT) == " "
 
     def test_empty_value(self):
         assert storage_to_datatype("", TypeCode.INT) is None
@@ -362,13 +362,13 @@ class TestDisplayToDatatype:
         assert display_to_datatype("-1.0", TypeCode.FLOAT) == -1.0
 
     def test_txt_char(self):
-        assert display_to_datatype("A", TypeCode.TXT) == 65
-        assert display_to_datatype("Z", TypeCode.TXT) == 90
-        assert display_to_datatype("0", TypeCode.TXT) == 48
-        assert display_to_datatype(" ", TypeCode.TXT) == 32
+        assert display_to_datatype("A", TypeCode.TXT) == "A"
+        assert display_to_datatype("Z", TypeCode.TXT) == "Z"
+        assert display_to_datatype("0", TypeCode.TXT) == "0"
+        assert display_to_datatype(" ", TypeCode.TXT) == " "
 
     def test_txt_numeric(self):
-        assert display_to_datatype("65", TypeCode.TXT) == 65
+        assert display_to_datatype("65", TypeCode.TXT) == "A"
 
     def test_empty_value(self):
         assert display_to_datatype("", TypeCode.INT) is None

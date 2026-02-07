@@ -238,7 +238,7 @@ def create_empty_dataview(count: int = MAX_DATAVIEW_ROWS) -> list[DataviewRow]:
 # The display layer handles presentation (hex formatting, float precision, etc.).
 
 
-def storage_to_datatype(value: str, type_code: int) -> int | float | bool | None:
+def storage_to_datatype(value: str, type_code: int) -> int | float | bool | str | None:
     """Convert a CDV storage string to its native Python type.
 
     Args:
@@ -246,8 +246,8 @@ def storage_to_datatype(value: str, type_code: int) -> int | float | bool | None
         type_code: The type code (TypeCode.BIT, TypeCode.INT, etc.)
 
     Returns:
-        Native Python value (bool for BIT, int for INT/INT2/HEX/TXT,
-        float for FLOAT), or None if empty/invalid.
+        Native Python value (bool for BIT, int for INT/INT2/HEX,
+        float for FLOAT, str for TXT), or None if empty/invalid.
     """
     if not value:
         return None
@@ -281,7 +281,8 @@ def storage_to_datatype(value: str, type_code: int) -> int | float | bool | None
             return struct.unpack(">f", bytes_val)[0]
 
         elif type_code == TypeCode.TXT:
-            return int(value)
+            code = int(value)
+            return chr(code) if 0 < code < 128 else ""
 
         else:
             return None
@@ -290,7 +291,7 @@ def storage_to_datatype(value: str, type_code: int) -> int | float | bool | None
         return None
 
 
-def datatype_to_storage(value: int | float | bool | None, type_code: int) -> str:
+def datatype_to_storage(value: int | float | bool | str | None, type_code: int) -> str:
     """Convert a native Python value to CDV storage format.
 
     Args:
@@ -334,6 +335,8 @@ def datatype_to_storage(value: int | float | bool | None, type_code: int) -> str
             return str(int_val)
 
         elif type_code == TypeCode.TXT:
+            if isinstance(value, str):
+                return str(ord(value)) if value else "0"
             return str(int(value))
 
         else:
@@ -343,7 +346,7 @@ def datatype_to_storage(value: int | float | bool | None, type_code: int) -> str
         return ""
 
 
-def datatype_to_display(value: int | float | bool | None, type_code: int) -> str:
+def datatype_to_display(value: int | float | bool | str | None, type_code: int) -> str:
     """Convert a native Python value to a UI-friendly display string.
 
     Args:
@@ -370,6 +373,8 @@ def datatype_to_display(value: int | float | bool | None, type_code: int) -> str
             return f"{float(value):.7G}"
 
         elif type_code == TypeCode.TXT:
+            if isinstance(value, str):
+                return value if value else ""
             code = int(value)
             if 32 <= code <= 126:
                 return chr(code)
@@ -382,7 +387,7 @@ def datatype_to_display(value: int | float | bool | None, type_code: int) -> str
         return ""
 
 
-def display_to_datatype(value: str, type_code: int) -> int | float | bool | None:
+def display_to_datatype(value: str, type_code: int) -> int | float | bool | str | None:
     """Convert a UI display string to its native Python type.
 
     Args:
@@ -390,8 +395,8 @@ def display_to_datatype(value: str, type_code: int) -> int | float | bool | None
         type_code: The type code (TypeCode.BIT, TypeCode.INT, etc.)
 
     Returns:
-        Native Python value (bool for BIT, int for INT/INT2/HEX/TXT,
-        float for FLOAT), or None if empty/invalid.
+        Native Python value (bool for BIT, int for INT/INT2/HEX,
+        float for FLOAT, str for TXT), or None if empty/invalid.
     """
     if not value:
         return None
@@ -414,8 +419,9 @@ def display_to_datatype(value: str, type_code: int) -> int | float | bool | None
 
         elif type_code == TypeCode.TXT:
             if len(value) == 1:
-                return ord(value)
-            return int(value)
+                return value
+            code = int(value)
+            return chr(code) if 0 < code < 128 else ""
 
         else:
             return None
