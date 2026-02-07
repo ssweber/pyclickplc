@@ -159,7 +159,7 @@ class TestPlcToModbus:
         assert plc_to_modbus("C", 2000) == (18383, 1)
 
     def test_t1(self):
-        assert plc_to_modbus("T", 1) == (45057, 1)
+        assert plc_to_modbus("T", 1) == (45056, 1)
 
     def test_ct1(self):
         assert plc_to_modbus("CT", 1) == (49152, 1)
@@ -327,7 +327,7 @@ class TestModbusToPlc:
         assert modbus_to_plc(18383, is_coil=True) == ("C", 2000)
 
     def test_coil_45057_t1(self):
-        assert modbus_to_plc(45057, is_coil=True) == ("T", 1)
+        assert modbus_to_plc(45056, is_coil=True) == ("T", 1)
 
     def test_coil_49152_ct1(self):
         assert modbus_to_plc(49152, is_coil=True) == ("CT", 1)
