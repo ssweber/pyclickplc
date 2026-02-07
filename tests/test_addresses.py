@@ -13,7 +13,6 @@ from pyclickplc.addresses import (
     normalize_address,
     parse_addr_key,
     parse_address,
-    parse_address_display,
     xd_yd_display_to_mdb,
     xd_yd_mdb_to_display,
 )
@@ -109,53 +108,27 @@ class TestFormatAddressDisplay:
 
 
 # ==============================================================================
-# parse_address_display
-# ==============================================================================
-
-
-class TestParseAddressDisplay:
-    def test_basic_types(self):
-        assert parse_address_display("X001") == ("X", 1)
-        assert parse_address_display("DS100") == ("DS", 100)
-        assert parse_address_display("C1") == ("C", 1)
-
-    def test_case_insensitive(self):
-        assert parse_address_display("x001") == ("X", 1)
-        assert parse_address_display("ds100") == ("DS", 100)
-
-    def test_xd_yd(self):
-        assert parse_address_display("XD0") == ("XD", 0)
-        assert parse_address_display("XD0U") == ("XD", 1)
-        assert parse_address_display("XD0u") == ("XD", 1)
-        assert parse_address_display("XD1") == ("XD", 2)
-        assert parse_address_display("XD8") == ("XD", 16)
-
-    def test_invalid_returns_none(self):
-        assert parse_address_display("") is None
-        assert parse_address_display("FAKE1") is None
-        assert parse_address_display("XD1U") is None  # Only XD0 can have U
-        assert parse_address_display("!!!") is None
-
-
-# ==============================================================================
 # parse_address
 # ==============================================================================
 
 
 class TestParseAddress:
-    def test_basic(self):
+    def test_basic_types(self):
+        assert parse_address("X001") == ("X", 1)
         assert parse_address("DS100") == ("DS", 100)
         assert parse_address("C1") == ("C", 1)
 
     def test_case_insensitive(self):
-        assert parse_address("ds100") == ("DS", 100)
         assert parse_address("x001") == ("X", 1)
+        assert parse_address("ds100") == ("DS", 100)
 
-    def test_xd_returns_display_addr(self):
-        # parse_address returns display address, NOT MDB
-        assert parse_address("XD1") == ("XD", 1)
-        assert parse_address("XD8") == ("XD", 8)
+    def test_xd_yd_returns_mdb(self):
+        # parse_address returns MDB address
         assert parse_address("XD0") == ("XD", 0)
+        assert parse_address("XD0U") == ("XD", 1)
+        assert parse_address("XD0u") == ("XD", 1)
+        assert parse_address("XD1") == ("XD", 2)
+        assert parse_address("XD8") == ("XD", 16)
 
     def test_raises_on_invalid(self):
         with pytest.raises(ValueError):
@@ -168,6 +141,8 @@ class TestParseAddress:
             parse_address("DS4501")  # Out of range
         with pytest.raises(ValueError):
             parse_address("!!!")
+        with pytest.raises(ValueError):
+            parse_address("XD1U")  # Only XD0 can have U
 
     def test_raises_on_sparse_gap(self):
         with pytest.raises(ValueError):

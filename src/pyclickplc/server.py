@@ -60,16 +60,8 @@ class MemoryDataProvider:
 
     def _normalize(self, address: str) -> tuple[str, str]:
         """Normalize address and return (normalized, bank)."""
-        bank, index = parse_address(address)
-        normalized: str = format_address_display(bank, index)
-        # For X/Y, format_address_display expects MDB address; parse_address returns display
-        # But for X/Y display==MDB, and for XD/YD we need to handle differently
-        if bank in ("X", "Y"):
-            normalized = f"{bank}{index:03d}"
-        elif bank in ("XD", "YD"):
-            normalized = f"{bank}{index}"
-        else:
-            normalized = f"{bank}{index}"
+        bank, mdb = parse_address(address)
+        normalized = format_address_display(bank, mdb)
         return normalized, bank
 
     def _default(self, bank: str) -> PlcValue:
@@ -114,9 +106,7 @@ def _is_address_writable(bank: str, index: int) -> bool:
 
 def _format_plc_address(bank: str, index: int) -> str:
     """Format a PLC address string for DataProvider calls."""
-    if bank in ("X", "Y"):
-        return f"{bank}{index:03d}"
-    return f"{bank}{index}"
+    return format_address_display(bank, index)
 
 
 class _ClickDeviceContext(ModbusBaseDeviceContext):

@@ -115,7 +115,7 @@ MODBUS_MAPPINGS: dict[str, ModbusMapping] = {
     "X": ModbusMapping("X", 0, frozenset({2}), is_coil=True),
     "Y": ModbusMapping("Y", 8192, frozenset({1, 5, 15}), is_coil=True),
     "C": ModbusMapping("C", 16384, frozenset({1, 5, 15}), is_coil=True),
-    "T": ModbusMapping("T", 45057, frozenset({2}), is_coil=True),
+    "T": ModbusMapping("T", 45056, frozenset({2}), is_coil=True),
     "CT": ModbusMapping("CT", 49152, frozenset({2}), is_coil=True),
     "SC": ModbusMapping("SC", 61440, frozenset({2}), is_coil=True, writable=_MODBUS_WRITABLE_SC),
     # --- Register banks ---
@@ -225,7 +225,7 @@ def plc_to_modbus(bank: str, index: int) -> tuple[int, int]:
 
     Args:
         bank: Bank name (e.g. "X", "DS", "XD")
-        index: PLC display address (e.g. 1 for X001, 0 for XD0)
+        index: MDB index (e.g. 1 for X001, 0 for XD0, 2 for XD1)
 
     Returns:
         Tuple of (modbus_address, register_count)
@@ -248,12 +248,11 @@ def plc_to_modbus(bank: str, index: int) -> tuple[int, int]:
         # Standard coils
         return mapping.base + (index - 1), 1
 
-    # Registers
-    if bank in ("XD", "YD"):
-        # XD/YD: stride 2, each value is 1 register
-        return mapping.base + index * 2, 1
-
-    # Standard registers
+    # Registers: 0-based banks (XD/YD) use base + index,
+    # 1-based banks use base + width * (index - 1)
+    bank_cfg = BANKS[bank]
+    if bank_cfg.min_addr == 0:
+        return mapping.base + index, 1
     return mapping.base + mapping.width * (index - 1), mapping.width
 
 
@@ -301,21 +300,19 @@ def _reverse_coil(address: int) -> tuple[str, int] | None:
 
 
 def _reverse_register(address: int) -> tuple[str, int] | None:
-    """Reverse map a Modbus register address to (bank, index)."""
+    """Reverse map a Modbus register address to (bank, mdb_index)."""
     for bank, mapping in _REGISTER_MAPPINGS:
-        if bank in ("XD", "YD"):
-            max_display = 8  # XD0..XD8 / YD0..YD8
-            end = mapping.base + max_display * 2 + 1
+        bank_cfg = BANKS[bank]
+        max_mdb = bank_cfg.max_addr
+        if bank_cfg.min_addr == 0:
+            # 0-based banks (XD/YD): contiguous, base + mdb_index
+            end = mapping.base + max_mdb + 1
             if mapping.base <= address < end:
-                offset = address - mapping.base
-                if offset % 2 != 0:
-                    return None  # Upper byte slot (XD0u etc.)
-                return bank, offset // 2
+                return bank, address - mapping.base
             continue
 
-        # Standard register banks
-        max_addr = BANKS[bank].max_addr
-        end = mapping.base + mapping.width * max_addr
+        # Standard 1-based register banks
+        end = mapping.base + mapping.width * max_mdb
         if mapping.base <= address < end:
             offset = address - mapping.base
             if offset % mapping.width != 0:
@@ -334,21 +331,20 @@ def modbus_to_plc_register(address: int) -> tuple[str, int, int] | None:
     Needed by the server for FC 06 on width-2 types (read-modify-write).
 
     Returns:
-        (bank, index, reg_position) or None if unmapped
+        (bank, mdb_index, reg_position) or None if unmapped
     """
     for bank, mapping in _REGISTER_MAPPINGS:
-        if bank in ("XD", "YD"):
-            max_display = 8
-            end = mapping.base + max_display * 2 + 1
+        bank_cfg = BANKS[bank]
+        max_mdb = bank_cfg.max_addr
+        if bank_cfg.min_addr == 0:
+            # 0-based banks (XD/YD): contiguous, width=1
+            end = mapping.base + max_mdb + 1
             if mapping.base <= address < end:
-                offset = address - mapping.base
-                if offset % 2 != 0:
-                    return None  # Upper byte slot
-                return bank, offset // 2, 0
+                return bank, address - mapping.base, 0
             continue
 
-        max_addr = BANKS[bank].max_addr
-        end = mapping.base + mapping.width * max_addr
+        # Standard 1-based register banks
+        end = mapping.base + mapping.width * max_mdb
         if mapping.base <= address < end:
             offset = address - mapping.base
             index = offset // mapping.width + 1

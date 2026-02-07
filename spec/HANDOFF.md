@@ -15,12 +15,12 @@ See `ARCHITECTURE.md` for full module layout, dependency graph, and design decis
 | Module | Contents |
 |---|---|
 | `banks.py` | `DataType` enum, `BankConfig` frozen dataclass, `BANKS` (16 banks), `_SPARSE_RANGES`, `MEMORY_TYPE_BASES`, `_INDEX_TO_TYPE`, `DEFAULT_RETENTIVE`, interleaved/paired dicts, `NON_EDITABLE_TYPES`, `BIT_ONLY_TYPES`, `MEMORY_TYPE_TO_DATA_TYPE`, `is_valid_address()` |
-| `addresses.py` | `get_addr_key`/`parse_addr_key`, XD/YD helpers, `format_address_display`, `parse_address_display` (lenient, MDB), `parse_address` (strict, display), `normalize_address`, `AddressRecord` frozen dataclass |
+| `addresses.py` | `get_addr_key`/`parse_addr_key`, XD/YD helpers, `format_address_display`, `parse_address` (strict, MDB indices), `normalize_address`, `AddressRecord` frozen dataclass |
 | `validation.py` | `FORBIDDEN_CHARS`/`RESERVED_NICKNAMES` (frozenset), numeric limits, `validate_nickname` (format-only), `validate_comment` (length-only), `validate_initial_value` |
 | `blocks.py` | `BlockTag`, `BlockRange`, block parsing/formatting/validation |
 | `dataview.py` | `DataviewRow`, CDV file I/O, type codes, writable sets, storage/display conversion |
 | `nicknames.py` | CSV read/write, data type code mappings |
-| `modbus.py` | `ModbusMapping` frozen dataclass, `MODBUS_MAPPINGS` (16 banks), `plc_to_modbus`/`modbus_to_plc` forward/reverse mapping, `pack_value`/`unpack_value` register encoding, sparse coil helpers, XD/YD stride-2 support |
+| `modbus.py` | `ModbusMapping` frozen dataclass, `MODBUS_MAPPINGS` (16 banks), `plc_to_modbus`/`modbus_to_plc` forward/reverse mapping, `pack_value`/`unpack_value` register encoding, sparse coil helpers |
 | `__init__.py` | Re-exports public API (XD/YD helpers excluded) |
 
 417 tests across `test_banks.py`, `test_addresses.py`, `test_validation.py`, `test_blocks.py`, `test_dataview.py`, `test_nicknames.py`, `test_modbus.py`. Lint clean.

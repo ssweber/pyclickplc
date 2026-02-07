@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .addresses import format_address_display, parse_address_display
+from .addresses import format_address_display, parse_address
 
 
 # Type codes used in CDV files to identify address types
@@ -105,10 +105,10 @@ def get_type_code_for_address(address: str) -> int | None:
     Returns:
         Type code or None if address is invalid.
     """
-    parsed = parse_address_display(address)
-    if not parsed:
+    try:
+        memory_type, _ = parse_address(address)
+    except ValueError:
         return None
-    memory_type, _ = parsed
     return MEMORY_TYPE_TO_CODE.get(memory_type)
 
 
@@ -124,11 +124,10 @@ def is_address_writable(address: str) -> bool:
     Returns:
         True if the address can have a New Value written to it.
     """
-    parsed = parse_address_display(address)
-    if not parsed:
+    try:
+        memory_type, mdb_address = parse_address(address)
+    except ValueError:
         return False
-
-    memory_type, mdb_address = parsed
 
     # XD and YD are read-only
     if memory_type in ("XD", "YD"):
@@ -177,16 +176,19 @@ class DataviewRow:
     @property
     def memory_type(self) -> str | None:
         """Get the memory type prefix (X, Y, DS, etc.) or None if invalid."""
-        parsed = parse_address_display(self.address)
-        return parsed[0] if parsed else None
+        try:
+            mem_type, _ = parse_address(self.address)
+            return mem_type
+        except ValueError:
+            return None
 
     @property
     def address_number(self) -> str | None:
         """Get the address number as a display string, or None if invalid."""
-        parsed = parse_address_display(self.address)
-        if not parsed:
+        try:
+            memory_type, mdb_address = parse_address(self.address)
+        except ValueError:
             return None
-        memory_type, mdb_address = parsed
         # Return the display address portion (strip the memory type prefix)
         display = format_address_display(memory_type, mdb_address)
         return display[len(memory_type) :]

@@ -9,7 +9,7 @@ from typing import ClassVar
 
 from pymodbus.client import AsyncModbusTcpClient
 
-from .addresses import parse_address
+from .addresses import format_address_display, parse_address
 from .banks import BANKS
 from .modbus import (
     MODBUS_MAPPINGS,
@@ -81,9 +81,7 @@ def _load_tags(filepath: str) -> dict[str, dict[str, str]]:
 
 def _format_bank_address(bank: str, index: int) -> str:
     """Format address string for return dicts."""
-    if bank in ("X", "Y"):
-        return f"{bank.lower()}{index:03d}"
-    return f"{bank.lower()}{index}"
+    return format_address_display(bank, index).lower()
 
 
 class AddressAccessor:

@@ -70,15 +70,12 @@ From ClickNick extraction:
 - `get_addr_key(memory_type, address)` → unique int key
 - `parse_addr_key(addr_key)` → `(memory_type, address)`
 - `format_address_display(memory_type, address)` → `"X001"`, `"DS100"`
-- `parse_address_display(display_str)` → `(memory_type, address)`
+- `parse_address(display_str)` → `(memory_type, mdb_address)` — strict, raises ValueError
 - `normalize_address(address_str)` → canonical form
 - XD/YD helpers (`is_xd_yd_upper_byte`, etc.)
-
-New:
 - `AddressRecord` frozen dataclass (shared between ClickNick and pyrung)
-- `parse_address(address_str)` → `(bank_name, index)` — used by Modbus layer too
 
-The Modbus spec's "address parsing" and the extraction plan's `parse_address_display` are the **same function**. One parser, used everywhere.
+One unified `parse_address` returns MDB indices for all banks (including XD/YD). Used everywhere: Modbus layer, client, server, nicknames, dataview.
 
 ### `validation.py` — CLICK Validation Rules
 
@@ -292,16 +289,17 @@ Note: `sparse` and `valid_ranges` live on `BankConfig`, not `ModbusMapping`. The
 
 ## Key Design Decision: One Address Parser
 
-**Problem:** Both the extraction plan (`parse_address_display`) and the Modbus spec mention address parsing.
+**Problem:** Address parsing previously had two functions with different return conventions.
 
-**Decision:** Single parser in `addresses.py`, used by everyone:
+**Decision:** Single strict `parse_address()` in `addresses.py`, returning MDB indices for all banks:
 
 ```python
 def parse_address(address_str: str) -> tuple[str, int]:
-    """Parse 'DF1', 'X001', 'ds100' → ('DF', 1), ('X', 1), ('DS', 100)"""
+    """Parse 'DF1' → ('DF', 1), 'XD1' → ('XD', 2), 'XD0u' → ('XD', 1)
+    Raises ValueError on invalid input."""
 ```
 
-The Modbus layer calls `parse_address()` then looks up `ModbusMapping` by bank name. ClickNick calls `parse_address()` then looks up `BankConfig`. Same function, different downstream lookups.
+The Modbus layer calls `parse_address()` then looks up `ModbusMapping` by bank name. ClickNick calls `parse_address()` then looks up `BankConfig`. Same function, different downstream lookups. XD/YD use contiguous MDB indices (0-16), eliminating stride-2 special cases in the Modbus layer.
 
 ---
 

@@ -245,16 +245,19 @@ class TestPlcToModbus:
         assert plc_to_modbus("XD", 0) == (57344, 1)
 
     def test_xd1(self):
-        assert plc_to_modbus("XD", 1) == (57346, 1)
+        # MDB index 2 = XD1 display
+        assert plc_to_modbus("XD", 2) == (57346, 1)
 
     def test_xd8(self):
-        assert plc_to_modbus("XD", 8) == (57360, 1)
+        # MDB index 16 = XD8 display
+        assert plc_to_modbus("XD", 16) == (57360, 1)
 
     def test_yd0(self):
         assert plc_to_modbus("YD", 0) == (57856, 1)
 
     def test_yd1(self):
-        assert plc_to_modbus("YD", 1) == (57858, 1)
+        # MDB index 2 = YD1 display
+        assert plc_to_modbus("YD", 2) == (57858, 1)
 
     # --- Errors ---
 
@@ -395,17 +398,19 @@ class TestModbusToPlc:
         assert modbus_to_plc(57344, is_coil=False) == ("XD", 0)
 
     def test_reg_57346_xd1(self):
-        assert modbus_to_plc(57346, is_coil=False) == ("XD", 1)
+        # MDB index 2 = XD1 display
+        assert modbus_to_plc(57346, is_coil=False) == ("XD", 2)
 
-    def test_reg_57345_xd0u_gap(self):
-        """Register 57345 is XD0u (odd offset) -> None."""
-        assert modbus_to_plc(57345, is_coil=False) is None
+    def test_reg_57345_xd0u(self):
+        """Register 57345 is XD0u (MDB index 1) — now addressable."""
+        assert modbus_to_plc(57345, is_coil=False) == ("XD", 1)
 
     def test_reg_57856_yd0(self):
         assert modbus_to_plc(57856, is_coil=False) == ("YD", 0)
 
     def test_reg_57858_yd1(self):
-        assert modbus_to_plc(57858, is_coil=False) == ("YD", 1)
+        # MDB index 2 = YD1 display
+        assert modbus_to_plc(57858, is_coil=False) == ("YD", 2)
 
     # --- Unmapped registers ---
 
@@ -472,11 +477,11 @@ class TestRoundTrip:
             ("SD", 1),
             ("SD", 1000),
             ("XD", 0),
-            ("XD", 1),
-            ("XD", 8),
+            ("XD", 2),
+            ("XD", 16),
             ("YD", 0),
-            ("YD", 1),
-            ("YD", 8),
+            ("YD", 2),
+            ("YD", 16),
         ],
     )
     def test_register_round_trip(self, bank: str, index: int):
@@ -682,34 +687,35 @@ class TestEdgeCases:
             result = modbus_to_plc(addr, is_coil=True)
             assert result == ("X", hi)
 
-    def test_xd_yd_odd_offsets_return_none(self):
-        """Odd offsets within XD/YD range return None (upper byte slots)."""
-        # XD base=57344, odd offsets
-        assert modbus_to_plc(57345, is_coil=False) is None  # XD0u
-        assert modbus_to_plc(57347, is_coil=False) is None  # between XD1 and XD2
-        assert modbus_to_plc(57349, is_coil=False) is None
+    def test_xd_yd_all_mdb_indices_addressable(self):
+        """All MDB indices 0-16 within XD/YD range are addressable."""
+        # XD base=57344
+        for mdb in range(17):
+            result = modbus_to_plc(57344 + mdb, is_coil=False)
+            assert result == ("XD", mdb)
 
-        # YD base=57856, odd offsets
-        assert modbus_to_plc(57857, is_coil=False) is None  # YD0u
-        assert modbus_to_plc(57859, is_coil=False) is None
+        # YD base=57856
+        for mdb in range(17):
+            result = modbus_to_plc(57856 + mdb, is_coil=False)
+            assert result == ("YD", mdb)
 
-    def test_xd_all_valid_addresses(self):
-        """XD0 through XD8 all map correctly."""
-        for i in range(9):
-            addr, count = plc_to_modbus("XD", i)
+    def test_xd_all_valid_mdb_addresses(self):
+        """XD MDB 0 through 16 all map correctly (contiguous)."""
+        for mdb in range(17):
+            addr, count = plc_to_modbus("XD", mdb)
             assert count == 1
-            assert addr == 57344 + i * 2
+            assert addr == 57344 + mdb
             result = modbus_to_plc(addr, is_coil=False)
-            assert result == ("XD", i)
+            assert result == ("XD", mdb)
 
-    def test_yd_all_valid_addresses(self):
-        """YD0 through YD8 all map correctly."""
-        for i in range(9):
-            addr, count = plc_to_modbus("YD", i)
+    def test_yd_all_valid_mdb_addresses(self):
+        """YD MDB 0 through 16 all map correctly (contiguous)."""
+        for mdb in range(17):
+            addr, count = plc_to_modbus("YD", mdb)
             assert count == 1
-            assert addr == 57856 + i * 2
+            assert addr == 57856 + mdb
             result = modbus_to_plc(addr, is_coil=False)
-            assert result == ("YD", i)
+            assert result == ("YD", mdb)
 
     def test_df_mid_register_returns_none(self):
         """Odd offsets in DF (width-2) return None."""

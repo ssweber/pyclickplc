@@ -160,9 +160,9 @@ class TestModbusToPlcRegister:
     def test_xd0(self):
         assert modbus_to_plc_register(57344) == ("XD", 0, 0)
 
-    def test_xd_odd_none(self):
-        """XD odd offset (upper byte) still returns None."""
-        assert modbus_to_plc_register(57345) is None
+    def test_xd_mdb1(self):
+        """XD MDB index 1 (XD0u) is now addressable."""
+        assert modbus_to_plc_register(57345) == ("XD", 1, 0)
 
     def test_yd0(self):
         assert modbus_to_plc_register(57856) == ("YD", 0, 0)

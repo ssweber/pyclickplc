@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from .addresses import AddressRecord, get_addr_key, parse_address_display
+from .addresses import AddressRecord, get_addr_key, parse_address
 from .banks import BANKS, DEFAULT_RETENTIVE, MEMORY_TYPE_BASES, MEMORY_TYPE_TO_DATA_TYPE, DataType
 
 # CSV column names (matching CLICK software export format)
@@ -59,11 +59,10 @@ def read_csv(path: str | Path) -> dict[int, AddressRecord]:
             if not addr_str:
                 continue
 
-            parsed = parse_address_display(addr_str)
-            if not parsed:
+            try:
+                mem_type, mdb_address = parse_address(addr_str)
+            except ValueError:
                 continue
-
-            mem_type, mdb_address = parsed
 
             if mem_type not in BANKS:
                 continue

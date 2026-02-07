@@ -7,7 +7,6 @@ from .addresses import (
     normalize_address,
     parse_addr_key,
     parse_address,
-    parse_address_display,
 )
 from .banks import (
     BANKS,
@@ -119,7 +118,6 @@ __all__ = [
     "get_addr_key",
     "parse_addr_key",
     "format_address_display",
-    "parse_address_display",
     "parse_address",
     "normalize_address",
     # blocks

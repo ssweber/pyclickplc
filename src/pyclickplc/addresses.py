@@ -125,54 +125,17 @@ def format_address_display(memory_type: str, mdb_address: int) -> str:
     return f"{memory_type}{mdb_address}"
 
 
-def parse_address_display(address_str: str) -> tuple[str, int] | None:
-    """Parse a display address string to memory type and MDB address.
+def parse_address(address_str: str) -> tuple[str, int]:
+    """Parse a display address string to (memory_type, mdb_address).
 
-    Lenient: returns None on invalid input.
-    For XD/YD, returns MDB address: "XD1" -> ("XD", 2).
+    Strict: raises ValueError on invalid input.
+    For XD/YD, returns MDB address: "XD1" -> ("XD", 2), "XD0u" -> ("XD", 1).
 
     Args:
         address_str: Address string like "X001", "XD0", "XD0u", "XD8"
 
     Returns:
-        Tuple of (memory_type, mdb_address) or None if invalid
-    """
-    if not address_str:
-        return None
-
-    address_str = address_str.strip().upper()
-
-    match = re.match(r"^([A-Z]+)(\d+)(U?)$", address_str)
-    if not match:
-        return None
-
-    memory_type = match.group(1)
-    display_addr = int(match.group(2))
-    is_upper = match.group(3) == "U"
-
-    if memory_type not in MEMORY_TYPE_BASES:
-        return None
-
-    if memory_type in ("XD", "YD"):
-        if is_upper and display_addr != 0:
-            return None  # Invalid: XD1u, XD2u, etc. don't exist
-        return memory_type, xd_yd_display_to_mdb(display_addr, is_upper)
-
-    return memory_type, display_addr
-
-
-def parse_address(address_str: str) -> tuple[str, int]:
-    """Parse an address string to (bank_name, display_address).
-
-    Strict: raises ValueError on invalid input.
-    Returns display/logical address, NOT MDB encoding.
-    For XD/YD: "XD1" -> ("XD", 1), unlike parse_address_display which returns ("XD", 2).
-
-    Args:
-        address_str: Address string like "X001", "DS100", "XD1"
-
-    Returns:
-        Tuple of (bank_name, display_address)
+        Tuple of (memory_type, mdb_address)
 
     Raises:
         ValueError: If the address string is invalid
@@ -186,28 +149,25 @@ def parse_address(address_str: str) -> tuple[str, int]:
     if not match:
         raise ValueError(f"Invalid address format: {address_str!r}")
 
-    bank_name = match.group(1)
-    addr_num = int(match.group(2))
+    memory_type = match.group(1)
+    display_addr = int(match.group(2))
     is_upper = match.group(3) == "U"
 
-    if bank_name not in BANKS:
-        raise ValueError(f"Unknown bank: {bank_name!r}")
+    if memory_type not in MEMORY_TYPE_BASES:
+        raise ValueError(f"Unknown bank: {memory_type!r}")
 
-    if bank_name in ("XD", "YD"):
-        if is_upper and addr_num != 0:
+    if memory_type in ("XD", "YD"):
+        if is_upper and display_addr != 0:
             raise ValueError(f"Invalid upper byte address: {address_str!r}")
-        # Return display address directly (not MDB encoding)
-        # For XD/YD, valid display addresses are 0-8 (plus 0u)
-        if is_upper:
-            return bank_name, 0  # XD0u -> display addr 0
-        if addr_num < 0 or addr_num > 8:
+        mdb = xd_yd_display_to_mdb(display_addr, is_upper)
+        if mdb < BANKS[memory_type].min_addr or mdb > BANKS[memory_type].max_addr:
             raise ValueError(f"Address out of range: {address_str!r}")
-        return bank_name, addr_num
+        return memory_type, mdb
 
-    if not is_valid_address(bank_name, addr_num):
+    if not is_valid_address(memory_type, display_addr):
         raise ValueError(f"Address out of range: {address_str!r}")
 
-    return bank_name, addr_num
+    return memory_type, display_addr
 
 
 def normalize_address(address: str) -> str | None:
@@ -218,10 +178,10 @@ def normalize_address(address: str) -> str | None:
     Returns:
         The normalized display address, or None if address is invalid.
     """
-    parsed = parse_address_display(address)
-    if not parsed:
+    try:
+        memory_type, mdb_address = parse_address(address)
+    except ValueError:
         return None
-    memory_type, mdb_address = parsed
     return format_address_display(memory_type, mdb_address)
 
 
