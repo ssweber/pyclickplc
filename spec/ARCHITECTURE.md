@@ -28,7 +28,7 @@ pyclickplc/
 ├── addresses.py         # Address parsing, formatting, AddressRecord
 ├── validation.py        # CLICK field validation rules
 ├── blocks.py            # BlockTag parsing, BlockRange, MemoryBankMeta
-├── nicknames.py         # Nickname CSV read/write, NicknameProject
+├── nicknames.py         # Nickname CSV read/write
 ├── dataview.py          # DataView .cdv file I/O
 ├── modbus.py            # Modbus mapping, register packing, sparse logic
 ├── client.py            # ClickClient (Modbus TCP client)
@@ -112,8 +112,6 @@ From ClickNick extraction:
 - `read_csv(path)` → `dict[int, AddressRecord]`
 - `read_mdb_csv(path)` → `dict[int, AddressRecord]`
 - `write_csv(path, records)` → count
-- `load_nickname_file(path)` → `NicknameProject`
-- `NicknameProject` dataclass (records + banks + standalone tags)
 
 ### `dataview.py` — DataView CDV File I/O
 
@@ -362,7 +360,6 @@ XD and YD are byte-grouped views of X/Y inputs/outputs exposed by the CLICK prog
 
 - Extract CSV read/write from ClickNick `data_source.py`
 - Extract CDV read/write from ClickNick `cdv_file.py`
-- Create `NicknameProject` as high-level loader
 - Tests using existing test fixtures from ClickNick
 
 ### Phase 4: Modbus Core
@@ -436,10 +433,13 @@ from pyclickplc.validation import validate_nickname, validate_initial_value
 from pyclickplc.blocks import BlockTag, BlockRange, MemoryBankMeta
 
 # File I/O
-from pyclickplc.nicknames import read_csv, write_csv, load_nickname_file, NicknameProject
+from pyclickplc.nicknames import read_csv, write_csv
 from pyclickplc.dataview import read_cdv, write_cdv
 
 # Modbus (import-guarded, requires pyclickplc[modbus])
 from pyclickplc.client import ClickClient
 from pyclickplc.server import ClickServer, MemoryDataProvider, DataProvider
+
+- `load_nickname_file(path)` → `ClickProject`
+- `ClickProject` dataclass (records + banks + standalone tags) ?
 ```
