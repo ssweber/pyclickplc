@@ -5,6 +5,7 @@ Utilities for AutomationDirect CLICK PLCs — address parsing, Modbus TCP client
 ## Installation
 
 ```bash
+uv install pyclickplc
 pip install pyclickplc
 ```
 
@@ -21,25 +22,27 @@ from pyclickplc import ClickClient
 async def main():
     async with ClickClient("192.168.1.10") as plc:
         # Bank accessors — read/write by bank and index
-        value = await plc.ds.read(1)           # Read DS1
+        value = await plc.ds.read(1)           # Read DS1 → single value (int)
         await plc.ds.write(1, 100)             # Write 100 to DS1
-        values = await plc.ds.read(1, 10)      # Read DS1-DS10 (returns dict)
+        values = await plc.ds.read(1, 10)      # Read DS1-DS10 → {"ds1": ..., "ds10": ...}
         await plc.y.write(1, [True, False])    # Write Y001=True, Y002=False
 
         # Address interface — read/write by address string
-        value = await plc.addr.read("df1")     # Read DF1
+        value = await plc.addr.read("df1")     # Read DF1 → single value (float)
         await plc.addr.write("df1", 3.14)      # Write 3.14 to DF1
-        values = await plc.addr.read("c1-c10") # Read C1-C10 range
+        values = await plc.addr.read("c1-c10") # Read C1-C10 → {"c001": ..., "c010": ...}
 
         # Tag interface — read/write by nickname (requires CSV file)
         plc_with_tags = ClickClient("192.168.1.10", tag_filepath="nicknames.csv")
         # ... use as context manager, then:
-        # value = await plc_with_tags.tag.read("MyTag")
+        # value = await plc_with_tags.tag.read("MyTag")   # → single value
         # await plc_with_tags.tag.write("MyTag", 42)
-        # all_tags = await plc_with_tags.tag.read()  # Read all tags
+        # all_tags = await plc_with_tags.tag.read()        # → {"MyTag": ..., ...}
 
 asyncio.run(main())
 ```
+
+**Return types:** Single reads return a bare value (`bool`, `int`, `float`, or `str` depending on bank type). Range reads and tag read-all return a `dict` keyed by lowercase address string (e.g. `"ds1"`, `"x001"`) or tag name. Dicts from multiple reads can be combined into a single PLC state snapshot.
 
 Supported banks: `X`, `Y`, `C`, `T`, `CT`, `SC`, `DS`, `DD`, `DH`, `DF`, `XD`, `YD`, `TD`, `CTD`, `SD`, `TXT`.
 
