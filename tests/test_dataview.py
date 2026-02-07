@@ -1,5 +1,7 @@
 """Tests for pyclickplc.dataview — DataView model and CDV file I/O."""
 
+import pytest
+
 from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     WRITABLE_SC,
@@ -7,12 +9,14 @@ from pyclickplc.dataview import (
     DataviewRow,
     TypeCode,
     create_empty_dataview,
-    display_to_storage,
+    datatype_to_display,
+    datatype_to_storage,
+    display_to_datatype,
     get_type_code_for_address,
     is_address_writable,
     load_cdv,
     save_cdv,
-    storage_to_display,
+    storage_to_datatype,
 )
 
 
@@ -173,149 +177,279 @@ class TestCreateEmptyDataview:
         assert rows[1].address == ""
 
 
-class TestStorageToDisplay:
-    """Tests for storage_to_display conversion."""
+class TestStorageToDatatype:
+    """Tests for storage_to_datatype: CDV string -> native Python type."""
 
     def test_bit_values(self):
-        assert storage_to_display("1", TypeCode.BIT) == "1"
-        assert storage_to_display("0", TypeCode.BIT) == "0"
+        assert storage_to_datatype("1", TypeCode.BIT) is True
+        assert storage_to_datatype("0", TypeCode.BIT) is False
 
     def test_int_positive(self):
-        assert storage_to_display("0", TypeCode.INT) == "0"
-        assert storage_to_display("100", TypeCode.INT) == "100"
-        assert storage_to_display("32767", TypeCode.INT) == "32767"
+        assert storage_to_datatype("0", TypeCode.INT) == 0
+        assert storage_to_datatype("100", TypeCode.INT) == 100
+        assert storage_to_datatype("32767", TypeCode.INT) == 32767
 
     def test_int_negative(self):
-        assert storage_to_display("4294934528", TypeCode.INT) == "-32768"
-        assert storage_to_display("4294967295", TypeCode.INT) == "-1"
-        assert storage_to_display("65535", TypeCode.INT) == "-1"
+        assert storage_to_datatype("4294934528", TypeCode.INT) == -32768
+        assert storage_to_datatype("4294967295", TypeCode.INT) == -1
+        assert storage_to_datatype("65535", TypeCode.INT) == -1
 
     def test_int2_positive(self):
-        assert storage_to_display("0", TypeCode.INT2) == "0"
-        assert storage_to_display("100", TypeCode.INT2) == "100"
-        assert storage_to_display("2147483647", TypeCode.INT2) == "2147483647"
+        assert storage_to_datatype("0", TypeCode.INT2) == 0
+        assert storage_to_datatype("100", TypeCode.INT2) == 100
+        assert storage_to_datatype("2147483647", TypeCode.INT2) == 2147483647
 
     def test_int2_negative(self):
-        assert storage_to_display("2147483648", TypeCode.INT2) == "-2147483648"
-        assert storage_to_display("4294967294", TypeCode.INT2) == "-2"
-        assert storage_to_display("4294967295", TypeCode.INT2) == "-1"
-
-    def test_float_values(self):
-        assert storage_to_display("0", TypeCode.FLOAT) == "0"
-        assert storage_to_display("1065353216", TypeCode.FLOAT) == "1"
-        val = storage_to_display("1078523331", TypeCode.FLOAT)
-        assert val.startswith("3.14")
-        assert "-" in storage_to_display("4286578685", TypeCode.FLOAT)
+        assert storage_to_datatype("2147483648", TypeCode.INT2) == -2147483648
+        assert storage_to_datatype("4294967294", TypeCode.INT2) == -2
+        assert storage_to_datatype("4294967295", TypeCode.INT2) == -1
 
     def test_hex_values(self):
-        assert storage_to_display("65535", TypeCode.HEX) == "FFFF"
-        assert storage_to_display("255", TypeCode.HEX) == "00FF"
-        assert storage_to_display("0", TypeCode.HEX) == "0000"
+        assert storage_to_datatype("65535", TypeCode.HEX) == 65535
+        assert storage_to_datatype("255", TypeCode.HEX) == 255
+        assert storage_to_datatype("0", TypeCode.HEX) == 0
+
+    def test_float_values(self):
+        assert storage_to_datatype("0", TypeCode.FLOAT) == 0.0
+        assert storage_to_datatype("1065353216", TypeCode.FLOAT) == 1.0
+        val = storage_to_datatype("1078523331", TypeCode.FLOAT)
+        assert val == pytest.approx(3.14, abs=1e-5)
+        val = storage_to_datatype("4286578685", TypeCode.FLOAT)
+        assert val < 0
 
     def test_txt_values(self):
-        assert storage_to_display("48", TypeCode.TXT) == "0"
-        assert storage_to_display("65", TypeCode.TXT) == "A"
-        assert storage_to_display("90", TypeCode.TXT) == "Z"
-        assert storage_to_display("49", TypeCode.TXT) == "1"
+        assert storage_to_datatype("48", TypeCode.TXT) == 48
+        assert storage_to_datatype("65", TypeCode.TXT) == 65
+        assert storage_to_datatype("90", TypeCode.TXT) == 90
+        assert storage_to_datatype("32", TypeCode.TXT) == 32
 
     def test_empty_value(self):
-        assert storage_to_display("", TypeCode.INT) == ""
-        assert storage_to_display("", TypeCode.HEX) == ""
+        assert storage_to_datatype("", TypeCode.INT) is None
+        assert storage_to_datatype("", TypeCode.HEX) is None
+        assert storage_to_datatype("", TypeCode.BIT) is None
 
-    def test_txt_space(self):
-        assert storage_to_display("32", TypeCode.TXT) == " "
+    def test_invalid_value(self):
+        assert storage_to_datatype("abc", TypeCode.INT) is None
+
+    def test_unknown_type_code(self):
+        assert storage_to_datatype("42", 9999) is None
 
 
-class TestDisplayToStorage:
-    """Tests for display_to_storage conversion."""
+class TestDatatypeToStorage:
+    """Tests for datatype_to_storage: native Python type -> CDV string."""
 
     def test_bit_values(self):
-        assert display_to_storage("1", TypeCode.BIT) == "1"
-        assert display_to_storage("0", TypeCode.BIT) == "0"
+        assert datatype_to_storage(True, TypeCode.BIT) == "1"
+        assert datatype_to_storage(False, TypeCode.BIT) == "0"
+        assert datatype_to_storage(1, TypeCode.BIT) == "1"
+        assert datatype_to_storage(0, TypeCode.BIT) == "0"
 
     def test_int_positive(self):
-        assert display_to_storage("0", TypeCode.INT) == "0"
-        assert display_to_storage("100", TypeCode.INT) == "100"
-        assert display_to_storage("32767", TypeCode.INT) == "32767"
+        assert datatype_to_storage(0, TypeCode.INT) == "0"
+        assert datatype_to_storage(100, TypeCode.INT) == "100"
+        assert datatype_to_storage(32767, TypeCode.INT) == "32767"
 
     def test_int_negative(self):
-        assert display_to_storage("-32768", TypeCode.INT) == "4294934528"
-        assert display_to_storage("-1", TypeCode.INT) == "4294967295"
+        assert datatype_to_storage(-32768, TypeCode.INT) == "4294934528"
+        assert datatype_to_storage(-1, TypeCode.INT) == "4294967295"
 
     def test_int2_positive(self):
-        assert display_to_storage("0", TypeCode.INT2) == "0"
-        assert display_to_storage("100", TypeCode.INT2) == "100"
+        assert datatype_to_storage(0, TypeCode.INT2) == "0"
+        assert datatype_to_storage(100, TypeCode.INT2) == "100"
 
     def test_int2_negative(self):
-        assert display_to_storage("-2147483648", TypeCode.INT2) == "2147483648"
-        assert display_to_storage("-2", TypeCode.INT2) == "4294967294"
-
-    def test_float_values(self):
-        assert display_to_storage("0.0", TypeCode.FLOAT) == "0"
-        assert display_to_storage("1.0", TypeCode.FLOAT) == "1065353216"
-        assert display_to_storage("-1.0", TypeCode.FLOAT) == "3212836864"
+        assert datatype_to_storage(-2147483648, TypeCode.INT2) == "2147483648"
+        assert datatype_to_storage(-2, TypeCode.INT2) == "4294967294"
 
     def test_hex_values(self):
-        assert display_to_storage("FFFF", TypeCode.HEX) == "65535"
-        assert display_to_storage("FF", TypeCode.HEX) == "255"
-        assert display_to_storage("0xFF", TypeCode.HEX) == "255"
-        assert display_to_storage("0", TypeCode.HEX) == "0"
+        assert datatype_to_storage(65535, TypeCode.HEX) == "65535"
+        assert datatype_to_storage(255, TypeCode.HEX) == "255"
+        assert datatype_to_storage(0, TypeCode.HEX) == "0"
+
+    def test_float_values(self):
+        assert datatype_to_storage(0.0, TypeCode.FLOAT) == "0"
+        assert datatype_to_storage(1.0, TypeCode.FLOAT) == "1065353216"
+        assert datatype_to_storage(-1.0, TypeCode.FLOAT) == "3212836864"
 
     def test_txt_values(self):
-        assert display_to_storage("0", TypeCode.TXT) == "48"
-        assert display_to_storage("A", TypeCode.TXT) == "65"
-        assert display_to_storage("Z", TypeCode.TXT) == "90"
-        assert display_to_storage("1", TypeCode.TXT) == "49"
+        assert datatype_to_storage(48, TypeCode.TXT) == "48"
+        assert datatype_to_storage(65, TypeCode.TXT) == "65"
+        assert datatype_to_storage(90, TypeCode.TXT) == "90"
+
+    def test_none_value(self):
+        assert datatype_to_storage(None, TypeCode.INT) == ""
+        assert datatype_to_storage(None, TypeCode.HEX) == ""
+
+    def test_unknown_type_code(self):
+        assert datatype_to_storage(42, 9999) == ""
+
+
+class TestDatatypeToDisplay:
+    """Tests for datatype_to_display: native Python type -> UI string."""
+
+    def test_bit_values(self):
+        assert datatype_to_display(True, TypeCode.BIT) == "1"
+        assert datatype_to_display(False, TypeCode.BIT) == "0"
+
+    def test_int_values(self):
+        assert datatype_to_display(0, TypeCode.INT) == "0"
+        assert datatype_to_display(100, TypeCode.INT) == "100"
+        assert datatype_to_display(-32768, TypeCode.INT) == "-32768"
+        assert datatype_to_display(32767, TypeCode.INT) == "32767"
+
+    def test_int2_values(self):
+        assert datatype_to_display(0, TypeCode.INT2) == "0"
+        assert datatype_to_display(-2147483648, TypeCode.INT2) == "-2147483648"
+        assert datatype_to_display(2147483647, TypeCode.INT2) == "2147483647"
+
+    def test_hex_values(self):
+        assert datatype_to_display(65535, TypeCode.HEX) == "FFFF"
+        assert datatype_to_display(255, TypeCode.HEX) == "00FF"
+        assert datatype_to_display(0, TypeCode.HEX) == "0000"
+        assert datatype_to_display(1, TypeCode.HEX) == "0001"
+
+    def test_float_values(self):
+        assert datatype_to_display(0.0, TypeCode.FLOAT) == "0"
+        assert datatype_to_display(1.0, TypeCode.FLOAT) == "1"
+        assert datatype_to_display(3.1400001049041748, TypeCode.FLOAT) == "3.14"
+        assert datatype_to_display(3.4028234663852886e38, TypeCode.FLOAT) == "3.402823E+38"
+        assert datatype_to_display(-3.4028234663852886e38, TypeCode.FLOAT) == "-3.402823E+38"
+
+    def test_txt_printable(self):
+        assert datatype_to_display(48, TypeCode.TXT) == "0"
+        assert datatype_to_display(65, TypeCode.TXT) == "A"
+        assert datatype_to_display(90, TypeCode.TXT) == "Z"
+        assert datatype_to_display(32, TypeCode.TXT) == " "
+
+    def test_txt_nonprintable(self):
+        assert datatype_to_display(5, TypeCode.TXT) == "5"
+        assert datatype_to_display(127, TypeCode.TXT) == "127"
+
+    def test_none_value(self):
+        assert datatype_to_display(None, TypeCode.INT) == ""
+        assert datatype_to_display(None, TypeCode.HEX) == ""
+
+
+class TestDisplayToDatatype:
+    """Tests for display_to_datatype: UI string -> native Python type."""
+
+    def test_bit_values(self):
+        assert display_to_datatype("1", TypeCode.BIT) is True
+        assert display_to_datatype("0", TypeCode.BIT) is False
+        assert display_to_datatype("True", TypeCode.BIT) is True
+        assert display_to_datatype("ON", TypeCode.BIT) is True
+
+    def test_int_values(self):
+        assert display_to_datatype("0", TypeCode.INT) == 0
+        assert display_to_datatype("100", TypeCode.INT) == 100
+        assert display_to_datatype("-32768", TypeCode.INT) == -32768
+        assert display_to_datatype("32767", TypeCode.INT) == 32767
+
+    def test_int2_values(self):
+        assert display_to_datatype("0", TypeCode.INT2) == 0
+        assert display_to_datatype("-2147483648", TypeCode.INT2) == -2147483648
+        assert display_to_datatype("2147483647", TypeCode.INT2) == 2147483647
+
+    def test_hex_values(self):
+        assert display_to_datatype("FFFF", TypeCode.HEX) == 65535
+        assert display_to_datatype("FF", TypeCode.HEX) == 255
+        assert display_to_datatype("0xFF", TypeCode.HEX) == 255
+        assert display_to_datatype("0", TypeCode.HEX) == 0
+
+    def test_float_values(self):
+        assert display_to_datatype("3.14", TypeCode.FLOAT) == pytest.approx(3.14)
+        assert display_to_datatype("0.0", TypeCode.FLOAT) == 0.0
+        assert display_to_datatype("-1.0", TypeCode.FLOAT) == -1.0
+
+    def test_txt_char(self):
+        assert display_to_datatype("A", TypeCode.TXT) == 65
+        assert display_to_datatype("Z", TypeCode.TXT) == 90
+        assert display_to_datatype("0", TypeCode.TXT) == 48
+        assert display_to_datatype(" ", TypeCode.TXT) == 32
+
+    def test_txt_numeric(self):
+        assert display_to_datatype("65", TypeCode.TXT) == 65
 
     def test_empty_value(self):
-        assert display_to_storage("", TypeCode.INT) == ""
-        assert display_to_storage("", TypeCode.HEX) == ""
+        assert display_to_datatype("", TypeCode.INT) is None
+        assert display_to_datatype("", TypeCode.HEX) is None
 
-    def test_txt_space(self):
-        assert display_to_storage(" ", TypeCode.TXT) == "32"
+    def test_invalid_value(self):
+        assert display_to_datatype("abc", TypeCode.INT) is None
 
-    def test_snapshot_data_consistency(self):
-        assert storage_to_display("4286578685", TypeCode.FLOAT) == "-3.402823E+38"
-        assert storage_to_display("2139095037", TypeCode.FLOAT) == "3.402823E+38"
-        assert storage_to_display("1078523331", TypeCode.FLOAT).startswith("3.14")
-        assert storage_to_display("0", TypeCode.HEX) == "0000"
-        assert storage_to_display("65535", TypeCode.HEX) == "FFFF"
-        assert storage_to_display("1", TypeCode.HEX) == "0001"
-        assert storage_to_display("4294967295", TypeCode.INT) == "-1"
-        assert storage_to_display("4294967295", TypeCode.INT2) == "-1"
+    def test_unknown_type_code(self):
+        assert display_to_datatype("42", 9999) is None
 
 
 class TestRoundTripConversion:
-    """Tests for round-trip storage <-> display conversion."""
+    """Tests for round-trip conversions across layers."""
 
-    def test_int_roundtrip(self):
-        for val in ["-32768", "-1", "0", "100", "32767"]:
-            storage = display_to_storage(val, TypeCode.INT)
-            display = storage_to_display(storage, TypeCode.INT)
-            assert display == val, f"Round-trip failed for {val}"
+    def test_storage_datatype_roundtrip_int(self):
+        for storage_val in ["0", "100", "32767", "4294934528", "4294967295"]:
+            native = storage_to_datatype(storage_val, TypeCode.INT)
+            storage = datatype_to_storage(native, TypeCode.INT)
+            assert storage_to_datatype(storage, TypeCode.INT) == native
 
-    def test_int2_roundtrip(self):
-        for val in ["-2147483648", "-2", "-1", "0", "100", "2147483647"]:
-            storage = display_to_storage(val, TypeCode.INT2)
-            display = storage_to_display(storage, TypeCode.INT2)
-            assert display == val, f"Round-trip failed for {val}"
+    def test_storage_datatype_roundtrip_int2(self):
+        for storage_val in ["0", "100", "2147483647", "2147483648", "4294967294"]:
+            native = storage_to_datatype(storage_val, TypeCode.INT2)
+            storage = datatype_to_storage(native, TypeCode.INT2)
+            assert storage_to_datatype(storage, TypeCode.INT2) == native
 
-    def test_hex_roundtrip(self):
-        test_cases = [
-            ("0", "0000"),
-            ("FF", "00FF"),
-            ("FFFF", "FFFF"),
+    def test_storage_datatype_roundtrip_hex(self):
+        for storage_val in ["0", "255", "65535"]:
+            native = storage_to_datatype(storage_val, TypeCode.HEX)
+            storage = datatype_to_storage(native, TypeCode.HEX)
+            assert storage == storage_val
+
+    def test_storage_datatype_roundtrip_float(self):
+        for storage_val in ["0", "1065353216", "3212836864"]:
+            native = storage_to_datatype(storage_val, TypeCode.FLOAT)
+            storage = datatype_to_storage(native, TypeCode.FLOAT)
+            assert storage == storage_val
+
+    def test_storage_datatype_roundtrip_txt(self):
+        for storage_val in ["32", "48", "65", "90"]:
+            native = storage_to_datatype(storage_val, TypeCode.TXT)
+            storage = datatype_to_storage(native, TypeCode.TXT)
+            assert storage == storage_val
+
+    def test_display_datatype_roundtrip_hex(self):
+        for display_val, expected in [("0", "0000"), ("FF", "00FF"), ("FFFF", "FFFF")]:
+            native = display_to_datatype(display_val, TypeCode.HEX)
+            display = datatype_to_display(native, TypeCode.HEX)
+            assert display == expected
+
+    def test_display_datatype_roundtrip_txt(self):
+        for char in ["A", "Z", "0", " "]:
+            native = display_to_datatype(char, TypeCode.TXT)
+            display = datatype_to_display(native, TypeCode.TXT)
+            assert display == char
+
+    def test_full_pipeline_snapshot(self):
+        """Full pipeline: CDV storage -> datatype -> display string."""
+        cases = [
+            ("4286578685", TypeCode.FLOAT, "-3.402823E+38"),
+            ("2139095037", TypeCode.FLOAT, "3.402823E+38"),
+            ("0", TypeCode.HEX, "0000"),
+            ("65535", TypeCode.HEX, "FFFF"),
+            ("1", TypeCode.HEX, "0001"),
+            ("4294967295", TypeCode.INT, "-1"),
+            ("4294967295", TypeCode.INT2, "-1"),
         ]
-        for input_val, expected_display in test_cases:
-            storage = display_to_storage(input_val, TypeCode.HEX)
-            display = storage_to_display(storage, TypeCode.HEX)
-            assert display == expected_display, f"Round-trip failed for {input_val}"
+        for storage_val, type_code, expected_display in cases:
+            native = storage_to_datatype(storage_val, type_code)
+            display = datatype_to_display(native, type_code)
+            assert display == expected_display, (
+                f"Pipeline failed for {storage_val} (type {type_code}): "
+                f"got {display!r}, expected {expected_display!r}"
+            )
 
-    def test_txt_roundtrip(self):
-        for val in ["0", "A", "Z", "1"]:
-            storage = display_to_storage(val, TypeCode.TXT)
-            display = storage_to_display(storage, TypeCode.TXT)
-            assert display == val, f"Round-trip failed for {val}"
+    def test_full_pipeline_float_pi(self):
+        """Full pipeline for pi-ish float value."""
+        native = storage_to_datatype("1078523331", TypeCode.FLOAT)
+        display = datatype_to_display(native, TypeCode.FLOAT)
+        assert display.startswith("3.14")
 
 
 class TestLoadCdv:
@@ -352,8 +486,6 @@ class TestLoadCdv:
         assert rows[0].new_value == "1"
 
     def test_load_nonexistent(self, tmp_path):
-        import pytest
-
         with pytest.raises(FileNotFoundError):
             load_cdv(tmp_path / "missing.cdv")
 

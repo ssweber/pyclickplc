@@ -1,11 +1,13 @@
 """DataView model and CDV file I/O for CLICK PLC DataView files.
 
 Provides the DataviewRow dataclass, type code mappings, CDV file read/write,
-and new-value storage/display conversion functions.
+and value conversion functions between CDV storage, native Python types,
+and UI display strings.
 """
 
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -226,154 +228,200 @@ def create_empty_dataview(count: int = MAX_DATAVIEW_ROWS) -> list[DataviewRow]:
     return [DataviewRow() for _ in range(count)]
 
 
-# --- New Value Conversion Functions ---
-# CDV files store values in specific formats that need conversion for display
+# --- Value Conversion Functions ---
+#
+# Two layers of conversion:
+#   1. storage <-> datatype:  CDV file strings <-> native Python types
+#   2. datatype <-> display:  native Python types <-> UI-friendly strings
+#
+# The storage layer handles CDV encoding (sign extension, IEEE 754, etc.).
+# The display layer handles presentation (hex formatting, float precision, etc.).
 
 
-def storage_to_display(value: str, type_code: int) -> str:
-    """Convert a stored CDV value to display format.
+def storage_to_datatype(value: str, type_code: int) -> int | float | bool | None:
+    """Convert a CDV storage string to its native Python type.
 
     Args:
-        value: The raw value from the CDV file
+        value: The raw value string from the CDV file.
         type_code: The type code (TypeCode.BIT, TypeCode.INT, etc.)
 
     Returns:
-        Human-readable display value
+        Native Python value (bool for BIT, int for INT/INT2/HEX/TXT,
+        float for FLOAT), or None if empty/invalid.
     """
     if not value:
-        return ""
+        return None
 
     try:
         if type_code == TypeCode.BIT:
-            # BIT: 0 or 1
-            return "1" if value == "1" else "0"
+            return value == "1"
 
         elif type_code == TypeCode.INT:
-            # INT (16-bit signed): Stored as unsigned 32-bit with sign extension
-            # Convert back to signed 16-bit
+            # Stored as unsigned 32-bit with sign extension → signed 16-bit
             unsigned_val = int(value)
-            # Mask to 16 bits and convert to signed
             val_16bit = unsigned_val & 0xFFFF
             if val_16bit >= 0x8000:
                 val_16bit -= 0x10000
-            return str(val_16bit)
+            return val_16bit
 
         elif type_code == TypeCode.INT2:
-            # INT2 (32-bit signed): Stored as unsigned 32-bit
-            # Convert back to signed 32-bit
+            # Stored as unsigned 32-bit → signed 32-bit
             unsigned_val = int(value)
             if unsigned_val >= 0x80000000:
                 unsigned_val -= 0x100000000
-            return str(unsigned_val)
+            return unsigned_val
 
         elif type_code == TypeCode.HEX:
-            # HEX: Display as 4-digit hex, uppercase, NO suffix.
-            decimal_val = int(value)
-            return format(decimal_val, "04X")
+            return int(value)
 
         elif type_code == TypeCode.FLOAT:
-            # FLOAT: Stored as IEEE 754 32-bit integer representation
-            import struct
-
+            # Stored as IEEE 754 32-bit integer representation → float
             int_val = int(value)
-            # Convert integer to bytes (unsigned 32-bit)
             bytes_val = struct.pack(">I", int_val & 0xFFFFFFFF)
-            # Interpret as big-endian float
-            float_val = struct.unpack(">f", bytes_val)[0]
-
-            # Use 'G' for general format:
-            # 1. Automatically uses Scientific notation for large numbers
-            # 2. Automatically trims trailing zeros for small numbers
-            # 3. Uppercase 'E'
-            return f"{float_val:.7G}"
+            return struct.unpack(">f", bytes_val)[0]
 
         elif type_code == TypeCode.TXT:
-            # TXT: Stored as ASCII code, display as character
-            ascii_code = int(value)
-            if 32 <= ascii_code <= 126:  # Printable ASCII
-                return chr(ascii_code)
-            return str(ascii_code)  # Non-printable: show as number
+            return int(value)
 
         else:
-            return value
+            return None
 
     except (ValueError, struct.error):
-        return value
+        return None
 
 
-def display_to_storage(value: str, type_code: int) -> str:
-    """Convert a display value to CDV storage format.
+def datatype_to_storage(value: int | float | bool | None, type_code: int) -> str:
+    """Convert a native Python value to CDV storage format.
 
     Args:
-        value: The human-readable display value
+        value: The native Python value (bool, int, or float).
         type_code: The type code (TypeCode.BIT, TypeCode.INT, etc.)
 
     Returns:
-        Value formatted for CDV file storage
+        Value formatted for CDV file storage, or "" if None.
     """
-    if not value:
+    if value is None:
         return ""
 
     try:
         if type_code == TypeCode.BIT:
-            # BIT: 0 or 1
-            return "1" if value in ("1", "True", "true", "ON", "on") else "0"
+            return "1" if value else "0"
 
         elif type_code == TypeCode.INT:
-            # INT (16-bit signed): Convert to unsigned 32-bit with sign extension
+            # Signed 16-bit → unsigned 32-bit with sign extension
             signed_val = int(value)
-            # Clamp to 16-bit signed range
             signed_val = max(-32768, min(32767, signed_val))
-            # Convert to unsigned 32-bit representation
             if signed_val < 0:
-                unsigned_val = signed_val + 0x100000000
-            else:
-                unsigned_val = signed_val
-            return str(unsigned_val)
+                return str(signed_val + 0x100000000)
+            return str(signed_val)
 
         elif type_code == TypeCode.INT2:
-            # INT2 (32-bit signed): Convert to unsigned 32-bit
+            # Signed 32-bit → unsigned 32-bit
             signed_val = int(value)
-            # Clamp to 32-bit signed range
             signed_val = max(-2147483648, min(2147483647, signed_val))
             if signed_val < 0:
-                unsigned_val = signed_val + 0x100000000
-            else:
-                unsigned_val = signed_val
-            return str(unsigned_val)
+                return str(signed_val + 0x100000000)
+            return str(signed_val)
 
         elif type_code == TypeCode.HEX:
-            # HEX: Convert hex string to decimal
-            # Support with or without 0x prefix
-            hex_val = value.strip()
-            if hex_val.lower().startswith("0x"):
-                hex_val = hex_val[2:]
-            decimal_val = int(hex_val, 16)
-            return str(decimal_val)
+            return str(int(value))
 
         elif type_code == TypeCode.FLOAT:
-            # Display (String) -> Float -> IEEE 754 Bytes -> Int -> Storage (String)
-            import struct
-
+            # Float → IEEE 754 bytes → unsigned 32-bit integer string
             float_val = float(value)
-            # Convert float to bytes
             bytes_val = struct.pack(">f", float_val)
-            # Interpret as unsigned 32-bit integer
             int_val = struct.unpack(">I", bytes_val)[0]
             return str(int_val)
 
         elif type_code == TypeCode.TXT:
-            # TXT: Convert character to ASCII code
-            if len(value) == 1:
-                return str(ord(value))
-            # If it's already a number, keep it
             return str(int(value))
 
         else:
-            return value
+            return ""
 
     except (ValueError, struct.error):
-        return value
+        return ""
+
+
+def datatype_to_display(value: int | float | bool | None, type_code: int) -> str:
+    """Convert a native Python value to a UI-friendly display string.
+
+    Args:
+        value: The native Python value (bool, int, or float).
+        type_code: The type code (TypeCode.BIT, TypeCode.INT, etc.)
+
+    Returns:
+        Human-readable display string, or "" if None.
+    """
+    if value is None:
+        return ""
+
+    try:
+        if type_code == TypeCode.BIT:
+            return "1" if value else "0"
+
+        elif type_code in (TypeCode.INT, TypeCode.INT2):
+            return str(int(value))
+
+        elif type_code == TypeCode.HEX:
+            return format(int(value), "04X")
+
+        elif type_code == TypeCode.FLOAT:
+            return f"{float(value):.7G}"
+
+        elif type_code == TypeCode.TXT:
+            code = int(value)
+            if 32 <= code <= 126:
+                return chr(code)
+            return str(code)
+
+        else:
+            return str(value)
+
+    except (ValueError, TypeError):
+        return ""
+
+
+def display_to_datatype(value: str, type_code: int) -> int | float | bool | None:
+    """Convert a UI display string to its native Python type.
+
+    Args:
+        value: The human-readable display string.
+        type_code: The type code (TypeCode.BIT, TypeCode.INT, etc.)
+
+    Returns:
+        Native Python value (bool for BIT, int for INT/INT2/HEX/TXT,
+        float for FLOAT), or None if empty/invalid.
+    """
+    if not value:
+        return None
+
+    try:
+        if type_code == TypeCode.BIT:
+            return value in ("1", "True", "true", "ON", "on")
+
+        elif type_code in (TypeCode.INT, TypeCode.INT2):
+            return int(value)
+
+        elif type_code == TypeCode.HEX:
+            hex_val = value.strip()
+            if hex_val.lower().startswith("0x"):
+                hex_val = hex_val[2:]
+            return int(hex_val, 16)
+
+        elif type_code == TypeCode.FLOAT:
+            return float(value)
+
+        elif type_code == TypeCode.TXT:
+            if len(value) == 1:
+                return ord(value)
+            return int(value)
+
+        else:
+            return None
+
+    except (ValueError, TypeError):
+        return None
 
 
 # =============================================================================
