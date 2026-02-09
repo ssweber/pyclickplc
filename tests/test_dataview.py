@@ -7,7 +7,7 @@ from pyclickplc.dataview import (
     WRITABLE_SC,
     WRITABLE_SD,
     DataviewRow,
-    TypeCode,
+    _CdvStorageCode,
     create_empty_dataview,
     datatype_to_display,
     datatype_to_storage,
@@ -18,6 +18,8 @@ from pyclickplc.dataview import (
     save_cdv,
     storage_to_datatype,
 )
+
+TypeCode = _CdvStorageCode
 
 
 class TestGetTypeCodeForAddress:

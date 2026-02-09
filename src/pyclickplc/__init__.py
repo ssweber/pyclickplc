@@ -48,7 +48,6 @@ from .dataview import (
     WRITABLE_SC,
     WRITABLE_SD,
     DataviewRow,
-    TypeCode,
     create_empty_dataview,
     datatype_to_display,
     datatype_to_storage,
@@ -156,7 +155,6 @@ __all__ = [
     "ClickServer",
     "MemoryDataProvider",
     # dataview
-    "TypeCode",
     "DataviewRow",
     "MEMORY_TYPE_TO_CODE",
     "WRITABLE_SC",
