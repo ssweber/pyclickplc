@@ -22,15 +22,16 @@ from pyclickplc import ClickClient
 async def main():
     async with ClickClient("192.168.1.10") as plc:
         # Bank accessors — read/write by bank and index
-        value = await plc.ds.read(1)           # Read DS1 → single value (int)
+        result = await plc.ds.read(1)          # Read DS1 → ModbusResponse({"DS1": 42})
+        value = await plc.ds[1]                # Shorthand → bare value (int)
         await plc.ds.write(1, 100)             # Write 100 to DS1
-        values = await plc.ds.read(1, 10)      # Read DS1-DS10 → {"ds1": ..., "ds10": ...}
+        result = await plc.ds.read(1, 10)      # Read DS1-DS10 → ModbusResponse
         await plc.y.write(1, [True, False])    # Write Y001=True, Y002=False
 
         # Address interface — read/write by address string
-        value = await plc.addr.read("df1")     # Read DF1 → single value (float)
+        result = await plc.addr.read("df1")    # Read DF1 → ModbusResponse({"DF1": 3.14})
         await plc.addr.write("df1", 3.14)      # Write 3.14 to DF1
-        values = await plc.addr.read("c1-c10") # Read C1-C10 → {"c001": ..., "c010": ...}
+        result = await plc.addr.read("c1-c10") # Read C1-C10 → ModbusResponse
 
         # Tag interface — read/write by nickname (requires CSV file)
         plc_with_tags = ClickClient("192.168.1.10", tag_filepath="nicknames.csv")
@@ -42,7 +43,7 @@ async def main():
 asyncio.run(main())
 ```
 
-**Return types:** Single reads return a bare value (`bool`, `int`, `float`, or `str` depending on bank type). Range reads and tag read-all return a `dict` keyed by lowercase address string (e.g. `"ds1"`, `"x001"`) or tag name. Dicts from multiple reads can be combined into a single PLC state snapshot.
+**Return types:** All `read()` calls return a `ModbusResponse` — a `Mapping` keyed by canonical uppercase address (`"DS1"`, `"X001"`) with normalized look-ups (`response["ds1"]` finds `"DS1"`). Use `await plc.ds[1]` for a bare value (`bool`, `int`, `float`, or `str`). Tag interface single reads return a bare value; tag read-all returns a plain `dict` keyed by tag name.
 
 Supported banks: `X`, `Y`, `C`, `T`, `CT`, `SC`, `DS`, `DD`, `DH`, `DF`, `XD`, `YD`, `TD`, `CTD`, `SD`, `TXT`.
 

@@ -5,11 +5,12 @@ Provides ClickClient with bank accessors, address interface, and tag interface.
 
 from __future__ import annotations
 
-from typing import ClassVar
+from collections.abc import Coroutine, Iterator, Mapping
+from typing import Any, ClassVar
 
 from pymodbus.client import AsyncModbusTcpClient
 
-from .addresses import format_address_display, parse_address
+from .addresses import format_address_display, normalize_address, parse_address
 from .banks import BANKS
 from .modbus import (
     MODBUS_MAPPINGS,
@@ -18,6 +19,67 @@ from .modbus import (
     unpack_value,
 )
 from .nicknames import DATA_TYPE_CODE_TO_STR, read_csv
+
+PlcValue = bool | int | float | str
+
+# ==============================================================================
+# ModbusResponse
+# ==============================================================================
+
+
+class ModbusResponse(Mapping[str, PlcValue]):
+    """Immutable mapping with normalized PLC address keys.
+
+    Keys are stored in canonical uppercase form (``DS1``, ``X001``).
+    Look-ups normalise the key automatically, so ``response["ds1"]``
+    and ``response["DS1"]`` both work.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: dict[str, PlcValue]) -> None:
+        self._data = data
+
+    # -- Mapping interface --------------------------------------------------
+
+    def __getitem__(self, key: str) -> PlcValue:
+        normalized = normalize_address(key)
+        if normalized is not None and normalized in self._data:
+            return self._data[normalized]
+        raise KeyError(key)
+
+    def __contains__(self, key: object) -> bool:
+        if not isinstance(key, str):
+            return False
+        normalized = normalize_address(key)
+        return normalized is not None and normalized in self._data
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    # -- Comparison ---------------------------------------------------------
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, ModbusResponse):
+            return self._data == other._data
+        if isinstance(other, dict):
+            if len(other) != len(self._data):
+                return False
+            normalized: dict[str, Any] = {}
+            for k, v in other.items():
+                nk = normalize_address(k) if isinstance(k, str) else None
+                if nk is None:
+                    return False
+                normalized[nk] = v
+            return self._data == normalized
+        return NotImplemented
+
+    def __repr__(self) -> str:
+        return f"ModbusResponse({self._data!r})"
+
 
 # ==============================================================================
 # Constants
@@ -81,7 +143,7 @@ def _load_tags(filepath: str) -> dict[str, dict[str, str]]:
 
 def _format_bank_address(bank: str, index: int) -> str:
     """Format address string for return dicts."""
-    return format_address_display(bank, index).lower()
+    return format_address_display(bank, index)
 
 
 class AddressAccessor:
@@ -93,15 +155,19 @@ class AddressAccessor:
         self._mapping = MODBUS_MAPPINGS[bank]
         self._bank_cfg = BANKS[bank]
 
-    async def read(
-        self, start: int, end: int | None = None
-    ) -> dict[str, bool | int | float | str] | bool | int | float | str:
-        """Read single value or range (inclusive)."""
+    async def read(self, start: int, end: int | None = None) -> ModbusResponse:
+        """Read single value or range (inclusive).
+
+        Always returns a ModbusResponse, even for a single address.
+        Use ``await plc.ds[1]`` for a bare value.
+        """
         bank = self._bank
 
         if end is None:
-            # Single value
-            return await self._read_single(start)
+            # Single value → wrap in ModbusResponse
+            value = await self._read_single(start)
+            key = _format_bank_address(bank, start)
+            return ModbusResponse({key: value})
 
         if end <= start:
             raise ValueError("End address must be greater than start address.")
@@ -113,7 +179,7 @@ class AddressAccessor:
             return await self._read_sparse_range(start, end)
         return await self._read_range(start, end)
 
-    async def _read_single(self, index: int) -> bool | int | float | str:
+    async def _read_single(self, index: int) -> PlcValue:
         """Read a single PLC address."""
         bank = self._bank
         self._validate_index(index)
@@ -130,12 +196,12 @@ class AddressAccessor:
         regs = await self._plc._read_registers(addr, count, bank)
         return unpack_value(regs, self._bank_cfg.data_type)
 
-    async def _read_range(self, start: int, end: int) -> dict[str, bool | int | float | str]:
+    async def _read_range(self, start: int, end: int) -> ModbusResponse:
         """Read a contiguous range."""
         bank = self._bank
         self._validate_index(start)
         self._validate_index(end)
-        result: dict[str, bool | int | float | str] = {}
+        result: dict[str, PlcValue] = {}
 
         if self._mapping.is_coil:
             addr_start, _ = plc_to_modbus(bank, start)
@@ -158,9 +224,9 @@ class AddressAccessor:
                 key = _format_bank_address(bank, idx)
                 result[key] = val
 
-        return result
+        return ModbusResponse(result)
 
-    async def _read_sparse_range(self, start: int, end: int) -> dict[str, bool | int | float | str]:
+    async def _read_sparse_range(self, start: int, end: int) -> ModbusResponse:
         """Read a sparse (X/Y) range, skipping gaps."""
         bank = self._bank
         # Enumerate valid addresses in [start, end]
@@ -180,14 +246,14 @@ class AddressAccessor:
         count = addr_last - addr_first + 1
         bits = await self._plc._read_coils(addr_first, count, bank)
 
-        result: dict[str, bool | int | float | str] = {}
+        result: dict[str, PlcValue] = {}
         for a in valid_addrs:
             addr, _ = plc_to_modbus(bank, a)
             bit_idx = addr - addr_first
             key = _format_bank_address(bank, a)
             result[key] = bits[bit_idx]
 
-        return result
+        return ModbusResponse(result)
 
     async def _read_txt(self, index: int) -> str:
         """Read a single TXT address."""
@@ -203,7 +269,7 @@ class AddressAccessor:
             # Even: high byte
             return chr((reg_val >> 8) & 0xFF)
 
-    async def _read_txt_range(self, start: int, end: int) -> dict[str, bool | int | float | str]:
+    async def _read_txt_range(self, start: int, end: int) -> ModbusResponse:
         """Read a range of TXT addresses."""
         self._validate_index(start)
         self._validate_index(end)
@@ -215,7 +281,7 @@ class AddressAccessor:
             reg_base + first_reg, last_reg - first_reg + 1, "TXT"
         )
 
-        result: dict[str, bool | int | float | str] = {}
+        result: dict[str, PlcValue] = {}
         for idx in range(start, end + 1):
             reg_offset = (idx - 1) // 2 - first_reg
             reg_val = regs[reg_offset]
@@ -225,7 +291,7 @@ class AddressAccessor:
                 ch = chr((reg_val >> 8) & 0xFF)
             result[_format_bank_address("TXT", idx)] = ch
 
-        return result
+        return ModbusResponse(result)
 
     async def write(
         self,
@@ -382,6 +448,12 @@ class AddressAccessor:
     def __repr__(self) -> str:
         return f"<AddressAccessor({self._bank}, max={self._bank_cfg.max_addr})>"
 
+    def __getitem__(self, key: int) -> Coroutine[Any, Any, PlcValue]:
+        """Enable ``await plc.ds[1]`` syntax for single-value reads."""
+        if isinstance(key, slice):
+            raise TypeError("Slicing is not supported. Use read(start, end) for range reads.")
+        return self._read_single(key)
+
 
 # ==============================================================================
 # AddressInterface
@@ -394,9 +466,7 @@ class AddressInterface:
     def __init__(self, plc: ClickClient) -> None:
         self._plc = plc
 
-    async def read(
-        self, address: str
-    ) -> dict[str, bool | int | float | str] | bool | int | float | str:
+    async def read(self, address: str) -> ModbusResponse:
         """Read by address string. Supports 'df1' or 'df1-df10'."""
         if "-" in address:
             parts = address.split("-", 1)
@@ -435,9 +505,7 @@ class TagInterface:
     def __init__(self, plc: ClickClient) -> None:
         self._plc = plc
 
-    async def read(
-        self, tag_name: str | None = None
-    ) -> dict[str, bool | int | float | str] | bool | int | float | str:
+    async def read(self, tag_name: str | None = None) -> dict[str, PlcValue] | PlcValue:
         """Read single tag or all tags."""
         tags = self._plc.tags
         if tag_name is not None:
@@ -445,17 +513,18 @@ class TagInterface:
                 available = list(tags.keys())[:5]
                 raise KeyError(f"Tag '{tag_name}' not found. Available: {available}")
             tag_info = tags[tag_name]
-            return await self._plc.addr.read(tag_info["address"])
+            resp = await self._plc.addr.read(tag_info["address"])
+            # Single-address read → extract the lone value
+            return next(iter(resp.values()))
 
         if not tags:
             raise ValueError("No tags loaded. Provide a tag file or specify a tag name.")
 
-        result: dict[str, bool | int | float | str] = {}
+        all_tags: dict[str, PlcValue] = {}
         for name, info in tags.items():
-            val = await self._plc.addr.read(info["address"])
-            assert not isinstance(val, dict)
-            result[name] = val
-        return result
+            resp = await self._plc.addr.read(info["address"])
+            all_tags[name] = next(iter(resp.values()))
+        return all_tags
 
     async def write(
         self,

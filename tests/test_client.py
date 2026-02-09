@@ -14,6 +14,7 @@ from pyclickplc.client import (
     AddressAccessor,
     AddressInterface,
     ClickClient,
+    ModbusResponse,
     TagInterface,
 )
 from pyclickplc.modbus import MODBUS_MAPPINGS, pack_value
@@ -77,13 +78,13 @@ class TestClickClient:
     async def test_getattr_underscore_raises(self):
         plc = _make_plc()
         with pytest.raises(AttributeError):
-            plc._private
+            _ = plc._private
 
     @pytest.mark.asyncio
     async def test_getattr_unknown_raises(self):
         plc = _make_plc()
         with pytest.raises(AttributeError, match="not a supported"):
-            plc.invalid_bank
+            _ = plc.invalid_bank
 
     @pytest.mark.asyncio
     async def test_addr_is_address_interface(self):
@@ -129,61 +130,62 @@ class TestAddressAccessorReadSingle:
         plc = _make_plc()
         regs = pack_value(3.14, DataType.FLOAT)
         plc._read_registers = AsyncMock(return_value=regs)
-        value = await plc.df.read(1)
+        result = await plc.df.read(1)
+        assert isinstance(result, ModbusResponse)
         import math
 
-        assert math.isclose(value, 3.14, rel_tol=1e-6)
+        assert math.isclose(result["DF1"], 3.14, rel_tol=1e-6)
 
     @pytest.mark.asyncio
     async def test_read_int16(self):
         plc = _make_plc()
         plc._read_registers = AsyncMock(return_value=[42])
-        value = await plc.ds.read(1)
-        assert value == 42
+        result = await plc.ds.read(1)
+        assert result == {"DS1": 42}
 
     @pytest.mark.asyncio
     async def test_read_int32(self):
         plc = _make_plc()
         regs = pack_value(100000, DataType.INT2)
         plc._read_registers = AsyncMock(return_value=regs)
-        value = await plc.dd.read(1)
-        assert value == 100000
+        result = await plc.dd.read(1)
+        assert result == {"DD1": 100000}
 
     @pytest.mark.asyncio
     async def test_read_unsigned(self):
         plc = _make_plc()
         plc._read_registers = AsyncMock(return_value=[0xABCD])
-        value = await plc.dh.read(1)
-        assert value == 0xABCD
+        result = await plc.dh.read(1)
+        assert result == {"DH1": 0xABCD}
 
     @pytest.mark.asyncio
     async def test_read_bool(self):
         plc = _make_plc()
         plc._read_coils = AsyncMock(return_value=[True])
-        value = await plc.c.read(1)
-        assert value is True
+        result = await plc.c.read(1)
+        assert result == {"C1": True}
 
     @pytest.mark.asyncio
     async def test_read_sparse_bool(self):
         plc = _make_plc()
         plc._read_coils = AsyncMock(return_value=[True])
-        value = await plc.x.read(101)
-        assert value is True
+        result = await plc.x.read(101)
+        assert result == {"X101": True}
 
     @pytest.mark.asyncio
     async def test_read_txt(self):
         plc = _make_plc()
         # TXT1 is low byte of register
         plc._read_registers = AsyncMock(return_value=[ord("A") | (ord("B") << 8)])
-        value = await plc.txt.read(1)
-        assert value == "A"
+        result = await plc.txt.read(1)
+        assert result == {"TXT1": "A"}
 
     @pytest.mark.asyncio
     async def test_read_txt_even(self):
         plc = _make_plc()
         plc._read_registers = AsyncMock(return_value=[ord("A") | (ord("B") << 8)])
-        value = await plc.txt.read(2)
-        assert value == "B"
+        result = await plc.txt.read(2)
+        assert result == {"TXT2": "B"}
 
 
 # ==============================================================================
@@ -199,19 +201,19 @@ class TestAddressAccessorReadRange:
         r2 = pack_value(2.0, DataType.FLOAT)
         plc._read_registers = AsyncMock(return_value=r1 + r2)
         result = await plc.df.read(1, 2)
-        assert isinstance(result, dict)
+        assert isinstance(result, ModbusResponse)
         assert len(result) == 2
         import math
 
-        assert math.isclose(result["df1"], 1.0, rel_tol=1e-6)
-        assert math.isclose(result["df2"], 2.0, rel_tol=1e-6)
+        assert math.isclose(result["DF1"], 1.0, rel_tol=1e-6)
+        assert math.isclose(result["DF2"], 2.0, rel_tol=1e-6)
 
     @pytest.mark.asyncio
     async def test_read_c_range(self):
         plc = _make_plc()
         plc._read_coils = AsyncMock(return_value=[True, False, True])
         result = await plc.c.read(1, 3)
-        assert result == {"c1": True, "c2": False, "c3": True}
+        assert result == {"C1": True, "C2": False, "C3": True}
 
     @pytest.mark.asyncio
     async def test_read_end_le_start_raises(self):
@@ -329,8 +331,8 @@ class TestAddressAccessorValidation:
         plc = _make_plc()
         regs = pack_value(0.0, DataType.FLOAT)
         plc._read_registers = AsyncMock(return_value=regs)
-        value = await plc.df.read(500)
-        assert value == 0.0
+        result = await plc.df.read(500)
+        assert result == {"DF500": 0.0}
 
 
 # ==============================================================================
@@ -344,10 +346,11 @@ class TestAddressInterface:
         plc = _make_plc()
         regs = pack_value(3.14, DataType.FLOAT)
         plc._read_registers = AsyncMock(return_value=regs)
-        value = await plc.addr.read("df1")
+        result = await plc.addr.read("df1")
+        assert isinstance(result, ModbusResponse)
         import math
 
-        assert math.isclose(value, 3.14, rel_tol=1e-6)
+        assert math.isclose(result["DF1"], 3.14, rel_tol=1e-6)
 
     @pytest.mark.asyncio
     async def test_read_range(self):
@@ -356,7 +359,7 @@ class TestAddressInterface:
         r2 = pack_value(2.0, DataType.FLOAT)
         plc._read_registers = AsyncMock(return_value=r1 + r2)
         result = await plc.addr.read("df1-df2")
-        assert isinstance(result, dict)
+        assert isinstance(result, ModbusResponse)
         assert len(result) == 2
 
     @pytest.mark.asyncio
@@ -364,8 +367,8 @@ class TestAddressInterface:
         plc = _make_plc()
         regs = pack_value(0.0, DataType.FLOAT)
         plc._read_registers = AsyncMock(return_value=regs)
-        value = await plc.addr.read("DF1")
-        assert value == 0.0
+        result = await plc.addr.read("DF1")
+        assert result == {"DF1": 0.0}
 
     @pytest.mark.asyncio
     async def test_inter_bank_range_raises(self):
@@ -488,9 +491,7 @@ class TestAddressAccessorTxtWrite:
         plc._read_registers = AsyncMock(return_value=[0x4142])  # "AB"
         await plc.txt.write(1, "")
         # Empty string → null byte in low position, high byte preserved
-        plc._write_registers.assert_called_once_with(
-            MODBUS_MAPPINGS["TXT"].base, [0x4100]
-        )
+        plc._write_registers.assert_called_once_with(MODBUS_MAPPINGS["TXT"].base, [0x4100])
 
     @pytest.mark.asyncio
     async def test_write_txt_list(self):
@@ -498,3 +499,177 @@ class TestAddressAccessorTxtWrite:
         plc._read_registers = AsyncMock(return_value=[0])
         await plc.txt.write(1, ["H", "i"])
         assert plc._write_registers.call_count == 2
+
+
+# ==============================================================================
+# ModbusResponse
+# ==============================================================================
+
+
+class TestModbusResponse:
+    def _sample(self) -> ModbusResponse:
+        return ModbusResponse({"DS1": 10, "DS2": 20, "DS3": 30})
+
+    # -- __getitem__ --------------------------------------------------------
+
+    def test_getitem_exact_key(self):
+        r = self._sample()
+        assert r["DS1"] == 10
+
+    def test_getitem_normalized_key(self):
+        r = self._sample()
+        assert r["ds1"] == 10
+
+    def test_getitem_missing_raises(self):
+        r = self._sample()
+        with pytest.raises(KeyError):
+            r["DS999"]
+
+    def test_getitem_invalid_raises(self):
+        r = self._sample()
+        with pytest.raises(KeyError):
+            r["invalid"]
+
+    # -- __contains__ -------------------------------------------------------
+
+    def test_contains_exact(self):
+        r = self._sample()
+        assert "DS1" in r
+
+    def test_contains_normalized(self):
+        r = self._sample()
+        assert "ds2" in r
+
+    def test_not_contains(self):
+        r = self._sample()
+        assert "DS999" not in r
+
+    def test_contains_non_string(self):
+        r = self._sample()
+        assert 42 not in r
+
+    # -- __len__ / __iter__ -------------------------------------------------
+
+    def test_len(self):
+        r = self._sample()
+        assert len(r) == 3
+
+    def test_iter(self):
+        r = self._sample()
+        assert list(r) == ["DS1", "DS2", "DS3"]
+
+    # -- Mapping methods (inherited) ----------------------------------------
+
+    def test_keys(self):
+        r = self._sample()
+        assert list(r.keys()) == ["DS1", "DS2", "DS3"]
+
+    def test_values(self):
+        r = self._sample()
+        assert list(r.values()) == [10, 20, 30]
+
+    def test_items(self):
+        r = self._sample()
+        assert list(r.items()) == [("DS1", 10), ("DS2", 20), ("DS3", 30)]
+
+    def test_get_existing(self):
+        r = self._sample()
+        assert r.get("DS1") == 10
+
+    def test_get_normalized(self):
+        r = self._sample()
+        assert r.get("ds3") == 30
+
+    def test_get_missing_default(self):
+        r = self._sample()
+        assert r.get("DS999", -1) == -1
+
+    def test_get_missing_none(self):
+        r = self._sample()
+        assert r.get("DS999") is None
+
+    # -- __eq__ -------------------------------------------------------------
+
+    def test_eq_modbus_response(self):
+        a = ModbusResponse({"DS1": 10, "DS2": 20})
+        b = ModbusResponse({"DS1": 10, "DS2": 20})
+        assert a == b
+
+    def test_eq_modbus_response_mismatch(self):
+        a = ModbusResponse({"DS1": 10})
+        b = ModbusResponse({"DS1": 99})
+        assert a != b
+
+    def test_eq_dict_uppercase(self):
+        r = ModbusResponse({"DS1": 10, "DS2": 20})
+        assert r == {"DS1": 10, "DS2": 20}
+
+    def test_eq_dict_normalized(self):
+        r = ModbusResponse({"DS1": 10, "DS2": 20})
+        assert r == {"ds1": 10, "ds2": 20}
+
+    def test_eq_dict_length_mismatch(self):
+        r = ModbusResponse({"DS1": 10})
+        assert r != {"DS1": 10, "DS2": 20}
+
+    def test_eq_other_type(self):
+        r = self._sample()
+        assert r != 42
+
+    # -- isinstance checks --------------------------------------------------
+
+    def test_not_dict_instance(self):
+        from collections.abc import Mapping
+
+        r = self._sample()
+        assert not isinstance(r, dict)
+        assert isinstance(r, Mapping)
+
+    # -- __repr__ -----------------------------------------------------------
+
+    def test_repr(self):
+        r = ModbusResponse({"DS1": 10})
+        assert repr(r) == "ModbusResponse({'DS1': 10})"
+
+
+# ==============================================================================
+# AddressAccessor.__getitem__
+# ==============================================================================
+
+
+class TestAddressAccessorGetitem:
+    @pytest.mark.asyncio
+    async def test_getitem_int(self):
+        plc = _make_plc()
+        plc._read_registers = AsyncMock(return_value=[42])
+        value = await plc.ds[1]
+        assert value == 42
+
+    @pytest.mark.asyncio
+    async def test_getitem_float(self):
+        plc = _make_plc()
+        regs = pack_value(3.14, DataType.FLOAT)
+        plc._read_registers = AsyncMock(return_value=regs)
+        value = await plc.df[1]
+        import math
+
+        assert math.isclose(value, 3.14, rel_tol=1e-6)
+
+    @pytest.mark.asyncio
+    async def test_getitem_bool(self):
+        plc = _make_plc()
+        plc._read_coils = AsyncMock(return_value=[True])
+        value = await plc.c[1]
+        assert value is True
+
+    @pytest.mark.asyncio
+    async def test_getitem_slice_raises(self):
+        plc = _make_plc()
+        with pytest.raises(TypeError, match="Slicing is not supported"):
+            plc.ds[1:5]
+
+    @pytest.mark.asyncio
+    async def test_getitem_out_of_range_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError):
+            await plc.df[0]

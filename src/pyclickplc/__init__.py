@@ -41,7 +41,7 @@ from .blocks import (
     strip_block_tag,
     validate_block_span,
 )
-from .client import ClickClient
+from .client import ClickClient, ModbusResponse
 from .dataview import (
     MAX_DATAVIEW_ROWS,
     MEMORY_TYPE_TO_CODE,
@@ -140,6 +140,7 @@ __all__ = [
     "validate_block_span",
     # client
     "ClickClient",
+    "ModbusResponse",
     # modbus
     "ModbusMapping",
     "MODBUS_MAPPINGS",
