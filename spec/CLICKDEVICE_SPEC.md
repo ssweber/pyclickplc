@@ -373,13 +373,25 @@ For sparse types (X, Y):
 
 ### Data Type Validation
 
-| Type | Accepted Python Types |
-|------|----------------------|
-| `bool` | `bool` |
-| `int16` | `int` |
-| `int32` | `int` |
-| `float` | `int` or `float` |
-| `str` | `str` |
+| Type | Accepted Python Types | Notes |
+|------|-----------------------|-------|
+| `bool` | `bool` | only bool |
+| `int16` | `int` | bool rejected |
+| `int32` | `int` | bool rejected |
+| `WORD` (`hex`) | `int` | bool rejected |
+| `float32` | `int` or `float` | bool rejected |
+| `str` | `str` | blank (`""`) or single ASCII char for TXT |
+
+### Value Range Validation
+
+- `int16` banks (`DS`, `TD`, `SD`): `-32768..32767`
+- `int32` banks (`DD`, `CTD`): `-2147483648..2147483647`
+- `WORD` banks (`DH`, `XD`, `YD`): `0..65535` (`0x0000..0xFFFF`)
+- `float32` bank (`DF`): finite value representable as IEEE-754 float32
+- `TXT`: blank (`""`) or exactly 1 ASCII character (`0..127`)
+- `TXT` space (`" "`) is valid
+
+Validation runs before writing and raises `ValueError` on invalid runtime values.
 
 ### Writability Validation
 
@@ -543,6 +555,20 @@ When writing X/Y ranges that span gaps:
 53. `plc.df.write(1, 'string')` raises ValueError (wrong type)
 54. `plc.ds.write(1, 3.14)` raises ValueError (float for int16)
 
+Strict runtime value checks:
+
+- `plc.ds.write(1, 32768)` raises ValueError (int16 overflow)
+- `plc.dd.write(1, 2147483648)` raises ValueError (int32 overflow)
+- `plc.dh.write(1, -1)` raises ValueError (WORD underflow)
+- `plc.dh.write(1, 65536)` raises ValueError (WORD overflow)
+- `plc.ds.write(1, True)` raises ValueError (bool rejected for numeric)
+- `plc.df.write(1, float('nan'))` raises ValueError (non-finite float)
+- `plc.df.write(1, float('inf'))` raises ValueError (non-finite float)
+- `plc.txt.write(1, 'AB')` raises ValueError (TXT must be single char)
+- `plc.txt.write(1, '\\u00E9')` raises ValueError (TXT must be ASCII)
+- `plc.txt.write(1, ' ')` succeeds (space TXT is allowed)
+- `plc.txt.write(1, '')` succeeds (blank TXT is allowed)
+
 ### Text Special Cases
 
 55. Read single char at odd position (`txt1`)
@@ -582,6 +608,10 @@ Provide clear, actionable error messages:
 - `"Inter-bank ranges are unsupported."`
 - `"End address must be greater than start address."`
 - `"Expected {address} as {expected_type}, got {actual_type}."`
+- `"{BANK}{index} value must be in [{min}, {max}]."`
+- `"{BANK}{index} value must be a finite float32."`
+- `"{BANK}{index} must be WORD (0..65535)."`
+- `"{BANK}{index} TXT value must be blank or a single ASCII character."`
 - `"{BANK}{index} is not writable."`
 - `"Tag '{name}' not found. Available: [...]"`
 - `"No tags loaded. Provide a tag file or specify a tag name."`

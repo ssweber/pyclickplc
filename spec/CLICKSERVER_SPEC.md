@@ -116,7 +116,7 @@ class DataProvider(Protocol):
             - bool for X, Y, C, T, CT, SC
             - int for DS, DD, DH, TD, CTD, SD
             - float for DF
-            - str for TXT (single character)
+            - str for TXT (blank or single character)
         """
         ...
 
@@ -125,7 +125,7 @@ class DataProvider(Protocol):
 
         Args:
             address: Uppercase PLC address string
-            value: Value to write. Type matches the address bank.
+            value: Value to write. Type and range must match the address bank.
         """
         ...
 ```
@@ -136,6 +136,7 @@ class DataProvider(Protocol):
 - Address strings are always uppercase with no spaces: `'DF1'`, `'X001'`, `'DS100'`.
 - The server validates writability (SC/SD restrictions) **before** calling `write()`. The DataProvider does not need to enforce writability.
 - The server handles all Modbus packing/unpacking. The DataProvider only deals in native Python types.
+- `MemoryDataProvider` enforces strict runtime value validation for `write()` and `set()`.
 - If `read()` returns a value of the wrong type, behavior is undefined.
 
 ---
@@ -171,7 +172,7 @@ class MemoryDataProvider:
 | `float` (DF) | `0.0` |
 | `str` (TXT) | `'\x00'` |
 
-- `write()` stores the value
+- `write()` validates value type/range for the target bank, then stores it
 - `set()` / `get()` are synchronous wrappers for test setup and inspection
 - `bulk_set()` calls `set()` for each entry
 - Address strings are normalized to uppercase internally
@@ -418,6 +419,26 @@ All other banks are fully writable within their address range.
 
 The server accepts Modbus requests for any valid address in each bank's range. Requests beyond a bank's address space that don't fall in another bank return defaults (reads) or are rejected (writes).
 
+### Runtime Value Validation (MemoryDataProvider)
+
+`MemoryDataProvider` rejects invalid runtime values with `ValueError`.
+
+| Data Type | Banks | Required Value |
+|-----------|-------|----------------|
+| `bool` | X, Y, C, T, CT, SC | `bool` |
+| `int16` signed | DS, TD, SD | `int` in `[-32768, 32767]` |
+| `int32` signed | DD, CTD | `int` in `[-2147483648, 2147483647]` |
+| `WORD` unsigned | DH, XD, YD | `int` in `[0, 65535]` |
+| `float32` | DF | finite `int`/`float` representable as float32 |
+| `text` | TXT | blank (`""`) or single ASCII `str` character |
+
+Additional rules:
+
+- Bool values are rejected for numeric banks (`bool` is not accepted as `int`).
+- `NaN`, `+Inf`, and `-Inf` are invalid for `DF`.
+- TXT values may be blank (`""`) or exactly one character with ASCII code `0..127`.
+- TXT space (`" "`) is valid.
+
 ---
 
 ## Error Handling
@@ -440,6 +461,8 @@ If the DataProvider raises an exception during `read()` or `write()`, the server
 3. Logs the error (if logging is configured)
 
 The server never crashes due to a DataProvider error.
+
+This includes `MemoryDataProvider` validation failures (`ValueError`).
 
 ---
 
@@ -547,6 +570,17 @@ The server never crashes due to a DataProvider error.
 71. `set()` then `read()` returns value (async reads sync-set data)
 72. `bulk_set()` sets multiple values
 73. Address normalization: `set('df1', 1.0)` then `get('DF1')` returns `1.0`
+
+MemoryDataProvider value validation:
+
+- Reject out-of-range int16 (`set('DS1', 32768)`)
+- Reject out-of-range int32 (`set('DD1', 2147483648)`)
+- Reject out-of-range WORD (`set('DH1', -1)` or `set('DH1', 65536)`)
+- Reject non-finite float (`set('DF1', float('nan'))`, `float('inf')`)
+- Reject invalid TXT (`set('TXT1', 'AB')`, non-ASCII)
+- Allow space TXT (`set('TXT1', ' ')`)
+- Allow blank TXT (`set('TXT1', '')`)
+- Reject bool for numeric banks (`set('DS1', True)`)
 
 ### Server Lifecycle
 
