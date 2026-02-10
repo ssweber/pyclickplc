@@ -1,6 +1,7 @@
 """Tests for pyclickplc.addresses module."""
 
 from dataclasses import FrozenInstanceError, replace
+from typing import Any, cast
 
 import pytest
 
@@ -176,7 +177,7 @@ class TestAddressRecord:
     def test_frozen(self):
         rec = AddressRecord(memory_type="DS", address=1, data_type=DataType.INT)
         with pytest.raises(FrozenInstanceError):
-            rec.nickname = "test"
+            cast(Any, rec).nickname = "test"
 
     def test_replace(self):
         rec = AddressRecord(memory_type="DS", address=1, data_type=DataType.INT)

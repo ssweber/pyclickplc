@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import struct
+from typing import Any, cast
 
 import pytest
 
@@ -52,7 +53,7 @@ class TestModbusMappings:
     def test_frozen_dataclass(self):
         m = MODBUS_MAPPINGS["DS"]
         with pytest.raises(AttributeError):
-            m.base = 999
+            cast(Any, m).base = 999
 
     def test_coil_banks(self):
         coil_banks = {k for k, v in MODBUS_MAPPINGS.items() if v.is_coil}

@@ -5,6 +5,7 @@ Uses mocked transport (patching internal _read/_write methods).
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -28,11 +29,48 @@ def _make_plc(tag_filepath: str = "") -> ClickClient:
     """Create a ClickClient without connecting."""
     plc = ClickClient("localhost:5020", tag_filepath=tag_filepath)
     # Mock internal transport methods
-    plc._read_coils = AsyncMock(return_value=[False])
-    plc._write_coils = AsyncMock()
-    plc._read_registers = AsyncMock(return_value=[0])
-    plc._write_registers = AsyncMock()
+    _set_read_coils(plc, [False])
+    _set_write_coils(plc)
+    _set_read_registers(plc, [0])
+    _set_write_registers(plc)
     return plc
+
+
+def _set_read_coils(plc: ClickClient, return_value: list[bool]) -> AsyncMock:
+    mock = AsyncMock(return_value=return_value)
+    object.__setattr__(plc, "_read_coils", mock)
+    return mock
+
+
+def _set_write_coils(plc: ClickClient) -> AsyncMock:
+    mock = AsyncMock()
+    object.__setattr__(plc, "_write_coils", mock)
+    return mock
+
+
+def _set_read_registers(plc: ClickClient, return_value: list[int]) -> AsyncMock:
+    mock = AsyncMock(return_value=return_value)
+    object.__setattr__(plc, "_read_registers", mock)
+    return mock
+
+
+def _set_write_registers(plc: ClickClient) -> AsyncMock:
+    mock = AsyncMock()
+    object.__setattr__(plc, "_write_registers", mock)
+    return mock
+
+
+def _get_write_coils_mock(plc: ClickClient) -> AsyncMock:
+    return cast(AsyncMock, plc._write_coils)
+
+
+def _get_write_registers_mock(plc: ClickClient) -> AsyncMock:
+    return cast(AsyncMock, plc._write_registers)
+
+
+def _as_float(value: object) -> float:
+    assert isinstance(value, (int, float))
+    return float(value)
 
 
 # ==============================================================================
@@ -78,13 +116,13 @@ class TestClickClient:
     async def test_getattr_underscore_raises(self):
         plc = _make_plc()
         with pytest.raises(AttributeError):
-            _ = plc._private
+            _ = cast(Any, plc)._private
 
     @pytest.mark.asyncio
     async def test_getattr_unknown_raises(self):
         plc = _make_plc()
         with pytest.raises(AttributeError, match="not a supported"):
-            _ = plc.invalid_bank
+            _ = cast(Any, plc).invalid_bank
 
     @pytest.mark.asyncio
     async def test_addr_is_address_interface(self):
@@ -129,7 +167,7 @@ class TestAddressAccessorReadSingle:
     async def test_read_float(self):
         plc = _make_plc()
         regs = pack_value(3.14, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=regs)
+        _set_read_registers(plc, regs)
         result = await plc.df.read(1)
         assert isinstance(result, ModbusResponse)
         import math
@@ -139,7 +177,7 @@ class TestAddressAccessorReadSingle:
     @pytest.mark.asyncio
     async def test_read_int16(self):
         plc = _make_plc()
-        plc._read_registers = AsyncMock(return_value=[42])
+        _set_read_registers(plc, [42])
         result = await plc.ds.read(1)
         assert result == {"DS1": 42}
 
@@ -147,28 +185,28 @@ class TestAddressAccessorReadSingle:
     async def test_read_int32(self):
         plc = _make_plc()
         regs = pack_value(100000, DataType.INT2)
-        plc._read_registers = AsyncMock(return_value=regs)
+        _set_read_registers(plc, regs)
         result = await plc.dd.read(1)
         assert result == {"DD1": 100000}
 
     @pytest.mark.asyncio
     async def test_read_unsigned(self):
         plc = _make_plc()
-        plc._read_registers = AsyncMock(return_value=[0xABCD])
+        _set_read_registers(plc, [0xABCD])
         result = await plc.dh.read(1)
         assert result == {"DH1": 0xABCD}
 
     @pytest.mark.asyncio
     async def test_read_bool(self):
         plc = _make_plc()
-        plc._read_coils = AsyncMock(return_value=[True])
+        _set_read_coils(plc, [True])
         result = await plc.c.read(1)
         assert result == {"C1": True}
 
     @pytest.mark.asyncio
     async def test_read_sparse_bool(self):
         plc = _make_plc()
-        plc._read_coils = AsyncMock(return_value=[True])
+        _set_read_coils(plc, [True])
         result = await plc.x.read(101)
         assert result == {"X101": True}
 
@@ -176,14 +214,14 @@ class TestAddressAccessorReadSingle:
     async def test_read_txt(self):
         plc = _make_plc()
         # TXT1 is low byte of register
-        plc._read_registers = AsyncMock(return_value=[ord("A") | (ord("B") << 8)])
+        _set_read_registers(plc, [ord("A") | (ord("B") << 8)])
         result = await plc.txt.read(1)
         assert result == {"TXT1": "A"}
 
     @pytest.mark.asyncio
     async def test_read_txt_even(self):
         plc = _make_plc()
-        plc._read_registers = AsyncMock(return_value=[ord("A") | (ord("B") << 8)])
+        _set_read_registers(plc, [ord("A") | (ord("B") << 8)])
         result = await plc.txt.read(2)
         assert result == {"TXT2": "B"}
 
@@ -199,7 +237,7 @@ class TestAddressAccessorReadRange:
         plc = _make_plc()
         r1 = pack_value(1.0, DataType.FLOAT)
         r2 = pack_value(2.0, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=r1 + r2)
+        _set_read_registers(plc, r1 + r2)
         result = await plc.df.read(1, 2)
         assert isinstance(result, ModbusResponse)
         assert len(result) == 2
@@ -211,7 +249,7 @@ class TestAddressAccessorReadRange:
     @pytest.mark.asyncio
     async def test_read_c_range(self):
         plc = _make_plc()
-        plc._read_coils = AsyncMock(return_value=[True, False, True])
+        _set_read_coils(plc, [True, False, True])
         result = await plc.c.read(1, 3)
         assert result == {"C1": True, "C2": False, "C3": True}
 
@@ -232,25 +270,25 @@ class TestAddressAccessorWrite:
     async def test_write_float(self):
         plc = _make_plc()
         await plc.df.write(1, 3.14)
-        plc._write_registers.assert_called_once()
+        _get_write_registers_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_write_int16(self):
         plc = _make_plc()
         await plc.ds.write(1, 42)
-        plc._write_registers.assert_called_once()
+        _get_write_registers_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_write_bool(self):
         plc = _make_plc()
         await plc.c.write(1, True)
-        plc._write_coils.assert_called_once()
+        _get_write_coils_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_write_list(self):
         plc = _make_plc()
         await plc.df.write(1, [1.0, 2.0, 3.0])
-        plc._write_registers.assert_called_once()
+        _get_write_registers_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_write_wrong_type_raises(self):
@@ -280,7 +318,7 @@ class TestAddressAccessorWrite:
     async def test_write_writable_sc53(self):
         plc = _make_plc()
         await plc.sc.write(53, True)
-        plc._write_coils.assert_called_once()
+        _get_write_coils_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_write_not_writable_sd(self):
@@ -292,7 +330,7 @@ class TestAddressAccessorWrite:
     async def test_write_writable_sd29(self):
         plc = _make_plc()
         await plc.sd.write(29, 100)
-        plc._write_registers.assert_called_once()
+        _get_write_registers_mock(plc).assert_called_once()
 
 
 # ==============================================================================
@@ -330,7 +368,7 @@ class TestAddressAccessorValidation:
         """Reading at max address should work."""
         plc = _make_plc()
         regs = pack_value(0.0, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=regs)
+        _set_read_registers(plc, regs)
         result = await plc.df.read(500)
         assert result == {"DF500": 0.0}
 
@@ -345,19 +383,19 @@ class TestAddressInterface:
     async def test_read_single(self):
         plc = _make_plc()
         regs = pack_value(3.14, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=regs)
+        _set_read_registers(plc, regs)
         result = await plc.addr.read("df1")
         assert isinstance(result, ModbusResponse)
         import math
 
-        assert math.isclose(result["DF1"], 3.14, rel_tol=1e-6)
+        assert math.isclose(_as_float(result["DF1"]), 3.14, rel_tol=1e-6)
 
     @pytest.mark.asyncio
     async def test_read_range(self):
         plc = _make_plc()
         r1 = pack_value(1.0, DataType.FLOAT)
         r2 = pack_value(2.0, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=r1 + r2)
+        _set_read_registers(plc, r1 + r2)
         result = await plc.addr.read("df1-df2")
         assert isinstance(result, ModbusResponse)
         assert len(result) == 2
@@ -366,7 +404,7 @@ class TestAddressInterface:
     async def test_read_case_insensitive(self):
         plc = _make_plc()
         regs = pack_value(0.0, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=regs)
+        _set_read_registers(plc, regs)
         result = await plc.addr.read("DF1")
         assert result == {"DF1": 0.0}
 
@@ -392,13 +430,13 @@ class TestAddressInterface:
     async def test_write_single(self):
         plc = _make_plc()
         await plc.addr.write("df1", 3.14)
-        plc._write_registers.assert_called_once()
+        _get_write_registers_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_write_list(self):
         plc = _make_plc()
         await plc.addr.write("df1", [1.0, 2.0])
-        plc._write_registers.assert_called_once()
+        _get_write_registers_mock(plc).assert_called_once()
 
 
 # ==============================================================================
@@ -419,11 +457,11 @@ class TestTagInterface:
     async def test_read_single_tag(self):
         plc = self._plc_with_tags()
         regs = pack_value(25.0, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=regs)
+        _set_read_registers(plc, regs)
         value = await plc.tag.read("Temp")
         import math
 
-        assert math.isclose(value, 25.0, rel_tol=1e-6)
+        assert math.isclose(_as_float(value), 25.0, rel_tol=1e-6)
 
     @pytest.mark.asyncio
     async def test_read_missing_tag_raises(self):
@@ -435,8 +473,8 @@ class TestTagInterface:
     async def test_read_all_tags(self):
         plc = self._plc_with_tags()
         regs = pack_value(25.0, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=regs)
-        plc._read_coils = AsyncMock(return_value=[True])
+        _set_read_registers(plc, regs)
+        _set_read_coils(plc, [True])
         result = await plc.tag.read()
         assert isinstance(result, dict)
         assert "Temp" in result
@@ -452,7 +490,7 @@ class TestTagInterface:
     async def test_write_tag(self):
         plc = self._plc_with_tags()
         await plc.tag.write("Temp", 30.0)
-        plc._write_registers.assert_called_once()
+        _get_write_registers_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_write_missing_tag_raises(self):
@@ -481,24 +519,26 @@ class TestAddressAccessorTxtWrite:
     async def test_write_single_txt(self):
         plc = _make_plc()
         # Mock read of current register value (for twin byte preservation)
-        plc._read_registers = AsyncMock(return_value=[0])
+        _set_read_registers(plc, [0])
         await plc.txt.write(1, "A")
-        plc._write_registers.assert_called_once()
+        _get_write_registers_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_write_empty_string_clears_txt(self):
         plc = _make_plc()
-        plc._read_registers = AsyncMock(return_value=[0x4142])  # "AB"
+        _set_read_registers(plc, [0x4142])  # "AB"
         await plc.txt.write(1, "")
         # Empty string → null byte in low position, high byte preserved
-        plc._write_registers.assert_called_once_with(MODBUS_MAPPINGS["TXT"].base, [0x4100])
+        _get_write_registers_mock(plc).assert_called_once_with(
+            MODBUS_MAPPINGS["TXT"].base, [0x4100]
+        )
 
     @pytest.mark.asyncio
     async def test_write_txt_list(self):
         plc = _make_plc()
-        plc._read_registers = AsyncMock(return_value=[0])
+        _set_read_registers(plc, [0])
         await plc.txt.write(1, ["H", "i"])
-        assert plc._write_registers.call_count == 2
+        assert _get_write_registers_mock(plc).call_count == 2
 
 
 # ==============================================================================
@@ -641,7 +681,7 @@ class TestAddressAccessorGetitem:
     @pytest.mark.asyncio
     async def test_getitem_int(self):
         plc = _make_plc()
-        plc._read_registers = AsyncMock(return_value=[42])
+        _set_read_registers(plc, [42])
         value = await plc.ds[1]
         assert value == 42
 
@@ -649,7 +689,7 @@ class TestAddressAccessorGetitem:
     async def test_getitem_float(self):
         plc = _make_plc()
         regs = pack_value(3.14, DataType.FLOAT)
-        plc._read_registers = AsyncMock(return_value=regs)
+        _set_read_registers(plc, regs)
         value = await plc.df[1]
         import math
 
@@ -658,7 +698,7 @@ class TestAddressAccessorGetitem:
     @pytest.mark.asyncio
     async def test_getitem_bool(self):
         plc = _make_plc()
-        plc._read_coils = AsyncMock(return_value=[True])
+        _set_read_coils(plc, [True])
         value = await plc.c[1]
         assert value is True
 
@@ -666,7 +706,7 @@ class TestAddressAccessorGetitem:
     async def test_getitem_slice_raises(self):
         plc = _make_plc()
         with pytest.raises(TypeError, match="Slicing is not supported"):
-            plc.ds[1:5]
+            cast(Any, plc.ds)[1:5]
 
     @pytest.mark.asyncio
     async def test_getitem_out_of_range_raises(self):

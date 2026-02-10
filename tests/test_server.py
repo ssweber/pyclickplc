@@ -10,6 +10,12 @@ from pyclickplc.server import (
     _ClickDeviceContext,
 )
 
+
+def _as_float(value: object) -> float:
+    assert isinstance(value, (int, float))
+    return float(value)
+
+
 # ==============================================================================
 # MemoryDataProvider
 # ==============================================================================
@@ -373,7 +379,7 @@ class TestContextRegisterWrites:
         assert result is None
         import math
 
-        assert math.isclose(p.get("DF1"), 3.14, rel_tol=1e-6)
+        assert math.isclose(_as_float(p.get("DF1")), 3.14, rel_tol=1e-6)
 
     def test_fc06_write_df1_read_modify_write(self):
         """FC 06 on width-2: writes one register, read-modify-write."""
@@ -389,7 +395,7 @@ class TestContextRegisterWrites:
         assert result is None
         import math
 
-        assert math.isclose(p.get("DF1"), 3.14, rel_tol=1e-6)
+        assert math.isclose(_as_float(p.get("DF1")), 3.14, rel_tol=1e-6)
 
     def test_fc06_write_unmapped(self):
         p = MemoryDataProvider()

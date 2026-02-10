@@ -6,7 +6,7 @@ Provides ClickClient with bank accessors, address interface, and tag interface.
 from __future__ import annotations
 
 from collections.abc import Coroutine, Iterator, Mapping
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Generic, Literal, TypeAlias, TypeVar, cast, overload
 
 from pymodbus.client import AsyncModbusTcpClient
 
@@ -21,13 +21,41 @@ from .modbus import (
 from .nicknames import DATA_TYPE_CODE_TO_STR, read_csv
 
 PlcValue = bool | int | float | str
+TValue_co = TypeVar("TValue_co", bound=PlcValue, covariant=True)
+
+BoolBankName: TypeAlias = Literal["X", "Y", "C", "T", "CT", "SC"]
+IntBankName: TypeAlias = Literal["DS", "DD", "DH", "TD", "CTD", "SD", "XD", "YD"]
+FloatBankName: TypeAlias = Literal["DF"]
+StrBankName: TypeAlias = Literal["TXT"]
+
+BoolBankAttr: TypeAlias = Literal["x", "X", "y", "Y", "c", "C", "t", "T", "ct", "CT", "sc", "SC"]
+IntBankAttr: TypeAlias = Literal[
+    "ds",
+    "DS",
+    "dd",
+    "DD",
+    "dh",
+    "DH",
+    "td",
+    "TD",
+    "ctd",
+    "CTD",
+    "sd",
+    "SD",
+    "xd",
+    "XD",
+    "yd",
+    "YD",
+]
+FloatBankAttr: TypeAlias = Literal["df", "DF"]
+StrBankAttr: TypeAlias = Literal["txt", "TXT"]
 
 # ==============================================================================
 # ModbusResponse
 # ==============================================================================
 
 
-class ModbusResponse(Mapping[str, PlcValue]):
+class ModbusResponse(Mapping[str, TValue_co], Generic[TValue_co]):
     """Immutable mapping with normalized PLC address keys.
 
     Keys are stored in canonical uppercase form (``DS1``, ``X001``).
@@ -37,12 +65,12 @@ class ModbusResponse(Mapping[str, PlcValue]):
 
     __slots__ = ("_data",)
 
-    def __init__(self, data: dict[str, PlcValue]) -> None:
+    def __init__(self, data: dict[str, TValue_co]) -> None:
         self._data = data
 
     # -- Mapping interface --------------------------------------------------
 
-    def __getitem__(self, key: str) -> PlcValue:
+    def __getitem__(self, key: str) -> TValue_co:
         normalized = normalize_address(key)
         if normalized is not None and normalized in self._data:
             return self._data[normalized]
@@ -68,7 +96,7 @@ class ModbusResponse(Mapping[str, PlcValue]):
         if isinstance(other, dict):
             if len(other) != len(self._data):
                 return False
-            normalized: dict[str, Any] = {}
+            normalized: dict[str, object] = {}
             for k, v in other.items():
                 nk = normalize_address(k) if isinstance(k, str) else None
                 if nk is None:
@@ -146,7 +174,7 @@ def _format_bank_address(bank: str, index: int) -> str:
     return format_address_display(bank, index)
 
 
-class AddressAccessor:
+class AddressAccessor(Generic[TValue_co]):
     """Provides read/write access to a specific PLC memory bank."""
 
     def __init__(self, plc: ClickClient, bank: str) -> None:
@@ -155,7 +183,7 @@ class AddressAccessor:
         self._mapping = MODBUS_MAPPINGS[bank]
         self._bank_cfg = BANKS[bank]
 
-    async def read(self, start: int, end: int | None = None) -> ModbusResponse:
+    async def read(self, start: int, end: int | None = None) -> ModbusResponse[TValue_co]:
         """Read single value or range (inclusive).
 
         Always returns a ModbusResponse, even for a single address.
@@ -179,29 +207,29 @@ class AddressAccessor:
             return await self._read_sparse_range(start, end)
         return await self._read_range(start, end)
 
-    async def _read_single(self, index: int) -> PlcValue:
+    async def _read_single(self, index: int) -> TValue_co:
         """Read a single PLC address."""
         bank = self._bank
         self._validate_index(index)
 
         if bank == "TXT":
-            return await self._read_txt(index)
+            return cast(TValue_co, await self._read_txt(index))
 
         if self._mapping.is_coil:
             addr, _ = plc_to_modbus(bank, index)
             result = await self._plc._read_coils(addr, 1, bank)
-            return result[0]
+            return cast(TValue_co, result[0])
 
         addr, count = plc_to_modbus(bank, index)
         regs = await self._plc._read_registers(addr, count, bank)
-        return unpack_value(regs, self._bank_cfg.data_type)
+        return cast(TValue_co, unpack_value(regs, self._bank_cfg.data_type))
 
-    async def _read_range(self, start: int, end: int) -> ModbusResponse:
+    async def _read_range(self, start: int, end: int) -> ModbusResponse[TValue_co]:
         """Read a contiguous range."""
         bank = self._bank
         self._validate_index(start)
         self._validate_index(end)
-        result: dict[str, PlcValue] = {}
+        result: dict[str, TValue_co] = {}
 
         if self._mapping.is_coil:
             addr_start, _ = plc_to_modbus(bank, start)
@@ -210,7 +238,7 @@ class AddressAccessor:
             bits = await self._plc._read_coils(addr_start, count, bank)
             for i, idx in enumerate(range(start, end + 1)):
                 key = _format_bank_address(bank, idx)
-                result[key] = bits[i]
+                result[key] = cast(TValue_co, bits[i])
         else:
             addr_start, _ = plc_to_modbus(bank, start)
             addr_end, count_last = plc_to_modbus(bank, end)
@@ -222,11 +250,11 @@ class AddressAccessor:
                 offset = i * width
                 val = unpack_value(regs[offset : offset + width], data_type)
                 key = _format_bank_address(bank, idx)
-                result[key] = val
+                result[key] = cast(TValue_co, val)
 
         return ModbusResponse(result)
 
-    async def _read_sparse_range(self, start: int, end: int) -> ModbusResponse:
+    async def _read_sparse_range(self, start: int, end: int) -> ModbusResponse[TValue_co]:
         """Read a sparse (X/Y) range, skipping gaps."""
         bank = self._bank
         # Enumerate valid addresses in [start, end]
@@ -246,12 +274,12 @@ class AddressAccessor:
         count = addr_last - addr_first + 1
         bits = await self._plc._read_coils(addr_first, count, bank)
 
-        result: dict[str, PlcValue] = {}
+        result: dict[str, TValue_co] = {}
         for a in valid_addrs:
             addr, _ = plc_to_modbus(bank, a)
             bit_idx = addr - addr_first
             key = _format_bank_address(bank, a)
-            result[key] = bits[bit_idx]
+            result[key] = cast(TValue_co, bits[bit_idx])
 
         return ModbusResponse(result)
 
@@ -269,7 +297,7 @@ class AddressAccessor:
             # Even: high byte
             return chr((reg_val >> 8) & 0xFF)
 
-    async def _read_txt_range(self, start: int, end: int) -> ModbusResponse:
+    async def _read_txt_range(self, start: int, end: int) -> ModbusResponse[TValue_co]:
         """Read a range of TXT addresses."""
         self._validate_index(start)
         self._validate_index(end)
@@ -281,7 +309,7 @@ class AddressAccessor:
             reg_base + first_reg, last_reg - first_reg + 1, "TXT"
         )
 
-        result: dict[str, PlcValue] = {}
+        result: dict[str, TValue_co] = {}
         for idx in range(start, end + 1):
             reg_offset = (idx - 1) // 2 - first_reg
             reg_val = regs[reg_offset]
@@ -289,7 +317,7 @@ class AddressAccessor:
                 ch = chr(reg_val & 0xFF)
             else:
                 ch = chr((reg_val >> 8) & 0xFF)
-            result[_format_bank_address("TXT", idx)] = ch
+            result[_format_bank_address("TXT", idx)] = cast(TValue_co, ch)
 
         return ModbusResponse(result)
 
@@ -448,7 +476,7 @@ class AddressAccessor:
     def __repr__(self) -> str:
         return f"<AddressAccessor({self._bank}, max={self._bank_cfg.max_addr})>"
 
-    def __getitem__(self, key: int) -> Coroutine[Any, Any, PlcValue]:
+    def __getitem__(self, key: int) -> Coroutine[Any, Any, TValue_co]:
         """Enable ``await plc.ds[1]`` syntax for single-value reads."""
         if isinstance(key, slice):
             raise TypeError("Slicing is not supported. Use read(start, end) for range reads.")
@@ -466,7 +494,7 @@ class AddressInterface:
     def __init__(self, plc: ClickClient) -> None:
         self._plc = plc
 
-    async def read(self, address: str) -> ModbusResponse:
+    async def read(self, address: str) -> ModbusResponse[PlcValue]:
         """Read by address string. Supports 'df1' or 'df1-df10'."""
         if "-" in address:
             parts = address.split("-", 1)
@@ -569,7 +597,7 @@ class ClickClient:
             port = 502
 
         self._client = AsyncModbusTcpClient(host, port=port, timeout=timeout)
-        self._accessors: dict[str, AddressAccessor] = {}
+        self._accessors: dict[str, AddressAccessor[PlcValue]] = {}
         self.tags: dict[str, dict[str, str]] = {}
         self.addr = AddressInterface(self)
         self.tag = TagInterface(self)
@@ -577,16 +605,45 @@ class ClickClient:
         if tag_filepath:
             self.tags = _load_tags(tag_filepath)
 
-    def _get_accessor(self, bank: str) -> AddressAccessor:
+    @overload
+    def _get_accessor(self, bank: BoolBankName) -> AddressAccessor[bool]: ...
+
+    @overload
+    def _get_accessor(self, bank: IntBankName) -> AddressAccessor[int]: ...
+
+    @overload
+    def _get_accessor(self, bank: FloatBankName) -> AddressAccessor[float]: ...
+
+    @overload
+    def _get_accessor(self, bank: StrBankName) -> AddressAccessor[str]: ...
+
+    @overload
+    def _get_accessor(self, bank: str) -> AddressAccessor[PlcValue]: ...
+
+    def _get_accessor(self, bank: str) -> AddressAccessor[PlcValue]:
         """Get or create an AddressAccessor for a bank."""
         bank_upper = bank.upper()
         if bank_upper not in MODBUS_MAPPINGS:
             raise AttributeError(f"'{bank}' is not a supported address type.")
         if bank_upper not in self._accessors:
-            self._accessors[bank_upper] = AddressAccessor(self, bank_upper)
+            self._accessors[bank_upper] = cast(
+                AddressAccessor[PlcValue], AddressAccessor(self, bank_upper)
+            )
         return self._accessors[bank_upper]
 
-    def __getattr__(self, name: str) -> AddressAccessor:
+    @overload
+    def __getattr__(self, name: BoolBankAttr) -> AddressAccessor[bool]: ...
+
+    @overload
+    def __getattr__(self, name: IntBankAttr) -> AddressAccessor[int]: ...
+
+    @overload
+    def __getattr__(self, name: FloatBankAttr) -> AddressAccessor[float]: ...
+
+    @overload
+    def __getattr__(self, name: StrBankAttr) -> AddressAccessor[str]: ...
+
+    def __getattr__(self, name: str) -> AddressAccessor[PlcValue]:
         if name.startswith("_"):
             raise AttributeError(name)
         upper = name.upper()

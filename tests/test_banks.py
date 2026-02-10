@@ -1,6 +1,7 @@
 """Tests for pyclickplc.banks module."""
 
 from dataclasses import FrozenInstanceError
+from typing import Any, cast
 
 import pytest
 
@@ -50,7 +51,7 @@ class TestBankConfig:
     def test_frozen(self):
         bank = BANKS["DS"]
         with pytest.raises(FrozenInstanceError):
-            bank.name = "other"
+            cast(Any, bank).name = "other"
 
     def test_all_16_banks_defined(self):
         assert len(BANKS) == 16

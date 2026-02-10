@@ -217,6 +217,7 @@ class TestStorageToDatatype:
         val = storage_to_datatype("1078523331", TypeCode.FLOAT)
         assert val == pytest.approx(3.14, abs=1e-5)
         val = storage_to_datatype("4286578685", TypeCode.FLOAT)
+        assert isinstance(val, (int, float))
         assert val < 0
 
     def test_txt_values(self):
