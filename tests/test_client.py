@@ -27,7 +27,7 @@ from pyclickplc.modbus import MODBUS_MAPPINGS, pack_value
 
 def _make_plc(tag_filepath: str = "") -> ClickClient:
     """Create a ClickClient without connecting."""
-    plc = ClickClient("localhost:5020", tag_filepath=tag_filepath)
+    plc = ClickClient("localhost", 5020, tag_filepath=tag_filepath)
     # Mock internal transport methods
     _set_read_coils(plc, [False])
     _set_write_coils(plc)
@@ -82,15 +82,28 @@ class TestClickClient:
     @pytest.mark.asyncio
     async def test_construction(self):
         plc = ClickClient("192.168.1.100")
+        assert plc._client.comm_params.host == "192.168.1.100"
+        assert plc._client.comm_params.port == 502
         assert plc.addr is not None
         assert plc.tag is not None
         assert plc.tags == {}
 
     @pytest.mark.asyncio
     async def test_construction_with_port(self):
+        plc = ClickClient("192.168.1.100", 5020)
+        assert plc._client.comm_params.host == "192.168.1.100"
+        assert plc._client.comm_params.port == 5020
+
+    @pytest.mark.asyncio
+    async def test_construction_legacy_host_port_string(self):
         plc = ClickClient("192.168.1.100:5020")
         assert plc._client.comm_params.host == "192.168.1.100"
         assert plc._client.comm_params.port == 5020
+
+    @pytest.mark.asyncio
+    async def test_construction_with_device_id(self):
+        plc = ClickClient("192.168.1.100", 5020, device_id=7)
+        assert plc._device_id == 7
 
     @pytest.mark.asyncio
     async def test_getattr_df(self):

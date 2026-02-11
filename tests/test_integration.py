@@ -25,7 +25,7 @@ async def plc_fixture():
     async with ClickServer(provider, port=TEST_PORT):
         # Small delay for server to be ready
         await asyncio.sleep(0.1)
-        async with ClickClient(f"localhost:{TEST_PORT}") as plc:
+        async with ClickClient("localhost", TEST_PORT) as plc:
             yield plc, provider
 
 

@@ -569,19 +569,24 @@ class ClickClient:
 
     def __init__(
         self,
-        address: str,
+        host: str,
+        port: int = 502,
         tag_filepath: str = "",
         timeout: int = 1,
+        device_id: int = 1,
     ) -> None:
-        # Parse host:port
-        if ":" in address:
-            host, port_str = address.rsplit(":", 1)
+        # Backwards compatibility for legacy "host:port" first argument.
+        if ":" in host and port == 502:
+            host, port_str = host.rsplit(":", 1)
             port = int(port_str)
-        else:
-            host = address
-            port = 502
+
+        if not (1 <= port <= 65535):
+            raise ValueError("port must be in [1, 65535]")
+        if not (0 <= device_id <= 247):
+            raise ValueError("device_id must be in [0, 247]")
 
         self._client = AsyncModbusTcpClient(host, port=port, timeout=timeout)
+        self._device_id = device_id
         self._accessors: dict[str, AddressAccessor[PlcValue]] = {}
         self.tags: dict[str, dict[str, str]] = {}
         self.addr = AddressInterface(self)
@@ -589,6 +594,15 @@ class ClickClient:
 
         if tag_filepath:
             self.tags = _load_tags(tag_filepath)
+
+    async def _call_modbus(self, method: Any, /, **kwargs: Any) -> Any:
+        """Call pymodbus methods with device_id, falling back to legacy slave."""
+        try:
+            return await method(device_id=self._device_id, **kwargs)
+        except TypeError as exc:
+            if "device_id" not in str(exc):
+                raise
+            return await method(slave=self._device_id, **kwargs)
 
     @overload
     def _get_accessor(self, bank: BoolBankName) -> AddressAccessor[bool]: ...
@@ -649,9 +663,11 @@ class ClickClient:
         """Read coils using appropriate function code."""
         mapping = MODBUS_MAPPINGS[bank]
         if 2 in mapping.function_codes:
-            result = await self._client.read_discrete_inputs(address, count=count)
+            result = await self._call_modbus(
+                self._client.read_discrete_inputs, address=address, count=count
+            )
         else:
-            result = await self._client.read_coils(address, count=count)
+            result = await self._call_modbus(self._client.read_coils, address=address, count=count)
         if result.isError():
             raise OSError(f"Modbus read error at coil {address}: {result}")
         return list(result.bits[:count])
@@ -659,9 +675,11 @@ class ClickClient:
     async def _write_coils(self, address: int, values: list[bool]) -> None:
         """Write coils."""
         if len(values) == 1:
-            result = await self._client.write_coil(address, values[0])
+            result = await self._call_modbus(
+                self._client.write_coil, address=address, value=values[0]
+            )
         else:
-            result = await self._client.write_coils(address, values)
+            result = await self._call_modbus(self._client.write_coils, address=address, values=values)
         if result.isError():
             raise OSError(f"Modbus write error at coil {address}: {result}")
 
@@ -669,9 +687,13 @@ class ClickClient:
         """Read registers using appropriate function code."""
         mapping = MODBUS_MAPPINGS[bank]
         if 4 in mapping.function_codes:
-            result = await self._client.read_input_registers(address, count=count)
+            result = await self._call_modbus(
+                self._client.read_input_registers, address=address, count=count
+            )
         else:
-            result = await self._client.read_holding_registers(address, count=count)
+            result = await self._call_modbus(
+                self._client.read_holding_registers, address=address, count=count
+            )
         if result.isError():
             raise OSError(f"Modbus read error at register {address}: {result}")
         return list(result.registers[:count])
@@ -679,8 +701,10 @@ class ClickClient:
     async def _write_registers(self, address: int, values: list[int]) -> None:
         """Write registers."""
         if len(values) == 1:
-            result = await self._client.write_register(address, values[0])
+            result = await self._call_modbus(
+                self._client.write_register, address=address, value=values[0]
+            )
         else:
-            result = await self._client.write_registers(address, values)
+            result = await self._call_modbus(self._client.write_registers, address=address, values=values)
         if result.isError():
             raise OSError(f"Modbus write error at register {address}: {result}")

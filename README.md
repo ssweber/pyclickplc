@@ -20,7 +20,7 @@ import asyncio
 from pyclickplc import ClickClient
 
 async def main():
-    async with ClickClient("192.168.1.10") as plc:
+    async with ClickClient("192.168.1.10", 502) as plc:
         # Bank accessor
         await plc.ds.write(1, 100)
         value = await plc.ds[1]                   # bare value
@@ -31,7 +31,7 @@ async def main():
         by_addr = await plc.addr.read("df1")
 
     # Tag interface (requires tag_filepath on client construction)
-    async with ClickClient("192.168.1.10", tag_filepath="nicknames.csv") as tagged:
+    async with ClickClient("192.168.1.10", 502, tag_filepath="nicknames.csv") as tagged:
         await tagged.tag.write("MyTag", 42)
         tag_value = await tagged.tag.read("MyTag")
         all_tag_values = await tagged.tag.read()

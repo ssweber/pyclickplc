@@ -7,7 +7,7 @@ import asyncio
 from pyclickplc import ClickClient
 
 async def main():
-    async with ClickClient("192.168.1.10") as plc:
+    async with ClickClient("192.168.1.10", 502) as plc:
         await plc.ds.write(1, 100)
         one_value = await plc.ds[1]
         many_values = await plc.ds.read(1, 5)
