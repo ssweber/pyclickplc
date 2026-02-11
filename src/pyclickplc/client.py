@@ -19,6 +19,7 @@ from .modbus import (
     unpack_value,
 )
 from .nicknames import DATA_TYPE_CODE_TO_STR, read_csv
+from .validation import assert_runtime_value
 
 PlcValue = bool | int | float | str
 TValue_co = TypeVar("TValue_co", bound=PlcValue, covariant=True)
@@ -132,17 +133,6 @@ _DATA_TYPE_STR: dict[str, str] = {
     "XD": "hex",
     "YD": "hex",
 }
-
-# Map data type string -> accepted Python types for write validation
-TYPE_MAP: dict[str, type | tuple[type, ...]] = {
-    "bool": bool,
-    "int16": int,
-    "int32": int,
-    "float": (int, float),
-    "hex": int,
-    "str": str,
-}
-
 
 # ==============================================================================
 # Tag loading
@@ -337,7 +327,7 @@ class AddressAccessor(Generic[TValue_co]):
         bank = self._bank
         self._validate_index(index)
         self._validate_writable(index)
-        self._validate_type(value)
+        self._validate_value(index, value)
 
         if bank == "TXT":
             await self._write_txt(index, str(value))
@@ -362,7 +352,7 @@ class AddressAccessor(Generic[TValue_co]):
                 idx = start + i
                 self._validate_index(idx)
                 self._validate_writable(idx)
-                self._validate_type(v)
+                self._validate_value(idx, v)
                 await self._write_txt(idx, str(v))
             return
 
@@ -371,7 +361,7 @@ class AddressAccessor(Generic[TValue_co]):
             idx = start + i
             self._validate_index(idx)
             self._validate_writable(idx)
-            self._validate_type(v)
+            self._validate_value(idx, v)
 
         if self._mapping.is_coil:
             if self._bank_cfg.valid_ranges is not None:
@@ -464,14 +454,9 @@ class AddressAccessor(Generic[TValue_co]):
         elif not mapping.is_writable:
             raise ValueError(f"{self._bank}{index} is not writable.")
 
-    def _validate_type(self, value: bool | int | float | str) -> None:
-        """Validate Python type matches expected bank type."""
-        expected_type_str = _DATA_TYPE_STR[self._bank]
-        expected = TYPE_MAP[expected_type_str]
-        if not isinstance(value, expected):
-            raise ValueError(
-                f"Expected {self._bank} as {expected_type_str}, got {type(value).__name__}."
-            )
+    def _validate_value(self, index: int, value: bool | int | float | str) -> None:
+        """Validate runtime write value for this bank and index."""
+        assert_runtime_value(self._bank_cfg.data_type, value, bank=self._bank, index=index)
 
     def __repr__(self) -> str:
         return f"<AddressAccessor({self._bank}, max={self._bank_cfg.max_addr})>"

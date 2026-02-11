@@ -5,6 +5,9 @@ Validates nicknames, comments, and initial values against CLICK PLC rules.
 
 from __future__ import annotations
 
+import math
+import struct
+
 from .banks import (
     DataType,
 )
@@ -179,3 +182,58 @@ def validate_initial_value(
 
     # Unknown data type
     return True, ""
+
+
+def assert_runtime_value(
+    data_type: DataType,
+    value: object,
+    *,
+    bank: str,
+    index: int,
+) -> None:
+    """Assert runtime write value validity for a specific PLC address.
+
+    Raises ValueError with a deterministic, actionable message on invalid values.
+    """
+    target = f"{bank}{index}"
+
+    if data_type == DataType.BIT:
+        if type(value) is not bool:
+            raise ValueError(f"{target} value must be bool.")
+        return
+
+    if data_type == DataType.INT:
+        if type(value) is not int or value < INT_MIN or value > INT_MAX:
+            raise ValueError(f"{target} value must be int in [{INT_MIN}, {INT_MAX}].")
+        return
+
+    if data_type == DataType.INT2:
+        if type(value) is not int or value < INT2_MIN or value > INT2_MAX:
+            raise ValueError(f"{target} value must be int in [{INT2_MIN}, {INT2_MAX}].")
+        return
+
+    if data_type == DataType.HEX:
+        if type(value) is not int or value < 0 or value > 0xFFFF:
+            raise ValueError(f"{target} must be WORD (0..65535).")
+        return
+
+    if data_type == DataType.FLOAT:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(f"{target} value must be a finite float32.")
+        numeric_value = float(value)
+        if not math.isfinite(numeric_value):
+            raise ValueError(f"{target} value must be a finite float32.")
+        try:
+            struct.pack("<f", numeric_value)
+        except (OverflowError, struct.error) as exc:
+            raise ValueError(f"{target} value must be a finite float32.") from exc
+        return
+
+    if data_type == DataType.TXT:
+        if type(value) is not str:
+            raise ValueError(f"{target} TXT value must be blank or a single ASCII character.")
+        if value == "":
+            return
+        if len(value) != 1 or ord(value) > 127:
+            raise ValueError(f"{target} TXT value must be blank or a single ASCII character.")
+        return

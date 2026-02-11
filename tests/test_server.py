@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pyclickplc.banks import DataType
 from pyclickplc.modbus import modbus_to_plc_register, pack_value, plc_to_modbus
 from pyclickplc.server import (
@@ -110,6 +112,43 @@ class TestMemoryDataProvider:
     def test_yd_default(self):
         p = MemoryDataProvider()
         assert p.get("YD0") == 0
+
+    def test_set_rejects_out_of_range_int(self):
+        p = MemoryDataProvider()
+        with pytest.raises(ValueError, match="DS1 value must be int"):
+            p.set("DS1", 999999999999)
+
+    def test_set_rejects_non_numeric_float(self):
+        p = MemoryDataProvider()
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            p.set("DF1", "abc")
+
+    def test_set_rejects_nan_float(self):
+        p = MemoryDataProvider()
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            p.set("DF1", float("nan"))
+
+    def test_set_rejects_inf_float(self):
+        p = MemoryDataProvider()
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            p.set("DF1", float("inf"))
+
+    def test_set_rejects_invalid_txt(self):
+        p = MemoryDataProvider()
+        with pytest.raises(
+            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+        ):
+            p.set("TXT1", "AB")
+
+    def test_set_rejects_word_underflow(self):
+        p = MemoryDataProvider()
+        with pytest.raises(ValueError, match="DH1 must be WORD"):
+            p.set("DH1", -1)
+
+    def test_set_rejects_bool_for_numeric(self):
+        p = MemoryDataProvider()
+        with pytest.raises(ValueError, match="DS1 value must be int"):
+            p.set("DS1", True)
 
 
 # ==============================================================================

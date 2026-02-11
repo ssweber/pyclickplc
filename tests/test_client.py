@@ -293,14 +293,66 @@ class TestAddressAccessorWrite:
     @pytest.mark.asyncio
     async def test_write_wrong_type_raises(self):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="Expected"):
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
             await plc.df.write(1, "string")
 
     @pytest.mark.asyncio
     async def test_write_float_to_int_raises(self):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="Expected"):
+        with pytest.raises(ValueError, match="DS1 value must be int"):
             await plc.ds.write(1, 3.14)
+
+    @pytest.mark.asyncio
+    async def test_write_int16_overflow_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="DS1 value must be int"):
+            await plc.ds.write(1, 32768)
+
+    @pytest.mark.asyncio
+    async def test_write_int32_overflow_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="DD1 value must be int"):
+            await plc.dd.write(1, 2147483648)
+
+    @pytest.mark.asyncio
+    async def test_write_word_underflow_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="DH1 must be WORD"):
+            await plc.dh.write(1, -1)
+
+    @pytest.mark.asyncio
+    async def test_write_bool_for_numeric_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="DS1 value must be int"):
+            await plc.ds.write(1, True)
+
+    @pytest.mark.asyncio
+    async def test_write_nan_float_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            await plc.df.write(1, float("nan"))
+
+    @pytest.mark.asyncio
+    async def test_write_inf_float_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            await plc.df.write(1, float("inf"))
+
+    @pytest.mark.asyncio
+    async def test_write_txt_too_long_raises(self):
+        plc = _make_plc()
+        with pytest.raises(
+            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+        ):
+            await plc.txt.write(1, "AB")
+
+    @pytest.mark.asyncio
+    async def test_write_txt_non_ascii_raises(self):
+        plc = _make_plc()
+        with pytest.raises(
+            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+        ):
+            await plc.txt.write(1, "\u00e9")
 
     @pytest.mark.asyncio
     async def test_write_not_writable_x(self):

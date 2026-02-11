@@ -1,8 +1,13 @@
 """Tests for pyclickplc.validation module."""
 
+import math
+
+import pytest
+
 from pyclickplc.banks import DataType
 from pyclickplc.validation import (
     FORBIDDEN_CHARS,
+    assert_runtime_value,
     validate_comment,
     validate_initial_value,
     validate_nickname,
@@ -169,3 +174,29 @@ class TestValidateInitialValue:
         valid, error = validate_initial_value("\u00e9", DataType.TXT)
         assert valid is False
         assert "ASCII" in error
+
+
+# ==============================================================================
+# assert_runtime_value
+# ==============================================================================
+
+
+class TestAssertRuntimeValue:
+    def test_reject_bool_for_int(self):
+        with pytest.raises(ValueError, match="DS1 value must be int"):
+            assert_runtime_value(DataType.INT, True, bank="DS", index=1)
+
+    def test_reject_non_finite_float(self):
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            assert_runtime_value(DataType.FLOAT, math.nan, bank="DF", index=1)
+
+    def test_reject_overflow_float32(self):
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            assert_runtime_value(DataType.FLOAT, 1e100, bank="DF", index=1)
+
+    def test_reject_invalid_txt(self):
+        with pytest.raises(ValueError, match="TXT1 TXT value must be blank or a single ASCII"):
+            assert_runtime_value(DataType.TXT, "AB", bank="TXT", index=1)
+
+    def test_allow_blank_txt(self):
+        assert_runtime_value(DataType.TXT, "", bank="TXT", index=1)

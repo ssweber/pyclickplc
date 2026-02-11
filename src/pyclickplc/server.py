@@ -21,6 +21,7 @@ from .modbus import (
     pack_value,
     unpack_value,
 )
+from .validation import assert_runtime_value
 
 # ==============================================================================
 # DataProvider Protocol
@@ -58,11 +59,11 @@ class MemoryDataProvider:
     def __init__(self) -> None:
         self._data: dict[str, PlcValue] = {}
 
-    def _normalize(self, address: str) -> tuple[str, str]:
-        """Normalize address and return (normalized, bank)."""
-        bank, mdb = parse_address(address)
-        normalized = format_address_display(bank, mdb)
-        return normalized, bank
+    def _normalize(self, address: str) -> tuple[str, str, int]:
+        """Normalize address and return (normalized, bank, index)."""
+        bank, index = parse_address(address)
+        normalized = format_address_display(bank, index)
+        return normalized, bank, index
 
     def _default(self, bank: str) -> PlcValue:
         """Get default value for a bank."""
@@ -70,11 +71,12 @@ class MemoryDataProvider:
         return _DEFAULTS[data_type]
 
     def read(self, address: str) -> PlcValue:
-        normalized, bank = self._normalize(address)
+        normalized, bank, _index = self._normalize(address)
         return self._data.get(normalized, self._default(bank))
 
     def write(self, address: str, value: PlcValue) -> None:
-        normalized, _bank = self._normalize(address)
+        normalized, bank, index = self._normalize(address)
+        assert_runtime_value(BANKS[bank].data_type, value, bank=bank, index=index)
         self._data[normalized] = value
 
     def get(self, address: str) -> PlcValue:
@@ -202,8 +204,10 @@ class _ClickDeviceContext(ModbusBaseDeviceContext):
                 high_addr = _format_plc_address("TXT", txt_base_index + 1)
                 low_val = self.provider.read(low_addr)
                 high_val = self.provider.read(high_addr)
-                low_byte = ord(str(low_val)) & 0xFF
-                high_byte = ord(str(high_val)) & 0xFF
+                low_text = str(low_val)
+                high_text = str(high_val)
+                low_byte = ord(low_text) & 0xFF if low_text else 0
+                high_byte = ord(high_text) & 0xFF if high_text else 0
                 result.append(low_byte | (high_byte << 8))
                 i += 1
                 continue

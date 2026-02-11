@@ -114,7 +114,7 @@ class DataProvider(Protocol):
         Returns:
             Current value. Type must match the address bank:
             - bool for X, Y, C, T, CT, SC
-            - int for DS, DD, DH, TD, CTD, SD
+            - int for DS, DD, DH, TD, CTD, SD, XD, YD
             - float for DF
             - str for TXT (blank or single character)
         """
@@ -166,9 +166,9 @@ class MemoryDataProvider:
 | Bank Data Type | Default |
 |----------------|---------|
 | `bool` (X, Y, C, T, CT, SC) | `False` |
-| `int16` (DS, TD) | `0` |
+| `int16` (DS, TD, SD) | `0` |
 | `int32` (DD, CTD) | `0` |
-| `int16` unsigned (DH, SD) | `0` |
+| `WORD` unsigned (DH, XD, YD) | `0` |
 | `float` (DF) | `0.0` |
 | `str` (TXT) | `'\x00'` |
 

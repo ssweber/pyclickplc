@@ -607,8 +607,8 @@ Provide clear, actionable error messages:
 - `"{BANK} end must be > start and <= {max}"`
 - `"Inter-bank ranges are unsupported."`
 - `"End address must be greater than start address."`
-- `"Expected {address} as {expected_type}, got {actual_type}."`
-- `"{BANK}{index} value must be in [{min}, {max}]."`
+- `"{BANK}{index} value must be bool."`
+- `"{BANK}{index} value must be int in [{min}, {max}]."`
 - `"{BANK}{index} value must be a finite float32."`
 - `"{BANK}{index} must be WORD (0..65535)."`
 - `"{BANK}{index} TXT value must be blank or a single ASCII character."`
