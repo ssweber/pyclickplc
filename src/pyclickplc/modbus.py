@@ -248,6 +248,10 @@ def plc_to_modbus(bank: str, index: int) -> tuple[int, int]:
         # Standard coils
         return mapping.base + (index - 1), 1
 
+    # TXT is packed two chars per register.
+    if bank == "TXT":
+        return mapping.base + ((index - 1) // 2), 1
+
     # Registers: 0-based banks (XD/YD) use base + index,
     # 1-based banks use base + width * (index - 1)
     bank_cfg = BANKS[bank]
@@ -311,6 +315,15 @@ def _reverse_register(address: int) -> tuple[str, int] | None:
                 return bank, address - mapping.base
             continue
 
+        if bank == "TXT":
+            # TXT packs two addresses per register. Return the odd base index
+            # of the pair represented by this register.
+            txt_register_count = (max_mdb + 1) // 2
+            end = mapping.base + txt_register_count
+            if mapping.base <= address < end:
+                return bank, (address - mapping.base) * 2 + 1
+            continue
+
         # Standard 1-based register banks
         end = mapping.base + mapping.width * max_mdb
         if mapping.base <= address < end:
@@ -341,6 +354,15 @@ def modbus_to_plc_register(address: int) -> tuple[str, int, int] | None:
             end = mapping.base + max_mdb + 1
             if mapping.base <= address < end:
                 return bank, address - mapping.base, 0
+            continue
+
+        if bank == "TXT":
+            # TXT packs two addresses per register. For a register address,
+            # return the odd base index of the pair.
+            txt_register_count = (max_mdb + 1) // 2
+            end = mapping.base + txt_register_count
+            if mapping.base <= address < end:
+                return bank, (address - mapping.base) * 2 + 1, 0
             continue
 
         # Standard 1-based register banks

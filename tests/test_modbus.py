@@ -228,6 +228,12 @@ class TestPlcToModbus:
     def test_txt1(self):
         assert plc_to_modbus("TXT", 1) == (36864, 1)
 
+    def test_txt2_shares_register_with_txt1(self):
+        assert plc_to_modbus("TXT", 2) == (36864, 1)
+
+    def test_txt1000(self):
+        assert plc_to_modbus("TXT", 1000) == (37363, 1)
+
     def test_td1(self):
         assert plc_to_modbus("TD", 1) == (45056, 1)
 
@@ -381,6 +387,12 @@ class TestModbusToPlc:
     def test_reg_36864_txt1(self):
         assert modbus_to_plc(36864, is_coil=False) == ("TXT", 1)
 
+    def test_reg_36865_txt3(self):
+        assert modbus_to_plc(36865, is_coil=False) == ("TXT", 3)
+
+    def test_reg_37363_txt999(self):
+        assert modbus_to_plc(37363, is_coil=False) == ("TXT", 999)
+
     def test_reg_45056_td1(self):
         assert modbus_to_plc(45056, is_coil=False) == ("TD", 1)
 
@@ -470,7 +482,7 @@ class TestRoundTrip:
             ("DF", 1),
             ("DF", 500),
             ("TXT", 1),
-            ("TXT", 1000),
+            ("TXT", 999),
             ("TD", 1),
             ("TD", 500),
             ("CTD", 1),

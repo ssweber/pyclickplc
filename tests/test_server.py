@@ -190,6 +190,9 @@ class TestModbusToPlcRegister:
     def test_txt1(self):
         assert modbus_to_plc_register(36864) == ("TXT", 1, 0)
 
+    def test_txt101(self):
+        assert modbus_to_plc_register(36914) == ("TXT", 101, 0)
+
     def test_td1(self):
         assert modbus_to_plc_register(45056) == ("TD", 1, 0)
 
@@ -324,6 +327,14 @@ class TestContextRegisterReads:
         ctx = _ClickDeviceContext(p)
         result = ctx.getValues(3, 36864, 1)
         assert result == [ord("A") | (ord("B") << 8)]
+
+    def test_read_txt_register_high_index(self):
+        p = MemoryDataProvider()
+        p.set("TXT101", "Z")
+        p.set("TXT102", "Y")
+        ctx = _ClickDeviceContext(p)
+        result = ctx.getValues(3, 36914, 1)
+        assert result == [ord("Z") | (ord("Y") << 8)]
 
 
 # ==============================================================================
@@ -471,6 +482,15 @@ class TestContextRegisterWrites:
         assert result is None
         assert p.get("TXT1") == "H"
         assert p.get("TXT2") == "i"
+
+    def test_fc16_write_txt_high_index(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        reg_val = ord("Z") | (ord("Y") << 8)
+        result = ctx.setValues(16, 36914, [reg_val])
+        assert result is None
+        assert p.get("TXT101") == "Z"
+        assert p.get("TXT102") == "Y"
 
 
 # ==============================================================================
