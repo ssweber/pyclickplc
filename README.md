@@ -1,6 +1,6 @@
 # pyclickplc
 
-Utilities for AutomationDirect CLICK PLCs — address parsing, Modbus TCP client/server, nickname CSV and DataView CDV file I/O, and BlockTag comment parsing.
+Utilities for AutomationDirect CLICK PLCs: Modbus TCP client/server, address helpers, nickname CSV I/O, and DataView CDV I/O.
 
 ## Installation
 
@@ -11,9 +11,9 @@ pip install pyclickplc
 
 Requires Python 3.11+. The Modbus client and server depend on [pymodbus](https://github.com/pymodbus-dev/pymodbus).
 
-## Modbus Client
+## Quickstart
 
-`ClickClient` is an async Modbus TCP driver with three access patterns: bank accessors, address strings, and tag nicknames.
+`ClickClient` is an async Modbus TCP client for CLICK PLCs.
 
 ```python
 import asyncio
@@ -21,35 +21,30 @@ from pyclickplc import ClickClient
 
 async def main():
     async with ClickClient("192.168.1.10") as plc:
-        # Bank accessors — read/write by bank and index
-        result = await plc.ds.read(1)          # Read DS1 → ModbusResponse({"DS1": 42})
-        value = await plc.ds[1]                # Shorthand → bare value (int)
-        await plc.ds.write(1, 100)             # Write 100 to DS1
-        result = await plc.ds.read(1, 10)      # Read DS1-DS10 → ModbusResponse
-        await plc.y.write(1, [True, False])    # Write Y001=True, Y002=False
+        # Bank accessor
+        await plc.ds.write(1, 100)
+        value = await plc.ds[1]                   # bare value
+        result = await plc.ds.read(1, 3)          # DS1..DS3 (inclusive range)
 
-        # Address interface — read/write by address string
-        result = await plc.addr.read("df1")    # Read DF1 → ModbusResponse({"DF1": 3.14})
-        await plc.addr.write("df1", 3.14)      # Write 3.14 to DF1
-        result = await plc.addr.read("c1-c10") # Read C1-C10 → ModbusResponse
+        # Address interface
+        await plc.addr.write("df1", 3.14)
+        by_addr = await plc.addr.read("df1")
 
-        # Tag interface — read/write by nickname (requires CSV file)
-        plc_with_tags = ClickClient("192.168.1.10", tag_filepath="nicknames.csv")
-        # ... use as context manager, then:
-        # value = await plc_with_tags.tag.read("MyTag")   # → single value
-        # await plc_with_tags.tag.write("MyTag", 42)
-        # all_tags = await plc_with_tags.tag.read()        # → {"MyTag": ..., ...}
+    # Tag interface (requires tag_filepath on client construction)
+    async with ClickClient("192.168.1.10", tag_filepath="nicknames.csv") as tagged:
+        await tagged.tag.write("MyTag", 42)
+        tag_value = await tagged.tag.read("MyTag")
+        all_tag_values = await tagged.tag.read()
+        tag_defs = tagged.tag.read_all()  # synchronous tag metadata
 
 asyncio.run(main())
 ```
 
-**Return types:** All `read()` calls return a `ModbusResponse` — a `Mapping` keyed by canonical uppercase address (`"DS1"`, `"X001"`) with normalized look-ups (`response["ds1"]` finds `"DS1"`). Use `await plc.ds[1]` for a bare value (`bool`, `int`, `float`, or `str`). Tag interface single reads return a bare value; tag read-all returns a plain `dict` keyed by tag name.
-
-Supported banks: `X`, `Y`, `C`, `T`, `CT`, `SC`, `DS`, `DD`, `DH`, `DF`, `XD`, `YD`, `TD`, `CTD`, `SD`, `TXT`.
+All `read()` methods return `ModbusResponse`, a mapping keyed by canonical uppercase addresses (`"DS1"`, `"X001"`). Lookups are normalized (`resp["ds1"]` resolves `"DS1"`). Use `await plc.ds[1]` for a bare value.
 
 ## Modbus Server
 
-`ClickServer` simulates a CLICK PLC over Modbus TCP. Supply a `DataProvider` to back the address space.
+`ClickServer` simulates a CLICK PLC over Modbus TCP. `MemoryDataProvider` is the built-in in-memory backend.
 
 ```python
 import asyncio
@@ -57,25 +52,22 @@ from pyclickplc import ClickServer, MemoryDataProvider
 
 async def main():
     provider = MemoryDataProvider()
-    provider.set("DS1", 42)
-    provider.set("Y001", True)
+    provider.bulk_set({
+        "DS1": 42,
+        "Y001": True,
+    })
 
-    async with ClickServer(provider, host="localhost", port=5020) as server:
+    async with ClickServer(provider, host="localhost", port=5020):
         # Server is now accepting Modbus TCP connections
         await asyncio.sleep(60)
 
 asyncio.run(main())
 ```
 
-Implement the `DataProvider` protocol for custom backends:
-
-```python
-from pyclickplc.server import DataProvider, PlcValue
-
-class MyProvider:
-    def read(self, address: str) -> PlcValue: ...
-    def write(self, address: str, value: PlcValue) -> None: ...
-```
+`MemoryDataProvider` convenience methods:
+- `get(address)`
+- `set(address, value)`
+- `bulk_set({address: value, ...})`
 
 ## Nickname CSV Files
 
@@ -92,8 +84,6 @@ for key, record in records.items():
 # Write — only records with content are written
 count = write_csv("output.csv", records)
 ```
-
-MDB-format CSV files (exported by CLICK software) are also supported via `read_mdb_csv()`.
 
 ## DataView CDV Files
 
@@ -129,41 +119,7 @@ display = format_address_display("XD", 1)   # "XD0u"
 normalized = normalize_address("x1")    # "X001"
 ```
 
-## Modbus Mapping
-
-Map between PLC addresses and raw Modbus coil/register addresses.
-
-```python
-from pyclickplc import plc_to_modbus, modbus_to_plc, pack_value, unpack_value
-from pyclickplc import DataType
-
-# PLC address → Modbus address
-modbus_addr, reg_count = plc_to_modbus("DS", 1)    # (0, 1)
-modbus_addr, reg_count = plc_to_modbus("DF", 1)    # (28672, 2)
-
-# Modbus address → PLC address
-result = modbus_to_plc(0, is_coil=False)     # ("DS", 1)
-result = modbus_to_plc(0, is_coil=True)      # ("X", 1)
-
-# Pack/unpack values for Modbus registers
-regs = pack_value(3.14, DataType.FLOAT)      # [low_word, high_word]
-value = unpack_value(regs, DataType.FLOAT)   # 3.14
-```
-
-## Bank Definitions
-
-All 16 CLICK PLC memory banks are defined in `BANKS`:
-
-```python
-from pyclickplc import BANKS, DataType
-
-ds = BANKS["DS"]
-print(ds.min_addr, ds.max_addr, ds.data_type)  # 1, 4500, DataType.INT
-
-# Sparse banks (X/Y) have valid_ranges for hardware slot validation
-x = BANKS["X"]
-print(x.valid_ranges)  # ((1, 16), (21, 36), (101, 116), ...)
-```
+Full API reference is available via MkDocs (including advanced modules).
 
 ## Development
 
@@ -171,5 +127,7 @@ print(x.valid_ranges)  # ((1, 16), (21, 36), (101, 116), ...)
 uv sync --all-extras --dev    # Install dependencies
 make test                     # Run tests (uv run pytest)
 make lint                     # Lint (codespell, ruff, ty)
+make docs-build               # Build docs with mkdocstrings
+make docs-serve               # Serve docs locally
 make                          # All of the above
 ```

@@ -1,0 +1,47 @@
+site_name: pyclickplc
+site_description: Documentation for pyclickplc
+repo_url: https://github.com/ssweber/pyclickplc
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Core Usage:
+      - Modbus Client: guides/client.md
+      - Modbus Server: guides/server.md
+      - File I/O: guides/files.md
+  - API Reference:
+      - Overview: reference/index.md
+      - Modules:
+          - pyclickplc: reference/api/pyclickplc.md
+          - addresses: reference/api/addresses.md
+          - banks: reference/api/banks.md
+          - blocks: reference/api/blocks.md
+          - client: reference/api/client.md
+          - dataview: reference/api/dataview.md
+          - modbus: reference/api/modbus.md
+          - nicknames: reference/api/nicknames.md
+          - server: reference/api/server.md
+          - validation: reference/api/validation.md
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_reference.py
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            filters:
+              - "!^_"
+            heading_level: 2
+            inherited_members: false
+            members_order: source
+            separate_signature: true
+            show_root_heading: true
+            show_signature_annotations: true
+            show_source: false
