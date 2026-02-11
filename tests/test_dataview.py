@@ -8,6 +8,8 @@ from pyclickplc.dataview import (
     WRITABLE_SD,
     DataviewRow,
     _CdvStorageCode,
+    check_cdv_file,
+    check_cdv_files,
     create_empty_dataview,
     datatype_to_display,
     datatype_to_storage,
@@ -526,3 +528,85 @@ class TestSaveCdv:
         loaded_rows, has_new_values, _header = load_cdv(cdv)
         assert has_new_values is True
         assert loaded_rows[0].new_value == "1"
+
+
+class TestCheckCdv:
+    def test_check_cdv_file_valid(self, tmp_path):
+        cdv = tmp_path / "valid.cdv"
+        rows = create_empty_dataview()
+        rows[0].address = "X001"
+        rows[0].type_code = TypeCode.BIT
+        save_cdv(cdv, rows, has_new_values=False)
+
+        assert check_cdv_file(cdv) == []
+
+    def test_check_cdv_file_invalid_address(self, tmp_path):
+        cdv = tmp_path / "invalid-address.cdv"
+        rows = create_empty_dataview()
+        rows[0].address = "INVALID"
+        rows[0].type_code = TypeCode.BIT
+        save_cdv(cdv, rows, has_new_values=False)
+
+        issues = check_cdv_file(cdv)
+        assert len(issues) == 1
+        assert "Invalid address format" in issues[0]
+
+    def test_check_cdv_file_type_mismatch(self, tmp_path):
+        cdv = tmp_path / "mismatch.cdv"
+        rows = create_empty_dataview()
+        rows[0].address = "DS1"
+        rows[0].type_code = TypeCode.BIT
+        save_cdv(cdv, rows, has_new_values=False)
+
+        issues = check_cdv_file(cdv)
+        assert len(issues) == 1
+        assert "Type code mismatch" in issues[0]
+
+    def test_check_cdv_file_invalid_new_value_bit(self, tmp_path):
+        cdv = tmp_path / "invalid-bit.cdv"
+        rows = create_empty_dataview()
+        rows[0].address = "X001"
+        rows[0].type_code = TypeCode.BIT
+        rows[0].new_value = "2"
+        save_cdv(cdv, rows, has_new_values=True)
+
+        issues = check_cdv_file(cdv)
+        assert len(issues) == 1
+        assert "invalid for BIT" in issues[0]
+
+    def test_check_cdv_file_non_writable_with_new_value(self, tmp_path):
+        cdv = tmp_path / "non-writable.cdv"
+        rows = create_empty_dataview()
+        rows[0].address = "XD0"
+        rows[0].type_code = TypeCode.HEX
+        rows[0].new_value = "1"
+        save_cdv(cdv, rows, has_new_values=True)
+
+        issues = check_cdv_file(cdv)
+        assert len(issues) == 1
+        assert "not writable" in issues[0]
+
+    def test_check_cdv_files_counts_and_aggregation(self, tmp_path):
+        project = tmp_path / "MyProject"
+        dataview_dir = project / "CLICK (00010A98)" / "DataView"
+        dataview_dir.mkdir(parents=True)
+
+        rows_ok = create_empty_dataview()
+        rows_ok[0].address = "X001"
+        rows_ok[0].type_code = TypeCode.BIT
+        save_cdv(dataview_dir / "ok.cdv", rows_ok, has_new_values=False)
+
+        rows_bad = create_empty_dataview()
+        rows_bad[0].address = "DS1"
+        rows_bad[0].type_code = TypeCode.BIT
+        save_cdv(dataview_dir / "bad.cdv", rows_bad, has_new_values=False)
+
+        issues, checked = check_cdv_files(project)
+        assert checked == 2
+        assert len(issues) == 1
+        assert "Type code mismatch" in issues[0]
+
+    def test_check_cdv_files_missing_folder(self, tmp_path):
+        issues, checked = check_cdv_files(tmp_path / "NoProject")
+        assert checked == 0
+        assert issues == []

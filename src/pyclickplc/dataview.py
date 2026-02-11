@@ -1,8 +1,8 @@
 """DataView model and CDV file I/O for CLICK PLC DataView files.
 
 Provides the DataviewRow dataclass, type code mappings, CDV file read/write,
-and value conversion functions between CDV storage, native Python types,
-and UI display strings.
+value conversion functions between CDV storage, native Python types,
+UI display strings, and CDV verification helpers.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .addresses import format_address_display, parse_address
+from .validation import FLOAT_MAX, FLOAT_MIN, INT2_MAX, INT2_MIN, INT_MAX, INT_MIN
 
 
 # Type codes used in CDV files to identify address types
@@ -587,6 +588,158 @@ def export_cdv(
         header: Original header line to preserve. If None, uses default format.
     """
     save_cdv(path, rows, has_new_values, header)
+
+
+def _validate_cdv_new_value(
+    new_value: str,
+    type_code: int,
+    address: str,
+    filename: str,
+    row_num: int,
+) -> list[str]:
+    """Validate CDV new_value storage and logical ranges for a row."""
+    issues: list[str] = []
+    prefix = f"CDV {filename} row {row_num}: {address}"
+
+    try:
+        if type_code == _CdvStorageCode.BIT:
+            if new_value not in ("0", "1"):
+                issues.append(f"{prefix} new_value '{new_value}' invalid for BIT (must be 0 or 1)")
+            return issues
+
+        if type_code == _CdvStorageCode.INT:
+            raw = int(new_value)
+            if raw < 0 or raw > 0xFFFFFFFF:
+                issues.append(f"{prefix} new_value '{new_value}' out of range for INT storage")
+                return issues
+            converted = storage_to_datatype(new_value, type_code)
+            if not isinstance(converted, int):
+                issues.append(f"{prefix} new_value '{new_value}' failed to convert to INT")
+                return issues
+            if converted < INT_MIN or converted > INT_MAX:
+                issues.append(
+                    f"{prefix} new_value converts to {converted}, "
+                    f"outside INT range ({INT_MIN} to {INT_MAX})"
+                )
+            return issues
+
+        if type_code == _CdvStorageCode.INT2:
+            raw = int(new_value)
+            if raw < 0 or raw > 0xFFFFFFFF:
+                issues.append(f"{prefix} new_value '{new_value}' out of range for INT2 storage")
+                return issues
+            converted = storage_to_datatype(new_value, type_code)
+            if not isinstance(converted, int):
+                issues.append(f"{prefix} new_value '{new_value}' failed to convert to INT2")
+                return issues
+            if converted < INT2_MIN or converted > INT2_MAX:
+                issues.append(
+                    f"{prefix} new_value converts to {converted}, "
+                    f"outside INT2 range ({INT2_MIN} to {INT2_MAX})"
+                )
+            return issues
+
+        if type_code == _CdvStorageCode.HEX:
+            raw = int(new_value)
+            if raw < 0 or raw > 0xFFFF:
+                issues.append(f"{prefix} new_value '{new_value}' out of range for HEX (0-65535)")
+            return issues
+
+        if type_code == _CdvStorageCode.FLOAT:
+            raw = int(new_value)
+            if raw < 0 or raw > 0xFFFFFFFF:
+                issues.append(f"{prefix} new_value '{new_value}' invalid for FLOAT storage")
+                return issues
+            converted = storage_to_datatype(new_value, type_code)
+            if not isinstance(converted, float):
+                issues.append(f"{prefix} new_value '{new_value}' failed to convert to FLOAT")
+                return issues
+            if converted < FLOAT_MIN or converted > FLOAT_MAX:
+                issues.append(
+                    f"{prefix} new_value converts to {converted}, outside FLOAT range"
+                )
+            return issues
+
+        if type_code == _CdvStorageCode.TXT:
+            raw = int(new_value)
+            if raw < 0 or raw > 127:
+                issues.append(
+                    f"{prefix} new_value '{new_value}' out of range for TXT (0-127 ASCII)"
+                )
+            return issues
+
+    except ValueError:
+        issues.append(f"{prefix} new_value '{new_value}' is not a valid number")
+
+    return issues
+
+
+def check_cdv_file(path: Path | str) -> list[str]:
+    """Validate a single CDV file and return issue strings."""
+    issues: list[str] = []
+    path = Path(path)
+    filename = path.name
+
+    try:
+        rows, _has_new_values, _header = load_cdv(path)
+    except Exception as exc:  # pragma: no cover - exercised by caller tests
+        return [f"CDV {filename}: Error loading file - {exc}"]
+
+    for i, row in enumerate(rows):
+        if row.is_empty:
+            continue
+
+        row_num = i + 1
+
+        try:
+            memory_type, _mdb_address = parse_address(row.address)
+        except ValueError:
+            issues.append(f"CDV {filename} row {row_num}: Invalid address format '{row.address}'")
+            continue
+
+        if memory_type not in MEMORY_TYPE_TO_CODE:
+            issues.append(f"CDV {filename} row {row_num}: Unknown memory type '{memory_type}'")
+            continue
+
+        expected_code = get_type_code_for_address(row.address)
+        if expected_code is not None and row.type_code != expected_code:
+            issues.append(
+                f"CDV {filename} row {row_num}: Type code mismatch for {row.address} "
+                f"(has {row.type_code}, expected {expected_code})"
+            )
+
+        if row.new_value:
+            issues.extend(
+                _validate_cdv_new_value(
+                    row.new_value, row.type_code, row.address, filename, row_num
+                )
+            )
+            if not is_address_writable(row.address):
+                issues.append(
+                    f"CDV {filename} row {row_num}: {row.address} has new_value "
+                    f"but address is not writable"
+                )
+
+    return issues
+
+
+def check_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
+    """Validate all CDV files in a project DataView folder."""
+    issues: list[str] = []
+    files_checked = 0
+
+    try:
+        dataview_folder = get_dataview_folder(project_path)
+        if dataview_folder is None:
+            return issues, files_checked
+
+        for cdv_path in list_cdv_files(dataview_folder):
+            files_checked += 1
+            issues.extend(check_cdv_file(cdv_path))
+    except Exception as exc:
+        issues.append(f"CDV: Error accessing dataview folder - {exc}")
+
+    return issues, files_checked
 
 
 def get_dataview_folder(project_path: Path | str) -> Path | None:
