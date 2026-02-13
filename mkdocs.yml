@@ -17,6 +17,7 @@ nav:
           - pyclickplc: reference/api/pyclickplc.md
           - addresses: reference/api/addresses.md
           - banks: reference/api/banks.md
+          - capabilities: reference/api/capabilities.md
           - blocks: reference/api/blocks.md
           - client: reference/api/client.md
           - dataview: reference/api/dataview.md

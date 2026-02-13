@@ -121,6 +121,22 @@ normalized = normalize_address("x1")    # "X001"
 
 Full API reference is available via MkDocs (including advanced modules).
 
+## Hardware Capability Profile
+
+`ClickHardwareProfile` provides table-driven ladder portability rules:
+- bank/address writability (`is_writable`)
+- fixed instruction-role compatibility (`valid_for_role`)
+- copy-family bank compatibility (`copy_compatible`)
+- compare compatibility (`compare_compatible`, `compare_constant_compatible`)
+
+```python
+from pyclickplc import CLICK_HARDWARE_PROFILE
+
+CLICK_HARDWARE_PROFILE.is_writable("SC", 50)  # True
+CLICK_HARDWARE_PROFILE.valid_for_role("T", "timer_done_bit")  # True
+CLICK_HARDWARE_PROFILE.copy_compatible("single", "X", "Y")  # True
+```
+
 ## Development
 
 ```bash
