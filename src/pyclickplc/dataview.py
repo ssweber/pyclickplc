@@ -570,26 +570,6 @@ def save_cdv(
     path.write_text(content, encoding="utf-16")
 
 
-def export_cdv(
-    path: Path | str,
-    rows: list[DataviewRow],
-    has_new_values: bool,
-    header: str | None = None,
-) -> None:
-    """Export a CDV file to a new location.
-
-    This is identical to save_cdv but semantically indicates exporting
-    rather than saving to the original location.
-
-    Args:
-        path: Path to export the CDV file.
-        rows: List of DataviewRow objects.
-        has_new_values: True if any rows have new values set.
-        header: Original header line to preserve. If None, uses default format.
-    """
-    save_cdv(path, rows, has_new_values, header)
-
-
 def _validate_cdv_new_value(
     new_value: str,
     type_code: int,
@@ -729,11 +709,11 @@ def check_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
     files_checked = 0
 
     try:
-        dataview_folder = get_dataview_folder(project_path)
+        dataview_folder = _get_dataview_folder(project_path)
         if dataview_folder is None:
             return issues, files_checked
 
-        for cdv_path in list_cdv_files(dataview_folder):
+        for cdv_path in _list_cdv_files(dataview_folder):
             files_checked += 1
             issues.extend(check_cdv_file(cdv_path))
     except Exception as exc:
@@ -742,7 +722,7 @@ def check_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
     return issues, files_checked
 
 
-def get_dataview_folder(project_path: Path | str) -> Path | None:
+def _get_dataview_folder(project_path: Path | str) -> Path | None:
     """Get the DataView folder for a CLICK project.
 
     The DataView folder is located at: {project_path}/CLICK ({unique_id})/DataView
@@ -768,7 +748,7 @@ def get_dataview_folder(project_path: Path | str) -> Path | None:
     return None
 
 
-def list_cdv_files(dataview_folder: Path | str) -> list[Path]:
+def _list_cdv_files(dataview_folder: Path | str) -> list[Path]:
     """List all CDV files in a DataView folder.
 
     Args:
@@ -782,3 +762,5 @@ def list_cdv_files(dataview_folder: Path | str) -> list[Path]:
         return []
 
     return sorted(folder.glob("*.cdv"), key=lambda p: p.stem.lower())
+
+

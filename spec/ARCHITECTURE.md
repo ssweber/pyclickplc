@@ -110,7 +110,6 @@ From ClickNick extraction:
 - `CSV_COLUMNS`, `ADDRESS_PATTERN`
 - `DATA_TYPE_STR_TO_CODE` / `DATA_TYPE_CODE_TO_STR`
 - `read_csv(path)` → `dict[int, AddressRecord]`
-- `read_mdb_csv(path)` → `dict[int, AddressRecord]`
 - `write_csv(path, records)` → count
 
 ### `dataview.py` — DataView CDV File I/O
@@ -443,3 +442,4 @@ from pyclickplc.server import ClickServer, MemoryDataProvider, DataProvider
 - `load_nickname_file(path)` → `ClickProject`
 - `ClickProject` dataclass (records + banks + standalone tags) ?
 ```
+

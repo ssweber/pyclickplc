@@ -7,7 +7,6 @@ from pyclickplc.nicknames import (
     DATA_TYPE_CODE_TO_STR,
     DATA_TYPE_STR_TO_CODE,
     read_csv,
-    read_mdb_csv,
     write_csv,
 )
 
@@ -136,39 +135,6 @@ class TestWriteCsv:
         assert "DS1" in lines[2]
 
 
-class TestReadMdbCsv:
-    """Tests for read_mdb_csv function."""
-
-    def test_read_basic(self, tmp_path):
-        csv_path = tmp_path / "Address.csv"
-        csv_path.write_text(
-            "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment\n"
-            "1,X,1,0,Input1,1,0,0,First input\n"
-            "100663297,DS,1,1,Temp,1,100,1,Temperature\n",
-            encoding="utf-8",
-        )
-
-        records = read_mdb_csv(csv_path)
-        assert len(records) == 2
-
-        x_records = [r for r in records.values() if r.memory_type == "X"]
-        assert len(x_records) == 1
-        assert x_records[0].nickname == "Input1"
-        assert x_records[0].comment == "First input"
-
-    def test_read_skips_empty_nicknames(self, tmp_path):
-        csv_path = tmp_path / "Address.csv"
-        csv_path.write_text(
-            "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment\n"
-            "1,X,1,0,,,0,0,\n"
-            "2,X,2,0,Input2,1,0,0,Second\n",
-            encoding="utf-8",
-        )
-
-        records = read_mdb_csv(csv_path)
-        assert len(records) == 1
-
-
 class TestRoundTrip:
     """Tests for write then read round-trip."""
 
@@ -211,3 +177,5 @@ class TestRoundTrip:
         assert ds_records[0].nickname == "Speed"
         assert ds_records[0].comment == "Motor speed"
         assert ds_records[0].retentive is True
+
+
