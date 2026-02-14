@@ -152,5 +152,3 @@ def write_csv(path: str | Path, records: dict[int, AddressRecord]) -> int:
             csvfile.write(",".join(line_parts) + "\n")
 
     return len(rows_to_write)
-
-

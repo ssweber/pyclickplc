@@ -30,7 +30,6 @@ from .client import ClickClient, ModbusResponse
 from .dataview import (
     DataviewRow,
     check_cdv_file,
-    check_cdv_files,
     load_cdv,
     save_cdv,
 )
@@ -77,7 +76,6 @@ __all__ = [
     "MemoryDataProvider",
     "DataviewRow",
     "check_cdv_file",
-    "check_cdv_files",
     "load_cdv",
     "save_cdv",
     "read_csv",
@@ -86,5 +84,3 @@ __all__ = [
     "validate_comment",
     "validate_initial_value",
 ]
-
-

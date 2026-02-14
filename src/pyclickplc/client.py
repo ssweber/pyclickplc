@@ -679,7 +679,9 @@ class ClickClient:
                 self._client.write_coil, address=address, value=values[0]
             )
         else:
-            result = await self._call_modbus(self._client.write_coils, address=address, values=values)
+            result = await self._call_modbus(
+                self._client.write_coils, address=address, values=values
+            )
         if result.isError():
             raise OSError(f"Modbus write error at coil {address}: {result}")
 
@@ -705,6 +707,8 @@ class ClickClient:
                 self._client.write_register, address=address, value=values[0]
             )
         else:
-            result = await self._call_modbus(self._client.write_registers, address=address, values=values)
+            result = await self._call_modbus(
+                self._client.write_registers, address=address, values=values
+            )
         if result.isError():
             raise OSError(f"Modbus write error at register {address}: {result}")

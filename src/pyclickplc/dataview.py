@@ -635,9 +635,7 @@ def _validate_cdv_new_value(
                 issues.append(f"{prefix} new_value '{new_value}' failed to convert to FLOAT")
                 return issues
             if converted < FLOAT_MIN or converted > FLOAT_MAX:
-                issues.append(
-                    f"{prefix} new_value converts to {converted}, outside FLOAT range"
-                )
+                issues.append(f"{prefix} new_value converts to {converted}, outside FLOAT range")
             return issues
 
         if type_code == _CdvStorageCode.TXT:
@@ -701,66 +699,3 @@ def check_cdv_file(path: Path | str) -> list[str]:
                 )
 
     return issues
-
-
-def check_cdv_files(project_path: Path | str) -> tuple[list[str], int]:
-    """Validate all CDV files in a project DataView folder."""
-    issues: list[str] = []
-    files_checked = 0
-
-    try:
-        dataview_folder = _get_dataview_folder(project_path)
-        if dataview_folder is None:
-            return issues, files_checked
-
-        for cdv_path in _list_cdv_files(dataview_folder):
-            files_checked += 1
-            issues.extend(check_cdv_file(cdv_path))
-    except Exception as exc:
-        issues.append(f"CDV: Error accessing dataview folder - {exc}")
-
-    return issues, files_checked
-
-
-def _get_dataview_folder(project_path: Path | str) -> Path | None:
-    """Get the DataView folder for a CLICK project.
-
-    The DataView folder is located at: {project_path}/CLICK ({unique_id})/DataView
-    where {unique_id} is a hex identifier like "00010A98".
-
-    Args:
-        project_path: Path to the CLICK project folder.
-
-    Returns:
-        Path to the DataView folder, or None if not found.
-    """
-    project_path = Path(project_path)
-    if not project_path.is_dir():
-        return None
-
-    # Look for CLICK (*) subdirectory
-    for child in project_path.iterdir():
-        if child.is_dir() and child.name.startswith("CLICK ("):
-            dataview_path = child / "DataView"
-            if dataview_path.is_dir():
-                return dataview_path
-
-    return None
-
-
-def _list_cdv_files(dataview_folder: Path | str) -> list[Path]:
-    """List all CDV files in a DataView folder.
-
-    Args:
-        dataview_folder: Path to the DataView folder.
-
-    Returns:
-        List of Path objects for each CDV file, sorted by name.
-    """
-    folder = Path(dataview_folder)
-    if not folder.is_dir():
-        return []
-
-    return sorted(folder.glob("*.cdv"), key=lambda p: p.stem.lower())
-
-

@@ -177,5 +177,3 @@ class TestRoundTrip:
         assert ds_records[0].nickname == "Speed"
         assert ds_records[0].comment == "Motor speed"
         assert ds_records[0].retentive is True
-
-

@@ -9,7 +9,6 @@ from pyclickplc.dataview import (
     DataviewRow,
     _CdvStorageCode,
     check_cdv_file,
-    check_cdv_files,
     create_empty_dataview,
     datatype_to_display,
     datatype_to_storage,
@@ -585,28 +584,3 @@ class TestCheckCdv:
         issues = check_cdv_file(cdv)
         assert len(issues) == 1
         assert "not writable" in issues[0]
-
-    def test_check_cdv_files_counts_and_aggregation(self, tmp_path):
-        project = tmp_path / "MyProject"
-        dataview_dir = project / "CLICK (00010A98)" / "DataView"
-        dataview_dir.mkdir(parents=True)
-
-        rows_ok = create_empty_dataview()
-        rows_ok[0].address = "X001"
-        rows_ok[0].type_code = TypeCode.BIT
-        save_cdv(dataview_dir / "ok.cdv", rows_ok, has_new_values=False)
-
-        rows_bad = create_empty_dataview()
-        rows_bad[0].address = "DS1"
-        rows_bad[0].type_code = TypeCode.BIT
-        save_cdv(dataview_dir / "bad.cdv", rows_bad, has_new_values=False)
-
-        issues, checked = check_cdv_files(project)
-        assert checked == 2
-        assert len(issues) == 1
-        assert "Type code mismatch" in issues[0]
-
-    def test_check_cdv_files_missing_folder(self, tmp_path):
-        issues, checked = check_cdv_files(tmp_path / "NoProject")
-        assert checked == 0
-        assert issues == []

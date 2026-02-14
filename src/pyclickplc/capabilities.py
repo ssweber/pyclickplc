@@ -43,7 +43,9 @@ class BankCapability:
 
 
 # SC/SD writable subsets for ladder validation (different from Modbus writability).
-LADDER_WRITABLE_SC: frozenset[int] = frozenset({50, 51, 53, 55, 60, 61, 65, 66, 67, 75, 76, 120, 121})
+LADDER_WRITABLE_SC: frozenset[int] = frozenset(
+    {50, 51, 53, 55, 60, 61, 65, 66, 67, 75, 76, 120, 121}
+)
 
 LADDER_WRITABLE_SD: frozenset[int] = frozenset(
     {
@@ -111,8 +113,12 @@ INSTRUCTION_ROLE_COMPATIBILITY: dict[InstructionRole, frozenset[str]] = {
 _BIT_SOURCES: frozenset[str] = frozenset({"X", "Y", "C", "T", "CT", "SC"})
 _BIT_DESTS: frozenset[str] = frozenset({"Y", "C"})
 
-_REGISTER_SOURCES: frozenset[str] = frozenset({"DS", "DD", "DH", "DF", "XD", "YD", "TD", "CTD", "SD", "TXT"})
-_SINGLE_REGISTER_DESTS: frozenset[str] = frozenset({"DS", "DD", "DH", "DF", "YD", "TD", "CTD", "SD", "TXT"})
+_REGISTER_SOURCES: frozenset[str] = frozenset(
+    {"DS", "DD", "DH", "DF", "XD", "YD", "TD", "CTD", "SD", "TXT"}
+)
+_SINGLE_REGISTER_DESTS: frozenset[str] = frozenset(
+    {"DS", "DD", "DH", "DF", "YD", "TD", "CTD", "SD", "TXT"}
+)
 
 _BLOCK_REGISTER_DESTS: frozenset[str] = frozenset({"DS", "DD", "DH", "DF", "YD", "TD", "CTD"})
 _BLOCK_TXT_DESTS: frozenset[str] = frozenset({"DS", "DD", "DH", "DF"})
