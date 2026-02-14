@@ -184,17 +184,22 @@ COMPARE_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
     + [("TXT", "TXT")]
 )
 
+
+def _constant_kinds(*kinds: CompareConstantKind) -> frozenset[CompareConstantKind]:
+    return frozenset(kinds)
+
+
 COMPARE_CONSTANT_COMPATIBILITY: dict[str, frozenset[CompareConstantKind]] = {
-    "XD": frozenset({"hex"}),
-    "YD": frozenset({"hex"}),
-    "DH": frozenset({"hex"}),
-    "TD": frozenset({"int1", "int2", "float"}),
-    "CTD": frozenset({"int1", "int2", "float"}),
-    "DS": frozenset({"int1", "int2", "float"}),
-    "DD": frozenset({"int1", "int2", "float"}),
-    "DF": frozenset({"int1", "int2", "float"}),
-    "SD": frozenset({"int1", "int2", "float"}),
-    "TXT": frozenset({"text"}),
+    "XD": _constant_kinds("hex"),
+    "YD": _constant_kinds("hex"),
+    "DH": _constant_kinds("hex"),
+    "TD": _constant_kinds("int1", "int2", "float"),
+    "CTD": _constant_kinds("int1", "int2", "float"),
+    "DS": _constant_kinds("int1", "int2", "float"),
+    "DD": _constant_kinds("int1", "int2", "float"),
+    "DF": _constant_kinds("int1", "int2", "float"),
+    "SD": _constant_kinds("int1", "int2", "float"),
+    "TXT": _constant_kinds("text"),
 }
 
 

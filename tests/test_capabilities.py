@@ -13,6 +13,9 @@ from pyclickplc import (
     LADDER_WRITABLE_SC,
     LADDER_WRITABLE_SD,
     ClickHardwareProfile,
+    CompareConstantKind,
+    CopyOperation,
+    InstructionRole,
 )
 
 
@@ -69,7 +72,7 @@ def test_is_writable_sd_subset():
         ("copy_pointer", "DS", "DD"),
     ],
 )
-def test_role_compatibility(role: str, ok_bank: str, bad_bank: str):
+def test_role_compatibility(role: InstructionRole, ok_bank: str, bad_bank: str):
     assert CLICK_HARDWARE_PROFILE.valid_for_role(ok_bank, role) is True
     assert CLICK_HARDWARE_PROFILE.valid_for_role(bad_bank, role) is False
 
@@ -95,7 +98,7 @@ def test_role_compatibility(role: str, ok_bank: str, bad_bank: str):
         ("unpack_words", "DS", "DH", False),
     ],
 )
-def test_copy_compatibility(operation: str, source: str, dest: str, expected: bool):
+def test_copy_compatibility(operation: CopyOperation, source: str, dest: str, expected: bool):
     assert CLICK_HARDWARE_PROFILE.copy_compatible(operation, source, dest) is expected
 
 
@@ -124,7 +127,7 @@ def test_compare_compatibility(left: str, right: str, expected: bool):
         ("TXT", "hex", False),
     ],
 )
-def test_compare_constant_compatibility(bank: str, const_kind: str, expected: bool):
+def test_compare_constant_compatibility(bank: str, const_kind: CompareConstantKind, expected: bool):
     assert CLICK_HARDWARE_PROFILE.compare_constant_compatible(bank, const_kind) is expected
 
 
