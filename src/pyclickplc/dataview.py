@@ -1,6 +1,6 @@
 """DataView model and CDV file I/O for CLICK PLC DataView files.
 
-Provides the DataviewRow dataclass, type code mappings, CDV file read/write,
+Provides the DataviewRow dataclass, CDV file read/write,
 value conversion functions between CDV storage, native Python types,
 UI display strings, and CDV verification helpers.
 """
@@ -12,7 +12,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .addresses import format_address_display, parse_address
-from .validation import FLOAT_MAX, FLOAT_MIN, INT2_MAX, INT2_MIN, INT_MAX, INT_MIN
+from .banks import MEMORY_TYPE_TO_DATA_TYPE, DataType
+from .validation import (
+    FLOAT_MAX,
+    FLOAT_MIN,
+    INT2_MAX,
+    INT2_MIN,
+    INT_MAX,
+    INT_MIN,
+    validate_initial_value,
+)
 
 
 # Type codes used in CDV files to identify address types
@@ -27,35 +36,16 @@ class _CdvStorageCode:
     TXT = 1024
 
 
-# Map memory type prefixes to their type codes
-MEMORY_TYPE_TO_CODE: dict[str, int] = {
-    "X": _CdvStorageCode.BIT,
-    "Y": _CdvStorageCode.BIT,
-    "C": _CdvStorageCode.BIT,
-    "T": _CdvStorageCode.BIT,
-    "CT": _CdvStorageCode.BIT,
-    "SC": _CdvStorageCode.BIT,
-    "DS": _CdvStorageCode.INT,
-    "TD": _CdvStorageCode.INT,
-    "SD": _CdvStorageCode.INT,
-    "DD": _CdvStorageCode.INT2,
-    "CTD": _CdvStorageCode.INT2,
-    "DH": _CdvStorageCode.HEX,
-    "XD": _CdvStorageCode.HEX,
-    "YD": _CdvStorageCode.HEX,
-    "DF": _CdvStorageCode.FLOAT,
-    "TXT": _CdvStorageCode.TXT,
+_CDV_CODE_TO_DATA_TYPE: dict[int, DataType] = {
+    _CdvStorageCode.BIT: DataType.BIT,
+    _CdvStorageCode.INT: DataType.INT,
+    _CdvStorageCode.INT2: DataType.INT2,
+    _CdvStorageCode.HEX: DataType.HEX,
+    _CdvStorageCode.FLOAT: DataType.FLOAT,
+    _CdvStorageCode.TXT: DataType.TXT,
 }
+_DATA_TYPE_TO_CDV_CODE: dict[DataType, int] = {v: k for k, v in _CDV_CODE_TO_DATA_TYPE.items()}
 
-# Reverse mapping: type code to list of memory types
-CODE_TO_MEMORY_TYPES: dict[int, list[str]] = {
-    _CdvStorageCode.BIT: ["X", "Y", "C", "T", "CT", "SC"],
-    _CdvStorageCode.INT: ["DS", "TD", "SD"],
-    _CdvStorageCode.INT2: ["DD", "CTD"],
-    _CdvStorageCode.HEX: ["DH", "XD", "YD"],
-    _CdvStorageCode.FLOAT: ["DF"],
-    _CdvStorageCode.TXT: ["TXT"],
-}
 
 # SC addresses that are writable (most SC are read-only system controls)
 WRITABLE_SC: frozenset[int] = frozenset({50, 51, 53, 55, 60, 61, 65, 66, 67, 75, 76, 120, 121})
@@ -99,20 +89,21 @@ WRITABLE_SD: frozenset[int] = frozenset(
 MAX_DATAVIEW_ROWS = 100
 
 
-def get_type_code_for_address(address: str) -> int | None:
-    """Get the type code for an address.
+def get_data_type_for_address(address: str) -> DataType | None:
+    """Get the DataType for an address.
 
     Args:
         address: Address string like "X001", "DS1"
 
     Returns:
-        Type code or None if address is invalid.
+        DataType or None if address is invalid.
     """
     try:
         memory_type, _ = parse_address(address)
     except ValueError:
         return None
-    return MEMORY_TYPE_TO_CODE.get(memory_type)
+    data_type = MEMORY_TYPE_TO_DATA_TYPE.get(memory_type)
+    return DataType(data_type) if data_type is not None else None
 
 
 def is_address_writable(address: str) -> bool:
@@ -159,7 +150,7 @@ class DataviewRow:
 
     # Core data (stored in CDV file)
     address: str = ""  # e.g., "X001", "DS1", "CTD250"
-    type_code: int = 0  # Type code for the address
+    data_type: DataType | None = None  # DataType for the address
     new_value: str = ""  # Optional new value to write
 
     # Display-only fields (populated from SharedAddressData)
@@ -196,22 +187,51 @@ class DataviewRow:
         display = format_address_display(memory_type, mdb_address)
         return display[len(memory_type) :]
 
-    def update_type_code(self) -> bool:
-        """Update the type code based on the current address.
+    @property
+    def new_value_display(self) -> str:
+        """Get New Value as a display string."""
+        if not self.new_value or self.data_type is None:
+            return ""
+        native = storage_to_datatype(self.new_value, self.data_type)
+        return datatype_to_display(native, self.data_type)
+
+    def update_data_type(self) -> bool:
+        """Update the DataType based on the current address.
 
         Returns:
-            True if type code was updated, False if address is invalid.
+            True if data_type was updated, False if address is invalid.
         """
-        code = get_type_code_for_address(self.address)
-        if code is not None:
-            self.type_code = code
+        data_type = get_data_type_for_address(self.address)
+        if data_type is not None:
+            self.data_type = data_type
             return True
         return False
+
+    def set_new_value_from_display(self, display_str: str) -> bool:
+        """Set New Value from a user-entered display string."""
+        if not display_str:
+            self.new_value = ""
+            return True
+        if self.data_type is None:
+            return False
+        native = display_to_datatype(display_str, self.data_type)
+        if native is None:
+            return False
+        self.new_value = datatype_to_storage(native, self.data_type)
+        return True
+
+    def validate_new_value(self, display_str: str) -> tuple[bool, str]:
+        """Validate a user-entered New Value for this row."""
+        if not self.is_writable:
+            return False, "Read-only address"
+        if self.data_type is None:
+            return False, "No address set"
+        return validate_new_value(display_str, self.data_type)
 
     def clear(self) -> None:
         """Clear all fields in this row."""
         self.address = ""
-        self.type_code = 0
+        self.data_type = None
         self.new_value = ""
         self.nickname = ""
         self.comment = ""
@@ -239,12 +259,12 @@ def create_empty_dataview(count: int = MAX_DATAVIEW_ROWS) -> list[DataviewRow]:
 # The display layer handles presentation (hex formatting, float precision, etc.).
 
 
-def storage_to_datatype(value: str, type_code: int) -> int | float | bool | str | None:
+def storage_to_datatype(value: str, data_type: DataType) -> int | float | bool | str | None:
     """Convert a CDV storage string to its native Python type.
 
     Args:
         value: The raw value string from the CDV file.
-        type_code: The type code (_CdvStorageCode.BIT, _CdvStorageCode.INT, etc.)
+        data_type: DataType for conversion.
 
     Returns:
         Native Python value (bool for BIT, int for INT/INT2/HEX,
@@ -254,50 +274,49 @@ def storage_to_datatype(value: str, type_code: int) -> int | float | bool | str 
         return None
 
     try:
-        if type_code == _CdvStorageCode.BIT:
+        if data_type == DataType.BIT:
             return value == "1"
 
-        elif type_code == _CdvStorageCode.INT:
-            # Stored as unsigned 32-bit with sign extension → signed 16-bit
+        if data_type == DataType.INT:
+            # Stored as unsigned 32-bit with sign extension -> signed 16-bit
             unsigned_val = int(value)
             val_16bit = unsigned_val & 0xFFFF
             if val_16bit >= 0x8000:
                 val_16bit -= 0x10000
             return val_16bit
 
-        elif type_code == _CdvStorageCode.INT2:
-            # Stored as unsigned 32-bit → signed 32-bit
+        if data_type == DataType.INT2:
+            # Stored as unsigned 32-bit -> signed 32-bit
             unsigned_val = int(value)
             if unsigned_val >= 0x80000000:
                 unsigned_val -= 0x100000000
             return unsigned_val
 
-        elif type_code == _CdvStorageCode.HEX:
+        if data_type == DataType.HEX:
             return int(value)
 
-        elif type_code == _CdvStorageCode.FLOAT:
-            # Stored as IEEE 754 32-bit integer representation → float
+        if data_type == DataType.FLOAT:
+            # Stored as IEEE 754 32-bit integer representation -> float
             int_val = int(value)
             bytes_val = struct.pack(">I", int_val & 0xFFFFFFFF)
             return struct.unpack(">f", bytes_val)[0]
 
-        elif type_code == _CdvStorageCode.TXT:
+        if data_type == DataType.TXT:
             code = int(value)
             return chr(code) if 0 < code < 128 else ""
 
-        else:
-            return None
+        return None
 
     except (ValueError, struct.error):
         return None
 
 
-def datatype_to_storage(value: int | float | bool | str | None, type_code: int) -> str:
+def datatype_to_storage(value: int | float | bool | str | None, data_type: DataType) -> str:
     """Convert a native Python value to CDV storage format.
 
     Args:
         value: The native Python value (bool, int, or float).
-        type_code: The type code (_CdvStorageCode.BIT, _CdvStorageCode.INT, etc.)
+        data_type: DataType for conversion.
 
     Returns:
         Value formatted for CDV file storage, or "" if None.
@@ -306,53 +325,52 @@ def datatype_to_storage(value: int | float | bool | str | None, type_code: int) 
         return ""
 
     try:
-        if type_code == _CdvStorageCode.BIT:
+        if data_type == DataType.BIT:
             return "1" if value else "0"
 
-        elif type_code == _CdvStorageCode.INT:
-            # Signed 16-bit → unsigned 32-bit with sign extension
+        if data_type == DataType.INT:
+            # Signed 16-bit -> unsigned 32-bit with sign extension
             signed_val = int(value)
             signed_val = max(-32768, min(32767, signed_val))
             if signed_val < 0:
                 return str(signed_val + 0x100000000)
             return str(signed_val)
 
-        elif type_code == _CdvStorageCode.INT2:
-            # Signed 32-bit → unsigned 32-bit
+        if data_type == DataType.INT2:
+            # Signed 32-bit -> unsigned 32-bit
             signed_val = int(value)
             signed_val = max(-2147483648, min(2147483647, signed_val))
             if signed_val < 0:
                 return str(signed_val + 0x100000000)
             return str(signed_val)
 
-        elif type_code == _CdvStorageCode.HEX:
+        if data_type == DataType.HEX:
             return str(int(value))
 
-        elif type_code == _CdvStorageCode.FLOAT:
-            # Float → IEEE 754 bytes → unsigned 32-bit integer string
+        if data_type == DataType.FLOAT:
+            # Float -> IEEE 754 bytes -> unsigned 32-bit integer string
             float_val = float(value)
             bytes_val = struct.pack(">f", float_val)
             int_val = struct.unpack(">I", bytes_val)[0]
             return str(int_val)
 
-        elif type_code == _CdvStorageCode.TXT:
+        if data_type == DataType.TXT:
             if isinstance(value, str):
                 return str(ord(value)) if value else "0"
             return str(int(value))
 
-        else:
-            return ""
+        return ""
 
     except (ValueError, struct.error):
         return ""
 
 
-def datatype_to_display(value: int | float | bool | str | None, type_code: int) -> str:
+def datatype_to_display(value: int | float | bool | str | None, data_type: DataType) -> str:
     """Convert a native Python value to a UI-friendly display string.
 
     Args:
         value: The native Python value (bool, int, or float).
-        type_code: The type code (_CdvStorageCode.BIT, _CdvStorageCode.INT, etc.)
+        data_type: DataType for conversion.
 
     Returns:
         Human-readable display string, or "" if None.
@@ -361,19 +379,19 @@ def datatype_to_display(value: int | float | bool | str | None, type_code: int) 
         return ""
 
     try:
-        if type_code == _CdvStorageCode.BIT:
+        if data_type == DataType.BIT:
             return "1" if value else "0"
 
-        elif type_code in (_CdvStorageCode.INT, _CdvStorageCode.INT2):
+        if data_type in (DataType.INT, DataType.INT2):
             return str(int(value))
 
-        elif type_code == _CdvStorageCode.HEX:
+        if data_type == DataType.HEX:
             return format(int(value), "04X")
 
-        elif type_code == _CdvStorageCode.FLOAT:
+        if data_type == DataType.FLOAT:
             return f"{float(value):.7G}"
 
-        elif type_code == _CdvStorageCode.TXT:
+        if data_type == DataType.TXT:
             if isinstance(value, str):
                 return value if value else ""
             code = int(value)
@@ -381,19 +399,18 @@ def datatype_to_display(value: int | float | bool | str | None, type_code: int) 
                 return chr(code)
             return str(code)
 
-        else:
-            return str(value)
+        return str(value)
 
     except (ValueError, TypeError):
         return ""
 
 
-def display_to_datatype(value: str, type_code: int) -> int | float | bool | str | None:
+def display_to_datatype(value: str, data_type: DataType) -> int | float | bool | str | None:
     """Convert a UI display string to its native Python type.
 
     Args:
         value: The human-readable display string.
-        type_code: The type code (_CdvStorageCode.BIT, _CdvStorageCode.INT, etc.)
+        data_type: DataType for conversion.
 
     Returns:
         Native Python value (bool for BIT, int for INT/INT2/HEX,
@@ -403,32 +420,38 @@ def display_to_datatype(value: str, type_code: int) -> int | float | bool | str 
         return None
 
     try:
-        if type_code == _CdvStorageCode.BIT:
+        if data_type == DataType.BIT:
             return value in ("1", "True", "true", "ON", "on")
 
-        elif type_code in (_CdvStorageCode.INT, _CdvStorageCode.INT2):
+        if data_type in (DataType.INT, DataType.INT2):
             return int(value)
 
-        elif type_code == _CdvStorageCode.HEX:
+        if data_type == DataType.HEX:
             hex_val = value.strip()
             if hex_val.lower().startswith("0x"):
                 hex_val = hex_val[2:]
             return int(hex_val, 16)
 
-        elif type_code == _CdvStorageCode.FLOAT:
+        if data_type == DataType.FLOAT:
             return float(value)
 
-        elif type_code == _CdvStorageCode.TXT:
+        if data_type == DataType.TXT:
             if len(value) == 1:
                 return value
             code = int(value)
             return chr(code) if 0 < code < 128 else ""
 
-        else:
-            return None
+        return None
 
     except (ValueError, TypeError):
         return None
+
+
+def validate_new_value(display_str: str, data_type: DataType) -> tuple[bool, str]:
+    """Validate a user-entered display string for the New Value column."""
+    if not display_str:
+        return True, ""
+    return validate_initial_value(display_str, data_type)
 
 
 # =============================================================================
@@ -497,18 +520,17 @@ def load_cdv(path: Path | str) -> tuple[list[DataviewRow], bool, str]:
         address = parts[0]
         rows[i].address = address
 
-        # Parse type code
+        # Parse type code and map to DataType
         if len(parts) > 1 and parts[1]:
             try:
-                rows[i].type_code = int(parts[1])
+                cdv_code = int(parts[1])
+                rows[i].data_type = _CDV_CODE_TO_DATA_TYPE.get(cdv_code)
             except ValueError:
-                # Try to infer from address
-                code = get_type_code_for_address(address)
-                rows[i].type_code = code if code is not None else 0
-        else:
-            # Infer type code from address
-            code = get_type_code_for_address(address)
-            rows[i].type_code = code if code is not None else 0
+                rows[i].data_type = None
+
+        # Infer DataType from address if missing/invalid in file
+        if rows[i].data_type is None:
+            rows[i].data_type = get_data_type_for_address(address)
 
         # Parse new value (if present and has_new_values flag is set)
         if len(parts) > 2 and parts[2]:
@@ -558,10 +580,19 @@ def save_cdv(
         if row.is_empty:
             lines.append(",0")
         else:
-            if row.new_value:
-                lines.append(f"{row.address},{row.type_code},{row.new_value}")
+            data_type = (
+                row.data_type
+                if row.data_type is not None
+                else get_data_type_for_address(row.address)
+            )
+            if data_type is None:
+                cdv_code = _CdvStorageCode.INT
             else:
-                lines.append(f"{row.address},{row.type_code}")
+                cdv_code = _DATA_TYPE_TO_CDV_CODE[data_type]
+            if row.new_value:
+                lines.append(f"{row.address},{cdv_code},{row.new_value}")
+            else:
+                lines.append(f"{row.address},{cdv_code}")
 
     # Join with newlines and add trailing newline
     content = "\n".join(lines) + "\n"
@@ -572,7 +603,7 @@ def save_cdv(
 
 def _validate_cdv_new_value(
     new_value: str,
-    type_code: int,
+    data_type: DataType,
     address: str,
     filename: str,
     row_num: int,
@@ -582,17 +613,17 @@ def _validate_cdv_new_value(
     prefix = f"CDV {filename} row {row_num}: {address}"
 
     try:
-        if type_code == _CdvStorageCode.BIT:
+        if data_type == DataType.BIT:
             if new_value not in ("0", "1"):
                 issues.append(f"{prefix} new_value '{new_value}' invalid for BIT (must be 0 or 1)")
             return issues
 
-        if type_code == _CdvStorageCode.INT:
+        if data_type == DataType.INT:
             raw = int(new_value)
             if raw < 0 or raw > 0xFFFFFFFF:
                 issues.append(f"{prefix} new_value '{new_value}' out of range for INT storage")
                 return issues
-            converted = storage_to_datatype(new_value, type_code)
+            converted = storage_to_datatype(new_value, data_type)
             if not isinstance(converted, int):
                 issues.append(f"{prefix} new_value '{new_value}' failed to convert to INT")
                 return issues
@@ -603,12 +634,12 @@ def _validate_cdv_new_value(
                 )
             return issues
 
-        if type_code == _CdvStorageCode.INT2:
+        if data_type == DataType.INT2:
             raw = int(new_value)
             if raw < 0 or raw > 0xFFFFFFFF:
                 issues.append(f"{prefix} new_value '{new_value}' out of range for INT2 storage")
                 return issues
-            converted = storage_to_datatype(new_value, type_code)
+            converted = storage_to_datatype(new_value, data_type)
             if not isinstance(converted, int):
                 issues.append(f"{prefix} new_value '{new_value}' failed to convert to INT2")
                 return issues
@@ -619,18 +650,18 @@ def _validate_cdv_new_value(
                 )
             return issues
 
-        if type_code == _CdvStorageCode.HEX:
+        if data_type == DataType.HEX:
             raw = int(new_value)
             if raw < 0 or raw > 0xFFFF:
                 issues.append(f"{prefix} new_value '{new_value}' out of range for HEX (0-65535)")
             return issues
 
-        if type_code == _CdvStorageCode.FLOAT:
+        if data_type == DataType.FLOAT:
             raw = int(new_value)
             if raw < 0 or raw > 0xFFFFFFFF:
                 issues.append(f"{prefix} new_value '{new_value}' invalid for FLOAT storage")
                 return issues
-            converted = storage_to_datatype(new_value, type_code)
+            converted = storage_to_datatype(new_value, data_type)
             if not isinstance(converted, float):
                 issues.append(f"{prefix} new_value '{new_value}' failed to convert to FLOAT")
                 return issues
@@ -638,7 +669,7 @@ def _validate_cdv_new_value(
                 issues.append(f"{prefix} new_value converts to {converted}, outside FLOAT range")
             return issues
 
-        if type_code == _CdvStorageCode.TXT:
+        if data_type == DataType.TXT:
             raw = int(new_value)
             if raw < 0 or raw > 127:
                 issues.append(
@@ -675,23 +706,28 @@ def check_cdv_file(path: Path | str) -> list[str]:
             issues.append(f"CDV {filename} row {row_num}: Invalid address format '{row.address}'")
             continue
 
-        if memory_type not in MEMORY_TYPE_TO_CODE:
+        if memory_type not in MEMORY_TYPE_TO_DATA_TYPE:
             issues.append(f"CDV {filename} row {row_num}: Unknown memory type '{memory_type}'")
             continue
 
-        expected_code = get_type_code_for_address(row.address)
-        if expected_code is not None and row.type_code != expected_code:
+        expected_data_type = get_data_type_for_address(row.address)
+        if expected_data_type is not None and row.data_type != expected_data_type:
             issues.append(
-                f"CDV {filename} row {row_num}: Type code mismatch for {row.address} "
-                f"(has {row.type_code}, expected {expected_code})"
+                f"CDV {filename} row {row_num}: Data type mismatch for {row.address} "
+                f"(has {row.data_type}, expected {expected_data_type})"
             )
 
         if row.new_value:
-            issues.extend(
-                _validate_cdv_new_value(
-                    row.new_value, row.type_code, row.address, filename, row_num
+            if row.data_type is None:
+                issues.append(
+                    f"CDV {filename} row {row_num}: {row.address} has new_value but no data_type set"
                 )
-            )
+            else:
+                issues.extend(
+                    _validate_cdv_new_value(
+                        row.new_value, row.data_type, row.address, filename, row_num
+                    )
+                )
             if not is_address_writable(row.address):
                 issues.append(
                     f"CDV {filename} row {row_num}: {row.address} has new_value "

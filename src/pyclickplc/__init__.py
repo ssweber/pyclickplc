@@ -30,8 +30,10 @@ from .client import ClickClient, ModbusResponse
 from .dataview import (
     DataviewRow,
     check_cdv_file,
+    get_data_type_for_address,
     load_cdv,
     save_cdv,
+    validate_new_value,
 )
 from .modbus import (
     ModbusMapping,
@@ -76,6 +78,8 @@ __all__ = [
     "MemoryDataProvider",
     "DataviewRow",
     "check_cdv_file",
+    "get_data_type_for_address",
+    "validate_new_value",
     "load_cdv",
     "save_cdv",
     "read_csv",
