@@ -28,12 +28,14 @@ from .capabilities import (
 )
 from .client import ClickClient, ModbusResponse
 from .dataview import (
+    DataviewFile,
     DataviewRow,
     check_cdv_file,
     get_data_type_for_address,
-    load_cdv,
-    save_cdv,
+    read_cdv,
     validate_new_value,
+    verify_cdv,
+    write_cdv,
 )
 from .modbus import (
     ModbusMapping,
@@ -76,12 +78,14 @@ __all__ = [
     "unpack_value",
     "ClickServer",
     "MemoryDataProvider",
+    "DataviewFile",
     "DataviewRow",
     "check_cdv_file",
     "get_data_type_for_address",
     "validate_new_value",
-    "load_cdv",
-    "save_cdv",
+    "read_cdv",
+    "write_cdv",
+    "verify_cdv",
     "read_csv",
     "write_csv",
     "validate_nickname",

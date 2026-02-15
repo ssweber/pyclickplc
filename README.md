@@ -90,16 +90,16 @@ count = write_csv("output.csv", records)
 Read and write CLICK DataView `.cdv` files (UTF-16 LE format).
 
 ```python
-from pyclickplc import load_cdv, save_cdv
+from pyclickplc import read_cdv, write_cdv
 
-# Load — returns (rows, has_new_values, header)
-rows, has_new_values, header = load_cdv("dataview.cdv")
-for row in rows:
+# Read
+dataview = read_cdv("dataview.cdv")
+for row in dataview.rows:
     if not row.is_empty:
-        print(row.address, row.type_code, row.new_value)
+        print(row.address, row.data_type, row.new_value)
 
-# Save
-save_cdv("output.cdv", rows, has_new_values, header)
+# Write
+write_cdv("output.cdv", dataview)
 ```
 
 ## Address Parsing

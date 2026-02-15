@@ -12,10 +12,10 @@ count = write_csv("output.csv", records)
 ## DataView CDV
 
 ```python
-from pyclickplc import load_cdv, save_cdv
+from pyclickplc import read_cdv, write_cdv
 
-rows, has_new_values, header = load_cdv("dataview.cdv")
-save_cdv("output.cdv", rows, has_new_values, header)
+dataview = read_cdv("dataview.cdv")
+write_cdv("output.cdv", dataview)
 ```
 
 ## Address Helpers

@@ -10,6 +10,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeAlias
 
 from .addresses import format_address_display, parse_address
 from .banks import MEMORY_TYPE_TO_DATA_TYPE, DataType
@@ -87,6 +88,7 @@ WRITABLE_SD: frozenset[int] = frozenset(
 
 # Max rows in a dataview
 MAX_DATAVIEW_ROWS = 100
+DataviewValue: TypeAlias = bool | int | float | str | None
 
 
 def get_data_type_for_address(address: str) -> DataType | None:
@@ -151,7 +153,7 @@ class DataviewRow:
     # Core data (stored in CDV file)
     address: str = ""  # e.g., "X001", "DS1", "CTD250"
     data_type: DataType | None = None  # DataType for the address
-    new_value: str = ""  # Optional new value to write
+    new_value: DataviewValue = None  # Native Python value for optional write
 
     # Display-only fields (populated from SharedAddressData)
     nickname: str = field(default="", compare=False)
@@ -187,14 +189,6 @@ class DataviewRow:
         display = format_address_display(memory_type, mdb_address)
         return display[len(memory_type) :]
 
-    @property
-    def new_value_display(self) -> str:
-        """Get New Value as a display string."""
-        if not self.new_value or self.data_type is None:
-            return ""
-        native = storage_to_datatype(self.new_value, self.data_type)
-        return datatype_to_display(native, self.data_type)
-
     def update_data_type(self) -> bool:
         """Update the DataType based on the current address.
 
@@ -207,32 +201,11 @@ class DataviewRow:
             return True
         return False
 
-    def set_new_value_from_display(self, display_str: str) -> bool:
-        """Set New Value from a user-entered display string."""
-        if not display_str:
-            self.new_value = ""
-            return True
-        if self.data_type is None:
-            return False
-        native = display_to_datatype(display_str, self.data_type)
-        if native is None:
-            return False
-        self.new_value = datatype_to_storage(native, self.data_type)
-        return True
-
-    def validate_new_value(self, display_str: str) -> tuple[bool, str]:
-        """Validate a user-entered New Value for this row."""
-        if not self.is_writable:
-            return False, "Read-only address"
-        if self.data_type is None:
-            return False, "No address set"
-        return validate_new_value(display_str, self.data_type)
-
     def clear(self) -> None:
         """Clear all fields in this row."""
         self.address = ""
         self.data_type = None
-        self.new_value = ""
+        self.new_value = None
         self.nickname = ""
         self.comment = ""
 
@@ -459,146 +432,349 @@ def validate_new_value(display_str: str, data_type: DataType) -> tuple[bool, str
 # =============================================================================
 
 
-def load_cdv(path: Path | str) -> tuple[list[DataviewRow], bool, str]:
-    """Load a CDV file.
+@dataclass(frozen=True)
+class DisplayParseResult:
+    """Result object for non-throwing display -> native parsing."""
 
-    Args:
-        path: Path to the CDV file.
-
-    Returns:
-        Tuple of (rows, has_new_values, header) where:
-        - rows: List of DataviewRow objects (always MAX_DATAVIEW_ROWS length)
-        - has_new_values: True if the dataview has new values set
-        - header: The original header line from the file
-
-    Raises:
-        FileNotFoundError: If the file doesn't exist.
-        ValueError: If the file format is invalid.
-    """
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(f"CDV file not found: {path}")
-
-    # Read file with UTF-16 encoding
-    content = path.read_text(encoding="utf-16")
-    lines = content.strip().split("\n")
-
-    if not lines:
-        raise ValueError(f"Empty CDV file: {path}")
-
-    # Parse header line - preserve the original
-    header = lines[0].strip()
-    header_parts = [p.strip() for p in header.split(",")]
-    if len(header_parts) < 1:
-        raise ValueError(f"Invalid CDV header: {header}")
-
-    # First value: 0 = no new values, -1 = has new values
-    try:
-        has_new_values = int(header_parts[0]) == -1
-    except ValueError:
-        has_new_values = False
-
-    # Parse data rows
-    rows = create_empty_dataview()
-    data_lines = lines[1 : MAX_DATAVIEW_ROWS + 1]
-
-    for i, line in enumerate(data_lines):
-        if i >= MAX_DATAVIEW_ROWS:
-            break
-
-        line = line.strip()
-        if not line:
-            continue
-
-        parts = [p.strip() for p in line.split(",")]
-
-        # Empty row: ",0" or just ","
-        if not parts[0]:
-            continue
-
-        # Parse address
-        address = parts[0]
-        rows[i].address = address
-
-        # Parse type code and map to DataType
-        if len(parts) > 1 and parts[1]:
-            try:
-                cdv_code = int(parts[1])
-                rows[i].data_type = _CDV_CODE_TO_DATA_TYPE.get(cdv_code)
-            except ValueError:
-                rows[i].data_type = None
-
-        # Infer DataType from address if missing/invalid in file
-        if rows[i].data_type is None:
-            rows[i].data_type = get_data_type_for_address(address)
-
-        # Parse new value (if present and has_new_values flag is set)
-        if len(parts) > 2 and parts[2]:
-            rows[i].new_value = parts[2]
-
-    return rows, has_new_values, header
+    ok: bool
+    value: DataviewValue = None
+    error: str = ""
 
 
-def save_cdv(
-    path: Path | str,
-    rows: list[DataviewRow],
-    has_new_values: bool,
-    header: str | None = None,
-) -> None:
-    """Save a CDV file.
+def _default_cdv_header(has_new_values: bool) -> str:
+    return f"{-1 if has_new_values else 0},0,0"
 
-    Args:
-        path: Path to save the CDV file.
-        rows: List of DataviewRow objects (may exceed MAX_DATAVIEW_ROWS).
-        has_new_values: True if any rows have new values set.
-        header: Original header line to preserve. If None, uses default format.
 
-    Note:
-        Only the first MAX_DATAVIEW_ROWS (100) rows are saved to maintain
-        file format compatibility. Overflow rows (index 100+) are not persisted.
-    """
-    path = Path(path)
+def _rows_snapshot(rows: list[DataviewRow]) -> list[tuple[str, DataType | None, DataviewValue]]:
+    return [(row.address, row.data_type, row.new_value) for row in rows]
 
-    # Build content
-    lines: list[str] = []
 
-    # Header line - use original if provided, otherwise build default
-    if header is not None:
-        lines.append(header)
-    else:
-        header_flag = -1 if has_new_values else 0
-        lines.append(f"{header_flag},0,0")
+def _coerce_for_compare(value: DataviewValue, data_type: DataType) -> DataviewValue:
+    if value is None:
+        return None
 
-    # Data rows - only save first MAX_DATAVIEW_ROWS
-    rows_to_save = list(rows[:MAX_DATAVIEW_ROWS])
+    if data_type == DataType.BIT:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            if value in (0, 1):
+                return bool(value)
+            return None
+        if isinstance(value, float):
+            if value.is_integer() and int(value) in (0, 1):
+                return bool(int(value))
+            return None
+        return None
 
-    # Pad with empty rows if needed to always have exactly 100 lines
-    while len(rows_to_save) < MAX_DATAVIEW_ROWS:
-        rows_to_save.append(DataviewRow())
+    if data_type in (DataType.INT, DataType.INT2, DataType.HEX):
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            if value.is_integer():
+                return int(value)
+            return None
+        return None
 
-    for row in rows_to_save:
-        if row.is_empty:
-            lines.append(",0")
-        else:
-            data_type = (
-                row.data_type
-                if row.data_type is not None
-                else get_data_type_for_address(row.address)
-            )
-            if data_type is None:
-                cdv_code = _CdvStorageCode.INT
-            else:
-                cdv_code = _DATA_TYPE_TO_CDV_CODE[data_type]
-            if row.new_value:
-                lines.append(f"{row.address},{cdv_code},{row.new_value}")
+    if data_type == DataType.FLOAT:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    if data_type == DataType.TXT:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, int) and 0 <= value <= 127:
+            return chr(value)
+        return None
+
+    return value
+
+
+def _values_equal_for_data_type(
+    expected: DataviewValue,
+    actual: DataviewValue,
+    data_type: DataType | None,
+) -> bool:
+    if expected is None and actual is None:
+        return True
+    if data_type is None:
+        return expected == actual
+
+    expected_norm = _coerce_for_compare(expected, data_type)
+    actual_norm = _coerce_for_compare(actual, data_type)
+
+    if expected_norm is None or actual_norm is None:
+        return expected == actual
+
+    if data_type == DataType.FLOAT:
+        return abs(float(expected_norm) - float(actual_norm)) <= 1e-6
+
+    return expected_norm == actual_norm
+
+
+def _row_placeholder(rows: list[DataviewRow], index: int) -> DataviewRow:
+    return rows[index] if index < len(rows) else DataviewRow()
+
+
+@dataclass
+class DataviewFile:
+    """CDV file model with row data in native Python types."""
+
+    rows: list[DataviewRow] = field(default_factory=create_empty_dataview)
+    has_new_values: bool = False
+    header: str = "0,0,0"
+    path: Path | None = None
+    _original_bytes: bytes | None = field(default=None, repr=False, compare=False)
+    _original_rows: list[tuple[str, DataType | None, DataviewValue]] = field(
+        default_factory=list,
+        repr=False,
+        compare=False,
+    )
+    _original_has_new_values: bool | None = field(default=None, repr=False, compare=False)
+    _original_header: str | None = field(default=None, repr=False, compare=False)
+    _row_storage_tokens: list[str | None] = field(default_factory=list, repr=False, compare=False)
+
+    @staticmethod
+    def value_to_display(value: DataviewValue, data_type: DataType | None) -> str:
+        """Render a native value as a display string."""
+        if data_type is None:
+            return ""
+        return datatype_to_display(value, data_type)
+
+    @staticmethod
+    def validate_display(display_str: str, data_type: DataType | None) -> tuple[bool, str]:
+        """Validate display text for a target data type."""
+        if data_type is None:
+            return False, "No address set"
+        return validate_new_value(display_str, data_type)
+
+    @staticmethod
+    def try_parse_display(display_str: str, data_type: DataType | None) -> DisplayParseResult:
+        """Parse a display string to a native value without raising."""
+        if not display_str:
+            return DisplayParseResult(ok=True, value=None)
+        ok, error = DataviewFile.validate_display(display_str, data_type)
+        if not ok or data_type is None:
+            return DisplayParseResult(ok=False, error=error)
+        native = display_to_datatype(display_str, data_type)
+        if native is None:
+            return DisplayParseResult(ok=False, error="Invalid value")
+        return DisplayParseResult(ok=True, value=native)
+
+    @staticmethod
+    def validate_row_display(row: DataviewRow, display_str: str) -> tuple[bool, str]:
+        """Validate a user edit for a specific row."""
+        if not row.is_writable:
+            return False, "Read-only address"
+        return DataviewFile.validate_display(display_str, row.data_type)
+
+    @staticmethod
+    def set_row_new_value_from_display(row: DataviewRow, display_str: str) -> None:
+        """Strictly set a row's native new_value from a display string."""
+        ok, error = DataviewFile.validate_row_display(row, display_str)
+        if not ok:
+            raise ValueError(error)
+        parsed = DataviewFile.try_parse_display(display_str, row.data_type)
+        if not parsed.ok:
+            raise ValueError(parsed.error)
+        row.new_value = parsed.value
+
+    @classmethod
+    def load(cls, path: Path | str) -> DataviewFile:
+        """Load a CDV file and parse new values into native Python types."""
+        path_obj = Path(path)
+        if not path_obj.exists():
+            raise FileNotFoundError(f"CDV file not found: {path_obj}")
+
+        raw_bytes = path_obj.read_bytes()
+        content = raw_bytes.decode("utf-16")
+        lines = content.splitlines()
+        if not lines:
+            raise ValueError(f"Empty CDV file: {path_obj}")
+
+        header = lines[0].strip()
+        header_parts = [p.strip() for p in header.split(",")]
+        if len(header_parts) < 1:
+            raise ValueError(f"Invalid CDV header: {header}")
+
+        try:
+            has_new_values = int(header_parts[0]) == -1
+        except ValueError:
+            has_new_values = False
+
+        rows = create_empty_dataview()
+        row_storage_tokens: list[str | None] = [None] * MAX_DATAVIEW_ROWS
+
+        for i, raw_line in enumerate(lines[1 : MAX_DATAVIEW_ROWS + 1]):
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            parts = [p.strip() for p in line.split(",")]
+            if not parts[0]:
+                continue
+
+            row = rows[i]
+            row.address = parts[0]
+
+            if len(parts) > 1 and parts[1]:
+                try:
+                    cdv_code = int(parts[1])
+                    row.data_type = _CDV_CODE_TO_DATA_TYPE.get(cdv_code)
+                except ValueError:
+                    row.data_type = None
+
+            if row.data_type is None:
+                row.data_type = get_data_type_for_address(row.address)
+
+            if len(parts) > 2 and parts[2]:
+                row_storage_tokens[i] = parts[2]
+                if row.data_type is None:
+                    row.new_value = parts[2]
+                else:
+                    row.new_value = storage_to_datatype(parts[2], row.data_type)
+
+        dataview = cls(
+            rows=rows,
+            has_new_values=has_new_values,
+            header=header,
+            path=path_obj,
+        )
+        dataview._original_bytes = raw_bytes
+        dataview._original_rows = _rows_snapshot(rows)
+        dataview._original_has_new_values = has_new_values
+        dataview._original_header = header
+        dataview._row_storage_tokens = row_storage_tokens
+        return dataview
+
+    def _is_pristine(self) -> bool:
+        if self._original_bytes is None:
+            return False
+        if self._original_has_new_values is None or self._original_header is None:
+            return False
+        return (
+            self.header == self._original_header
+            and self.has_new_values == self._original_has_new_values
+            and _rows_snapshot(self.rows) == self._original_rows
+        )
+
+    def _header_with_current_flag(self) -> str:
+        header = self.header or _default_cdv_header(self.has_new_values)
+        parts = [p.strip() for p in header.split(",")]
+        if not parts:
+            return _default_cdv_header(self.has_new_values)
+        parts[0] = "-1" if self.has_new_values else "0"
+        return ",".join(parts)
+
+    def save(self, path: Path | str | None = None) -> None:
+        """Save CDV back to disk, converting native values at the file boundary."""
+        target = Path(path) if path is not None else self.path
+        if target is None:
+            raise ValueError("No path provided for save")
+
+        self.has_new_values = any(
+            row.new_value is not None for row in self.rows[:MAX_DATAVIEW_ROWS] if not row.is_empty
+        )
+        self.header = self._header_with_current_flag()
+
+        if self._is_pristine():
+            target.write_bytes(self._original_bytes or b"")
+            self.path = target
+            return
+
+        lines: list[str] = [self.header]
+        rows_to_save = list(self.rows[:MAX_DATAVIEW_ROWS])
+        while len(rows_to_save) < MAX_DATAVIEW_ROWS:
+            rows_to_save.append(DataviewRow())
+
+        new_storage_tokens: list[str | None] = []
+        for row in rows_to_save:
+            if row.is_empty:
+                lines.append(",0")
+                new_storage_tokens.append(None)
+                continue
+
+            data_type = row.data_type if row.data_type is not None else get_data_type_for_address(row.address)
+            cdv_code = _CdvStorageCode.INT if data_type is None else _DATA_TYPE_TO_CDV_CODE[data_type]
+
+            if row.new_value is not None:
+                if data_type is None:
+                    storage_value = str(row.new_value)
+                else:
+                    storage_value = datatype_to_storage(row.new_value, data_type)
+                lines.append(f"{row.address},{cdv_code},{storage_value}")
+                new_storage_tokens.append(storage_value)
             else:
                 lines.append(f"{row.address},{cdv_code}")
+                new_storage_tokens.append(None)
 
-    # Join with newlines and add trailing newline
-    content = "\n".join(lines) + "\n"
+        content = "\n".join(lines) + "\n"
+        encoded = content.encode("utf-16")
+        target.write_bytes(encoded)
+        self.path = target
+        self._original_bytes = encoded
+        self._original_rows = _rows_snapshot(self.rows)
+        self._original_has_new_values = self.has_new_values
+        self._original_header = self.header
+        self._row_storage_tokens = new_storage_tokens
 
-    # Write with UTF-16 encoding (includes BOM automatically)
-    path.write_text(content, encoding="utf-16")
+    def verify(self, path: Path | str | None = None) -> list[str]:
+        """Compare this in-memory dataview to a CDV file on disk."""
+        target = Path(path) if path is not None else self.path
+        if target is None:
+            raise ValueError("No path provided for verify")
+
+        disk = DataviewFile.load(target)
+        issues: list[str] = []
+
+        for i in range(MAX_DATAVIEW_ROWS):
+            expected = _row_placeholder(self.rows, i)
+            actual = _row_placeholder(disk.rows, i)
+            row_num = i + 1
+
+            if expected.address != actual.address:
+                issues.append(
+                    f"CDV {target.name} row {row_num}: address mismatch "
+                    f"(memory={expected.address!r}, file={actual.address!r})"
+                )
+                continue
+
+            if expected.is_empty and actual.is_empty:
+                continue
+
+            if expected.data_type != actual.data_type:
+                issues.append(
+                    f"CDV {target.name} row {row_num}: data_type mismatch "
+                    f"(memory={expected.data_type}, file={actual.data_type})"
+                )
+                continue
+
+            compare_type = expected.data_type or actual.data_type
+            if not _values_equal_for_data_type(expected.new_value, actual.new_value, compare_type):
+                issues.append(
+                    f"CDV {target.name} row {row_num}: new_value mismatch "
+                    f"(memory={expected.new_value!r}, file={actual.new_value!r})"
+                )
+
+        if self.has_new_values != disk.has_new_values:
+            issues.append(
+                f"CDV {target.name}: has_new_values mismatch "
+                f"(memory={self.has_new_values}, file={disk.has_new_values})"
+            )
+
+        return issues
+
+
+def read_cdv(path: Path | str) -> DataviewFile:
+    """Read a CDV file into a DataviewFile model."""
+    return DataviewFile.load(path)
+
+def write_cdv(path: Path | str, dataview: DataviewFile) -> None:
+    """Write a DataviewFile to a CDV path."""
+    dataview.save(path)
 
 
 def _validate_cdv_new_value(
@@ -690,15 +866,20 @@ def check_cdv_file(path: Path | str) -> list[str]:
     filename = path.name
 
     try:
-        rows, _has_new_values, _header = load_cdv(path)
+        dataview = DataviewFile.load(path)
     except Exception as exc:  # pragma: no cover - exercised by caller tests
         return [f"CDV {filename}: Error loading file - {exc}"]
 
-    for i, row in enumerate(rows):
+    for i, row in enumerate(dataview.rows):
         if row.is_empty:
             continue
 
         row_num = i + 1
+        raw_new_value = (
+            dataview._row_storage_tokens[i]
+            if i < len(dataview._row_storage_tokens)
+            else None
+        )
 
         try:
             memory_type, _mdb_address = parse_address(row.address)
@@ -717,7 +898,7 @@ def check_cdv_file(path: Path | str) -> list[str]:
                 f"(has {row.data_type}, expected {expected_data_type})"
             )
 
-        if row.new_value:
+        if raw_new_value:
             if row.data_type is None:
                 issues.append(
                     f"CDV {filename} row {row_num}: {row.address} has new_value but no data_type set"
@@ -725,7 +906,11 @@ def check_cdv_file(path: Path | str) -> list[str]:
             else:
                 issues.extend(
                     _validate_cdv_new_value(
-                        row.new_value, row.data_type, row.address, filename, row_num
+                        raw_new_value,
+                        row.data_type,
+                        row.address,
+                        filename,
+                        row_num,
                     )
                 )
             if not is_address_writable(row.address):
@@ -735,3 +920,24 @@ def check_cdv_file(path: Path | str) -> list[str]:
                 )
 
     return issues
+
+
+def verify_cdv(
+    path: Path | str,
+    rows: list[DataviewRow],
+    has_new_values: bool | None = None,
+) -> list[str]:
+    """Verify in-memory rows against a CDV file using native value comparison."""
+    has_values = has_new_values
+    if has_values is None:
+        has_values = any(
+            row.new_value is not None for row in rows[:MAX_DATAVIEW_ROWS] if not row.is_empty
+        )
+
+    dataview = DataviewFile(
+        rows=rows,
+        has_new_values=has_values,
+        header=_default_cdv_header(has_values),
+        path=Path(path),
+    )
+    return dataview.verify(path)

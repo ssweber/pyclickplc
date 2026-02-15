@@ -7,7 +7,9 @@ from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     WRITABLE_SC,
     WRITABLE_SD,
+    DataviewFile,
     DataviewRow,
+    DisplayParseResult,
     _CdvStorageCode,
     check_cdv_file,
     create_empty_dataview,
@@ -16,11 +18,26 @@ from pyclickplc.dataview import (
     display_to_datatype,
     get_data_type_for_address,
     is_address_writable,
-    load_cdv,
-    save_cdv,
+    read_cdv,
     storage_to_datatype,
     validate_new_value,
+    verify_cdv,
+    write_cdv,
 )
+
+
+def load_cdv(path):
+    dataview = read_cdv(path)
+    return dataview.rows, dataview.has_new_values, dataview.header
+
+
+def save_cdv(path, rows, has_new_values: bool, header: str | None = None):
+    dataview = DataviewFile(
+        rows=rows,
+        has_new_values=has_new_values,
+        header=header or f"{-1 if has_new_values else 0},0,0",
+    )
+    write_cdv(path, dataview)
 
 
 class TestGetDataTypeForAddress:
@@ -104,7 +121,7 @@ class TestDataviewRow:
         row = DataviewRow()
         assert row.address == ""
         assert row.data_type is None
-        assert row.new_value == ""
+        assert row.new_value is None
         assert row.nickname == ""
         assert row.comment == ""
 
@@ -151,14 +168,14 @@ class TestDataviewRow:
         row = DataviewRow(
             address="X001",
             data_type=DataType.BIT,
-            new_value="1",
+            new_value=True,
             nickname="Test",
             comment="Comment",
         )
         row.clear()
         assert row.address == ""
         assert row.data_type is None
-        assert row.new_value == ""
+        assert row.new_value is None
         assert row.nickname == ""
         assert row.comment == ""
 
@@ -458,53 +475,42 @@ class TestValidateNewValue:
         assert validate_new_value("100", DataType.INT) == (True, "")
 
 
-class TestDataviewRowValidateNewValue:
-    def test_read_only_address(self):
+class TestDataviewFileDisplayHelpers:
+    def test_value_to_display(self):
+        assert DataviewFile.value_to_display(100, DataType.INT) == "100"
+        assert DataviewFile.value_to_display(None, DataType.INT) == ""
+
+    def test_try_parse_display(self):
+        parsed = DataviewFile.try_parse_display("100", DataType.INT)
+        assert parsed == DisplayParseResult(ok=True, value=100, error="")
+
+        parsed_empty = DataviewFile.try_parse_display("", DataType.INT)
+        assert parsed_empty == DisplayParseResult(ok=True, value=None, error="")
+
+        parsed_invalid = DataviewFile.try_parse_display("abc", DataType.INT)
+        assert parsed_invalid.ok is False
+        assert parsed_invalid.error == "Must be integer"
+
+    def test_validate_row_display(self):
         row = DataviewRow(address="XD0", data_type=DataType.HEX)
-        assert row.validate_new_value("0001") == (False, "Read-only address")
+        assert DataviewFile.validate_row_display(row, "0001") == (False, "Read-only address")
 
-    def test_no_data_type(self):
         row = DataviewRow(address="DS1")
-        assert row.validate_new_value("100") == (False, "No address set")
+        assert DataviewFile.validate_row_display(row, "100") == (False, "No address set")
 
-    def test_delegates_validation(self):
         row = DataviewRow(address="DS1", data_type=DataType.INT)
-        assert row.validate_new_value("abc") == (False, "Must be integer")
+        assert DataviewFile.validate_row_display(row, "abc") == (False, "Must be integer")
 
-
-class TestNewValueDisplay:
-    def test_empty_when_no_new_value(self):
+    def test_set_row_new_value_from_display(self):
         row = DataviewRow(address="DS1", data_type=DataType.INT)
-        assert row.new_value_display == ""
+        DataviewFile.set_row_new_value_from_display(row, "100")
+        assert row.new_value == 100
 
-    def test_empty_when_no_data_type(self):
-        row = DataviewRow(address="DS1", new_value="100")
-        assert row.new_value_display == ""
+        DataviewFile.set_row_new_value_from_display(row, "")
+        assert row.new_value is None
 
-    def test_int_round_trip_display(self):
-        row = DataviewRow(address="DS1", data_type=DataType.INT, new_value="100")
-        assert row.new_value_display == "100"
-
-
-class TestSetNewValueFromDisplay:
-    def test_clear_on_empty(self):
-        row = DataviewRow(address="DS1", data_type=DataType.INT, new_value="100")
-        assert row.set_new_value_from_display("") is True
-        assert row.new_value == ""
-
-    def test_fails_without_data_type(self):
-        row = DataviewRow(address="DS1")
-        assert row.set_new_value_from_display("100") is False
-
-    def test_fails_on_invalid_input(self):
-        row = DataviewRow(address="DS1", data_type=DataType.INT)
-        assert row.set_new_value_from_display("abc") is False
-
-    def test_sets_storage_value(self):
-        row = DataviewRow(address="DS1", data_type=DataType.INT)
-        assert row.set_new_value_from_display("100") is True
-        assert row.new_value == "100"
-        assert row.new_value_display == "100"
+        with pytest.raises(ValueError, match="Must be integer"):
+            DataviewFile.set_row_new_value_from_display(row, "abc")
 
 
 class TestLoadCdv:
@@ -549,7 +555,7 @@ class TestLoadCdv:
 
         rows, has_new_values, _header = load_cdv(cdv)
         assert has_new_values is True
-        assert rows[0].new_value == "1"
+        assert rows[0].new_value is True
 
     def test_load_nonexistent(self, tmp_path):
         with pytest.raises(FileNotFoundError):
@@ -582,13 +588,60 @@ class TestSaveCdv:
         rows = create_empty_dataview()
         rows[0].address = "X001"
         rows[0].data_type = DataType.BIT
-        rows[0].new_value = "1"
+        rows[0].new_value = True
 
         save_cdv(cdv, rows, has_new_values=True)
 
         loaded_rows, has_new_values, _header = load_cdv(cdv)
         assert has_new_values is True
-        assert loaded_rows[0].new_value == "1"
+        assert loaded_rows[0].new_value is True
+
+
+class TestDataviewFileIO:
+    def test_read_write_aliases(self, tmp_path):
+        cdv = tmp_path / "test.cdv"
+        rows = create_empty_dataview()
+        rows[0].address = "DS1"
+        rows[0].data_type = DataType.INT
+        rows[0].new_value = 42
+        save_cdv(cdv, rows, has_new_values=True)
+
+        dataview = read_cdv(cdv)
+        assert isinstance(dataview, DataviewFile)
+        assert dataview.rows[0].new_value == 42
+
+        out = tmp_path / "out.cdv"
+        write_cdv(out, dataview)
+        loaded_rows, has_new_values, _header = load_cdv(out)
+        assert has_new_values is True
+        assert loaded_rows[0].new_value == 42
+
+    def test_byte_identical_roundtrip(self, tmp_path):
+        cdv = tmp_path / "test.cdv"
+        lines = ["-1,0,0\n", f"DS1,{_CdvStorageCode.INT},100\n"]
+        for _ in range(99):
+            lines.append(",0\n")
+        cdv.write_text("".join(lines), encoding="utf-16")
+        original_bytes = cdv.read_bytes()
+
+        dataview = DataviewFile.load(cdv)
+        dataview.save()
+
+        assert cdv.read_bytes() == original_bytes
+
+    def test_verify_cdv_int_float_equivalent(self, tmp_path):
+        cdv = tmp_path / "test.cdv"
+        lines = ["-1,0,0\n", f"DS1,{_CdvStorageCode.INT},1\n"]
+        for _ in range(99):
+            lines.append(",0\n")
+        cdv.write_text("".join(lines), encoding="utf-16")
+
+        rows = create_empty_dataview()
+        rows[0].address = "DS1"
+        rows[0].data_type = DataType.INT
+        rows[0].new_value = 1.0
+
+        assert verify_cdv(cdv, rows, has_new_values=True) == []
 
 
 class TestCheckCdv:
@@ -625,11 +678,10 @@ class TestCheckCdv:
 
     def test_check_cdv_file_invalid_new_value_bit(self, tmp_path):
         cdv = tmp_path / "invalid-bit.cdv"
-        rows = create_empty_dataview()
-        rows[0].address = "X001"
-        rows[0].data_type = DataType.BIT
-        rows[0].new_value = "2"
-        save_cdv(cdv, rows, has_new_values=True)
+        lines = ["-1,0,0\n", f"X001,{_CdvStorageCode.BIT},2\n"]
+        for _ in range(99):
+            lines.append(",0\n")
+        cdv.write_text("".join(lines), encoding="utf-16")
 
         issues = check_cdv_file(cdv)
         assert len(issues) == 1
@@ -640,7 +692,7 @@ class TestCheckCdv:
         rows = create_empty_dataview()
         rows[0].address = "XD0"
         rows[0].data_type = DataType.HEX
-        rows[0].new_value = "1"
+        rows[0].new_value = 1
         save_cdv(cdv, rows, has_new_values=True)
 
         issues = check_cdv_file(cdv)
