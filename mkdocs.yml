@@ -9,6 +9,7 @@ nav:
   - Home: index.md
   - Core Usage:
       - Modbus Client: guides/client.md
+      - Modbus Service: guides/modbus_service.md
       - Modbus Server: guides/server.md
       - File I/O: guides/files.md
   - API Reference:
@@ -22,6 +23,7 @@ nav:
           - client: reference/api/client.md
           - dataview: reference/api/dataview.md
           - modbus: reference/api/modbus.md
+          - modbus_service: reference/api/modbus_service.md
           - nicknames: reference/api/nicknames.md
           - server: reference/api/server.md
           - validation: reference/api/validation.md

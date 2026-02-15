@@ -3,6 +3,7 @@
 `pyclickplc` provides tools for AutomationDirect CLICK PLCs:
 
 - Async Modbus TCP client (`ClickClient`)
+- Sync + polling Modbus service (`ModbusService`)
 - Modbus TCP simulator (`ClickServer`, `MemoryDataProvider`)
 - Address parsing/normalization helpers
 - CLICK nickname CSV and DataView CDV file I/O

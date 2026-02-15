@@ -42,6 +42,39 @@ asyncio.run(main())
 
 All `read()` methods return `ModbusResponse`, a mapping keyed by canonical uppercase addresses (`"DS1"`, `"X001"`). Lookups are normalized (`resp["ds1"]` resolves `"DS1"`). Use `await plc.ds[1]` for a bare value.
 
+## ModbusService (Sync + Polling)
+
+`ModbusService` is a synchronous wrapper intended for UI/event-driven callers. It owns a background asyncio loop and provides polling plus bulk writes.
+
+```python
+from pyclickplc import ModbusService
+
+def on_values(values):
+    print(values)  # ModbusResponse keyed by canonical addresses
+
+svc = ModbusService(poll_interval_s=0.5, on_values=on_values)
+svc.connect("192.168.1.10", 502, device_id=1, timeout=1)
+
+svc.set_poll_addresses(["ds1", "df1", "y1"])
+print(svc.read(["ds1", "df1"]))
+
+results = svc.write(
+    {
+        "ds1": 100,
+        "y1": True,
+        "x1": True,  # not writable -> per-item failure entry
+    }
+)
+print(results)
+
+svc.disconnect()
+```
+
+Error semantics:
+- invalid read addresses raise `ValueError`
+- transport/protocol read failures raise `OSError`
+- writes return per-address outcomes (`ok` + `error`) for UI reporting
+
 ## Modbus Server
 
 `ClickServer` simulates a CLICK PLC over Modbus TCP. `MemoryDataProvider` is the built-in in-memory backend.

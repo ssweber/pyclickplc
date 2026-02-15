@@ -44,6 +44,7 @@ from .modbus import (
     plc_to_modbus,
     unpack_value,
 )
+from .modbus_service import ConnectionState, ModbusService, WriteResult
 from .nicknames import read_csv, write_csv
 from .server import ClickServer, MemoryDataProvider
 from .validation import validate_comment, validate_initial_value, validate_nickname
@@ -76,6 +77,9 @@ __all__ = [
     "modbus_to_plc",
     "pack_value",
     "unpack_value",
+    "ModbusService",
+    "ConnectionState",
+    "WriteResult",
     "ClickServer",
     "MemoryDataProvider",
     "DataviewFile",
