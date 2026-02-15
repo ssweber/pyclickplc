@@ -196,15 +196,11 @@ class ModbusService:
         self._poll_task: asyncio.Task[None] | None = None
         self._poll_config = _PollConfig(addresses=(), plan=(), enabled=True)
 
+        self._thread_lock = threading.Lock()
         self._loop_ready = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._thread = threading.Thread(
-            target=self._run_loop, name="pyclickplc-modbus-service", daemon=True
-        )
-        self._thread.start()
-
-        if not self._loop_ready.wait(timeout=5):
-            raise RuntimeError("ModbusService event loop thread failed to start")
+        self._thread: threading.Thread | None = None
+        self._start_loop_thread()
 
     # Lifecycle --------------------------------------------------------------
 
@@ -219,7 +215,18 @@ class ModbusService:
         self._submit_wait(self._connect_async(host, port, device_id=device_id, timeout=timeout))
 
     def disconnect(self) -> None:
-        self._submit_wait(self._disconnect_async())
+        thread = self._thread
+        if thread is None:
+            return
+
+        try:
+            self._submit_wait(self._disconnect_async())
+        finally:
+            if threading.current_thread() is not thread:
+                self._stop_loop_thread()
+
+    def close(self) -> None:
+        self.disconnect()
 
     # Poll configuration -----------------------------------------------------
 
@@ -279,13 +286,87 @@ class ModbusService:
             if pending:
                 loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             loop.close()
+            with self._thread_lock:
+                if self._thread is threading.current_thread():
+                    self._loop = None
+
+    def _start_loop_thread(self) -> None:
+        with self._thread_lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._loop_ready = threading.Event()
+            self._loop = None
+            self._thread = threading.Thread(
+                target=self._run_loop, name="pyclickplc-modbus-service", daemon=True
+            )
+            self._thread.start()
+
+        if not self._loop_ready.wait(timeout=5):
+            raise RuntimeError("ModbusService event loop thread failed to start")
+
+    def _ensure_loop_thread(self) -> None:
+        with self._thread_lock:
+            thread = self._thread
+            loop = self._loop
+            ready = self._loop_ready
+
+        if thread is None or not thread.is_alive() or loop is None or loop.is_closed():
+            self._start_loop_thread()
+            return
+
+        if not ready.is_set() and not ready.wait(timeout=5):
+            raise RuntimeError("ModbusService event loop thread failed to start")
+
+    def _stop_loop_thread(self) -> None:
+        with self._thread_lock:
+            thread = self._thread
+            loop = self._loop
+
+        if thread is None:
+            return
+        if threading.current_thread() is thread:
+            raise RuntimeError(
+                "Synchronous ModbusService methods cannot be called from service callbacks"
+            )
+
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(loop.stop)
+
+        thread.join(timeout=5)
+        if thread.is_alive():
+            raise RuntimeError("ModbusService event loop thread failed to stop")
+
+        with self._thread_lock:
+            if self._thread is thread:
+                self._thread = None
+            if self._loop is loop:
+                self._loop = None
 
     def _submit_wait(self, coro: Coroutine[Any, Any, T]) -> T:
+        try:
+            self._ensure_loop_thread()
+        except Exception:
+            coro.close()
+            raise
+
         loop = self._loop
-        if loop is None:
+        thread = self._thread
+        if loop is None or thread is None:
+            coro.close()
             raise RuntimeError("Service event loop is not available")
+        if threading.current_thread() is thread:
+            coro.close()
+            raise RuntimeError(
+                "Synchronous ModbusService methods cannot be called from service callbacks"
+            )
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         return future.result()
+
+    def __del__(self) -> None:
+        try:
+            self._stop_loop_thread()
+        except Exception:
+            return
 
     # Async implementation ---------------------------------------------------
 

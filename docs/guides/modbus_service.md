@@ -17,7 +17,7 @@ svc.set_poll_addresses(["DS1", "DF1", "Y1"])
 latest = svc.read(["DS1", "DF1"])
 write_results = svc.write({"DS1": 10, "Y1": True})
 
-svc.disconnect()
+svc.close()  # same as disconnect()
 ```
 
 ## API Notes
@@ -27,6 +27,8 @@ svc.disconnect()
 - `stop_polling()` pauses polling until `set_poll_addresses(...)` is called again.
 - `read(...)` returns `ModbusResponse` keyed by canonical uppercase addresses.
 - `write(...)` accepts either a mapping or iterable of `(address, value)` pairs and returns per-address results.
+- `disconnect()` (or `close()`) fully stops the background service loop/thread.
+- The next sync call (`connect`, `read`, `write`, etc.) will start the loop again.
 
 ## Error Semantics
 
@@ -34,3 +36,4 @@ svc.disconnect()
 - Invalid addresses passed to `read(...)` raise `ValueError`.
 - Transport/protocol errors raise `OSError` for reads and are reported per-address for writes.
 - `on_state` and `on_values` callbacks run on the service thread.
+- Do not call synchronous service methods (`connect`, `disconnect`, `read`, `write`, poll config methods) from these callbacks. Marshal work to another thread/UI loop.

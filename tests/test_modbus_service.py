@@ -147,6 +147,14 @@ def _wait_for(predicate, *, timeout: float = 1.0) -> None:
     raise AssertionError("Condition not met before timeout")
 
 
+def _service_threads() -> list[threading.Thread]:
+    return [
+        t
+        for t in threading.enumerate()
+        if t.name == "pyclickplc-modbus-service" and t.is_alive()
+    ]
+
+
 class TestLifecycleState:
     def test_connect_disconnect_state_transitions(self, service: ModbusService):
         states: list[ConnectionState] = []
@@ -190,6 +198,30 @@ class TestLifecycleState:
         assert states[0] == ConnectionState.CONNECTING
         assert states[1] == ConnectionState.ERROR
         assert isinstance(errors[1], OSError)
+
+    def test_disconnect_stops_background_thread(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _FakeClickClient)
+        before = len(_service_threads())
+        svc = ModbusService(poll_interval_s=0.03)
+        try:
+            svc.connect("localhost", 15020)
+            _wait_for(lambda: len(_service_threads()) == before + 1)
+            svc.disconnect()
+            _wait_for(lambda: len(_service_threads()) == before)
+        finally:
+            svc.disconnect()
+
+    def test_reconnect_after_disconnect_restarts_loop(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _FakeClickClient)
+        svc = ModbusService(poll_interval_s=0.03)
+        try:
+            svc.connect("localhost", 15020)
+            svc.disconnect()
+            svc.connect("localhost", 15020)
+        finally:
+            svc.disconnect()
+
+        assert len(_FakeClickClient.instances) == 2
 
 
 class TestPollConfiguration:
@@ -378,3 +410,29 @@ class TestThreadSafety:
         service.disconnect()
         # second disconnect should be a no-op
         service.disconnect()
+
+    def test_sync_calls_inside_callbacks_fail_fast(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _FakeClickClient)
+        callback_errors: list[Exception] = []
+        callback_called = threading.Event()
+        holder: dict[str, ModbusService] = {}
+
+        def on_values(_values: ModbusResponse) -> None:
+            try:
+                holder["svc"].read(["DS1"])
+            except Exception as exc:  # pragma: no cover - callback behavior
+                callback_errors.append(exc)
+            finally:
+                callback_called.set()
+
+        svc = ModbusService(poll_interval_s=0.03, on_values=on_values)
+        holder["svc"] = svc
+        try:
+            svc.connect("localhost", 15020)
+            svc.set_poll_addresses(["DS1"])
+            _wait_for(callback_called.is_set)
+        finally:
+            svc.disconnect()
+
+        assert len(callback_errors) == 1
+        assert isinstance(callback_errors[0], RuntimeError)
