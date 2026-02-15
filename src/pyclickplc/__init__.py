@@ -46,7 +46,8 @@ from .modbus import (
 )
 from .modbus_service import ConnectionState, ModbusService, WriteResult
 from .nicknames import read_csv, write_csv
-from .server import ClickServer, MemoryDataProvider
+from .server import ClickServer, MemoryDataProvider, ServerClientInfo
+from .server_tui import run_server_tui
 from .validation import validate_comment, validate_initial_value, validate_nickname
 
 __all__ = [
@@ -82,6 +83,8 @@ __all__ = [
     "WriteResult",
     "ClickServer",
     "MemoryDataProvider",
+    "ServerClientInfo",
+    "run_server_tui",
     "DataviewFile",
     "DataviewRow",
     "check_cdv_file",

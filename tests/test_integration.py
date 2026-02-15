@@ -10,6 +10,7 @@ import asyncio
 import math
 
 import pytest
+from pymodbus.exceptions import ConnectionException
 
 from pyclickplc.client import ClickClient
 from pyclickplc.server import ClickServer, MemoryDataProvider
@@ -227,3 +228,31 @@ class TestSparseCoils:
         provider.set("X101", True)
         result = await plc.x.read(101)
         assert result == {"X101": True}
+
+
+# ==============================================================================
+# Connection lifecycle
+# ==============================================================================
+
+
+class TestConnectionLifecycle:
+    @pytest.mark.asyncio
+    async def test_disconnect_all_drops_clickclient_session(self):
+        provider = MemoryDataProvider()
+        server = ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 1)
+        await server.start()
+        try:
+            async with ClickClient("127.0.0.1", TEST_PORT + 1) as plc:
+                await asyncio.sleep(0.05)
+                assert len(server.list_clients()) == 1
+
+                closed = server.disconnect_all_clients()
+                assert closed == 1
+
+                await asyncio.sleep(0.2)
+                assert server.list_clients() == []
+
+                with pytest.raises(ConnectionException, match="Not connected"):
+                    await plc.ds.read(1)
+        finally:
+            await server.stop()

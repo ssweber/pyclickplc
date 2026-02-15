@@ -6,7 +6,8 @@ routed to a user-supplied DataProvider.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Any, Protocol, runtime_checkable
 
 from pymodbus.constants import ExcCodes
 from pymodbus.datastore import ModbusBaseDeviceContext, ModbusServerContext
@@ -91,6 +92,14 @@ class MemoryDataProvider:
         """Set multiple values at once."""
         for address, value in values.items():
             self.set(address, value)
+
+
+@dataclass(frozen=True)
+class ServerClientInfo:
+    """Connected client metadata exposed by ClickServer."""
+
+    client_id: str
+    peer: str
 
 
 # ==============================================================================
@@ -356,6 +365,51 @@ class ClickServer:
         self.host = host
         self.port = port
         self._server: ModbusTcpServer | None = None
+
+    @staticmethod
+    def _format_peer(connection: Any) -> str:
+        """Best-effort peer formatting from a pymodbus active connection."""
+        transport = getattr(connection, "transport", None)
+        if transport is None:
+            return "unknown"
+        peer = transport.get_extra_info("peername")
+        if isinstance(peer, tuple) and len(peer) >= 2:
+            return f"{peer[0]}:{peer[1]}"
+        if peer:
+            return str(peer)
+        return "unknown"
+
+    def is_running(self) -> bool:
+        """Return True when the underlying listener transport is active."""
+        return bool(self._server is not None and self._server.is_active())
+
+    def list_clients(self) -> list[ServerClientInfo]:
+        """Return the currently connected Modbus TCP clients."""
+        if self._server is None:
+            return []
+        clients: list[ServerClientInfo] = []
+        for client_id, connection in self._server.active_connections.items():
+            clients.append(ServerClientInfo(client_id=client_id, peer=self._format_peer(connection)))
+        return clients
+
+    def disconnect_client(self, client_id: str) -> bool:
+        """Disconnect a single client by pymodbus connection id."""
+        if self._server is None:
+            return False
+        connection = self._server.active_connections.get(client_id)
+        if connection is None:
+            return False
+        connection.close()
+        return True
+
+    def disconnect_all_clients(self) -> int:
+        """Disconnect all connected clients and return how many were closed."""
+        if self._server is None:
+            return 0
+        active = list(self._server.active_connections.values())
+        for connection in active:
+            connection.close()
+        return len(active)
 
     async def start(self) -> None:
         """Start the Modbus TCP server."""

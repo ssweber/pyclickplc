@@ -27,3 +27,28 @@ asyncio.run(main())
 - `set(address, value)`
 - `bulk_set({...})`
 
+## Interactive TUI
+
+Use `run_server_tui` for a basic interactive terminal interface:
+
+```python
+import asyncio
+from pyclickplc import ClickServer, MemoryDataProvider, run_server_tui
+
+async def main():
+    provider = MemoryDataProvider()
+    server = ClickServer(provider, host="127.0.0.1", port=5020)
+    await run_server_tui(server)
+
+asyncio.run(main())
+```
+
+Supported commands:
+
+- `help`
+- `status`
+- `clients`
+- `disconnect <client_id>`
+- `disconnect all`
+- `shutdown` (`exit` / `quit`)
+

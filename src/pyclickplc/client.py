@@ -574,6 +574,8 @@ class ClickClient:
         tag_filepath: str = "",
         timeout: int = 1,
         device_id: int = 1,
+        reconnect_delay: float = 0.0,
+        reconnect_delay_max: float = 0.0,
     ) -> None:
         # Backwards compatibility for legacy "host:port" first argument.
         if ":" in host and port == 502:
@@ -585,7 +587,13 @@ class ClickClient:
         if not (0 <= device_id <= 247):
             raise ValueError("device_id must be in [0, 247]")
 
-        self._client = AsyncModbusTcpClient(host, port=port, timeout=timeout)
+        self._client = AsyncModbusTcpClient(
+            host,
+            port=port,
+            timeout=timeout,
+            reconnect_delay=reconnect_delay,
+            reconnect_delay_max=reconnect_delay_max,
+        )
         self._device_id = device_id
         self._accessors: dict[str, AddressAccessor[PlcValue]] = {}
         self.tags: dict[str, dict[str, str]] = {}

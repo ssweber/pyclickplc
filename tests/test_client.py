@@ -84,6 +84,8 @@ class TestClickClient:
         plc = ClickClient("192.168.1.100")
         assert plc._client.comm_params.host == "192.168.1.100"
         assert plc._client.comm_params.port == 502
+        assert plc._client.comm_params.reconnect_delay == 0.0
+        assert plc._client.comm_params.reconnect_delay_max == 0.0
         assert plc.addr is not None
         assert plc.tag is not None
         assert plc.tags == {}
@@ -104,6 +106,12 @@ class TestClickClient:
     async def test_construction_with_device_id(self):
         plc = ClickClient("192.168.1.100", 5020, device_id=7)
         assert plc._device_id == 7
+
+    @pytest.mark.asyncio
+    async def test_construction_with_reconnect_settings(self):
+        plc = ClickClient("192.168.1.100", reconnect_delay=0.5, reconnect_delay_max=2.0)
+        assert plc._client.comm_params.reconnect_delay == 0.5
+        assert plc._client.comm_params.reconnect_delay_max == 2.0
 
     @pytest.mark.asyncio
     async def test_getattr_df(self):

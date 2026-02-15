@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from pyclickplc.banks import DataType
@@ -511,3 +513,97 @@ class TestClickServerConstruction:
         s = ClickServer(p, host="0.0.0.0", port=5020)
         assert s.host == "0.0.0.0"
         assert s.port == 5020
+
+
+# ==============================================================================
+# ClickServer runtime controls
+# ==============================================================================
+
+
+class _FakeServer:
+    def __init__(self, *, active: bool = True) -> None:
+        self._active = active
+        self.active_connections: dict[str, object] = {}
+
+    def is_active(self) -> bool:
+        return self._active
+
+
+class _FakeTransport:
+    def __init__(self, peername: object = None) -> None:
+        self._peername = peername
+
+    def get_extra_info(self, key: str) -> object:
+        if key == "peername":
+            return self._peername
+        return None
+
+
+class _FakeConnection:
+    def __init__(self, peername: object = None) -> None:
+        self.transport = _FakeTransport(peername)
+        self.close = MagicMock()
+
+
+class TestClickServerRuntimeControls:
+    def test_is_running_false_before_start(self):
+        server = ClickServer(MemoryDataProvider())
+        assert server.is_running() is False
+
+    def test_is_running_true_when_server_active(self):
+        server = ClickServer(MemoryDataProvider())
+        server._server = _FakeServer(active=True)  # type: ignore[assignment]
+        assert server.is_running() is True
+
+    def test_is_running_false_when_server_inactive(self):
+        server = ClickServer(MemoryDataProvider())
+        server._server = _FakeServer(active=False)  # type: ignore[assignment]
+        assert server.is_running() is False
+
+    def test_list_clients_empty_when_not_started(self):
+        server = ClickServer(MemoryDataProvider())
+        assert server.list_clients() == []
+
+    def test_list_clients_includes_peer(self):
+        server = ClickServer(MemoryDataProvider())
+        fake = _FakeServer(active=True)
+        fake.active_connections["abc"] = _FakeConnection(("127.0.0.1", 5020))
+        fake.active_connections["def"] = _FakeConnection(None)
+        server._server = fake  # type: ignore[assignment]
+
+        clients = server.list_clients()
+        assert len(clients) == 2
+        assert clients[0].client_id == "abc"
+        assert clients[0].peer == "127.0.0.1:5020"
+        assert clients[1].client_id == "def"
+        assert clients[1].peer == "unknown"
+
+    def test_disconnect_client_unknown_returns_false(self):
+        server = ClickServer(MemoryDataProvider())
+        fake = _FakeServer(active=True)
+        server._server = fake  # type: ignore[assignment]
+        assert server.disconnect_client("missing") is False
+
+    def test_disconnect_client_known_returns_true(self):
+        server = ClickServer(MemoryDataProvider())
+        fake = _FakeServer(active=True)
+        connection = _FakeConnection(("127.0.0.1", 1234))
+        fake.active_connections["known"] = connection
+        server._server = fake  # type: ignore[assignment]
+
+        assert server.disconnect_client("known") is True
+        connection.close.assert_called_once_with()
+
+    def test_disconnect_all_clients(self):
+        server = ClickServer(MemoryDataProvider())
+        fake = _FakeServer(active=True)
+        c1 = _FakeConnection(("127.0.0.1", 1111))
+        c2 = _FakeConnection(("127.0.0.1", 2222))
+        fake.active_connections["a"] = c1
+        fake.active_connections["b"] = c2
+        server._server = fake  # type: ignore[assignment]
+
+        count = server.disconnect_all_clients()
+        assert count == 2
+        c1.close.assert_called_once_with()
+        c2.close.assert_called_once_with()
