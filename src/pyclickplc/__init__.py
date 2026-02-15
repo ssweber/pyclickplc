@@ -44,7 +44,7 @@ from .modbus import (
     plc_to_modbus,
     unpack_value,
 )
-from .modbus_service import ConnectionState, ModbusService, WriteResult
+from .modbus_service import ConnectionState, ModbusService, ReconnectConfig, WriteResult
 from .nicknames import read_csv, write_csv
 from .server import ClickServer, MemoryDataProvider, ServerClientInfo
 from .server_tui import run_server_tui
@@ -79,6 +79,7 @@ __all__ = [
     "pack_value",
     "unpack_value",
     "ModbusService",
+    "ReconnectConfig",
     "ConnectionState",
     "WriteResult",
     "ClickServer",

@@ -47,12 +47,16 @@ All `read()` methods return `ModbusResponse`, a mapping keyed by canonical upper
 `ModbusService` is a synchronous wrapper intended for UI/event-driven callers. It owns a background asyncio loop and provides polling plus bulk writes.
 
 ```python
-from pyclickplc import ModbusService
+from pyclickplc import ModbusService, ReconnectConfig
 
 def on_values(values):
     print(values)  # ModbusResponse keyed by canonical addresses
 
-svc = ModbusService(poll_interval_s=0.5, on_values=on_values)
+svc = ModbusService(
+    poll_interval_s=0.5,
+    reconnect=ReconnectConfig(delay_s=0.5, max_delay_s=5.0),  # optional
+    on_values=on_values,
+)
 svc.connect("192.168.1.10", 502, device_id=1, timeout=1)
 
 svc.set_poll_addresses(["ds1", "df1", "y1"])

@@ -14,7 +14,7 @@ import pytest
 from pyclickplc.addresses import format_address_display
 from pyclickplc.banks import BANKS, DataType
 from pyclickplc.client import ModbusResponse
-from pyclickplc.modbus_service import ConnectionState, ModbusService
+from pyclickplc.modbus_service import ConnectionState, ModbusService, ReconnectConfig
 
 
 def _default_for_data_type(data_type: DataType) -> bool | int | float | str:
@@ -82,12 +82,16 @@ class _FakeClickClient:
         tag_filepath: str = "",
         timeout: int = 1,
         device_id: int = 1,
+        reconnect_delay: float = 0.0,
+        reconnect_delay_max: float = 0.0,
     ) -> None:
         del tag_filepath
         del timeout
         del device_id
         self.host = host
         self.port = port
+        self.reconnect_delay = reconnect_delay
+        self.reconnect_delay_max = reconnect_delay_max
         self._client = _FakeConn()
         self.data: dict[str, bool | int | float | str] = {}
         self.read_calls: list[tuple[str, int, int | None]] = []
@@ -156,6 +160,14 @@ def _service_threads() -> list[threading.Thread]:
 
 
 class TestLifecycleState:
+    def test_reconnect_config_validation(self):
+        with pytest.raises(ValueError):
+            ReconnectConfig(delay_s=-0.1)
+        with pytest.raises(ValueError):
+            ReconnectConfig(max_delay_s=-0.1)
+        with pytest.raises(ValueError):
+            ReconnectConfig(delay_s=2.0, max_delay_s=1.0)
+
     def test_connect_disconnect_state_transitions(self, service: ModbusService):
         states: list[ConnectionState] = []
         errors: list[Exception | None] = []
@@ -198,6 +210,83 @@ class TestLifecycleState:
         assert states[0] == ConnectionState.CONNECTING
         assert states[1] == ConnectionState.ERROR
         assert isinstance(errors[1], OSError)
+
+    def test_connect_reconnect_config_passes_through(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _FakeClickClient)
+        svc = ModbusService(
+            poll_interval_s=0.03,
+            reconnect=ReconnectConfig(delay_s=0.25, max_delay_s=2.0),
+        )
+        try:
+            svc.connect("localhost", 15020)
+            fake = _FakeClickClient.instances[-1]
+            assert fake.reconnect_delay == 0.25
+            assert fake.reconnect_delay_max == 2.0
+        finally:
+            svc.disconnect()
+
+    def test_connect_without_reconnect_config_disables_reconnect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _FakeClickClient)
+        svc = ModbusService(poll_interval_s=0.03)
+        try:
+            svc.connect("localhost", 15020)
+            fake = _FakeClickClient.instances[-1]
+            assert fake.reconnect_delay == 0.0
+            assert fake.reconnect_delay_max == 0.0
+        finally:
+            svc.disconnect()
+
+    def test_poll_failure_emits_error_once_when_failure_starts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _FakeClickClient)
+        states: list[ConnectionState] = []
+        errors: list[Exception | None] = []
+        svc = ModbusService(
+            poll_interval_s=0.03,
+            on_state=lambda s, e: (states.append(s), errors.append(e)),
+        )
+        try:
+            svc.connect("localhost", 15020)
+            fake = _FakeClickClient.instances[-1]
+            fake.read_error_bank = "DS"
+            svc.set_poll_addresses(["DS1"])
+
+            _wait_for(lambda: states.count(ConnectionState.ERROR) >= 1)
+            time.sleep(0.1)
+
+            error_indexes = [i for i, state in enumerate(states) if state == ConnectionState.ERROR]
+            assert len(error_indexes) == 1
+            assert isinstance(errors[error_indexes[0]], OSError)
+        finally:
+            svc.disconnect()
+
+    def test_poll_failure_recovery_allows_future_failure_transition(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _FakeClickClient)
+        states: list[ConnectionState] = []
+        svc = ModbusService(
+            poll_interval_s=0.03,
+            on_state=lambda s, e: states.append(s),
+        )
+        try:
+            svc.connect("localhost", 15020)
+            fake = _FakeClickClient.instances[-1]
+            svc.set_poll_addresses(["DS1"])
+
+            fake.read_error_bank = "DS"
+            _wait_for(lambda: states.count(ConnectionState.ERROR) >= 1)
+
+            fake.read_error_bank = None
+            _wait_for(lambda: states.count(ConnectionState.CONNECTED) >= 2)
+
+            fake.read_error_bank = "DS"
+            _wait_for(lambda: states.count(ConnectionState.ERROR) >= 2)
+        finally:
+            svc.disconnect()
 
     def test_disconnect_stops_background_thread(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _FakeClickClient)

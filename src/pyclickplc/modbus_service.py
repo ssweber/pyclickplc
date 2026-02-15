@@ -76,6 +76,22 @@ class _WriteBatch:
     items: tuple[_WriteItem, ...]
 
 
+@dataclass(frozen=True)
+class ReconnectConfig:
+    """ClickClient reconnect behavior used by ModbusService."""
+
+    delay_s: float = 0.5
+    max_delay_s: float = 5.0
+
+    def __post_init__(self) -> None:
+        if self.delay_s < 0:
+            raise ValueError("reconnect delay_s must be >= 0")
+        if self.max_delay_s < 0:
+            raise ValueError("reconnect max_delay_s must be >= 0")
+        if self.max_delay_s < self.delay_s:
+            raise ValueError("reconnect max_delay_s must be >= delay_s")
+
+
 def _default_for_bank(bank: str) -> PlcValue:
     data_type = BANKS[bank].data_type
     if data_type == DataType.BIT:
@@ -181,6 +197,7 @@ class ModbusService:
     def __init__(
         self,
         poll_interval_s: float = 1.5,
+        reconnect: ReconnectConfig | None = None,
         on_state: Callable[[ConnectionState, Exception | None], None] | None = None,
         on_values: Callable[[ModbusResponse[PlcValue]], None] | None = None,
     ) -> None:
@@ -188,12 +205,14 @@ class ModbusService:
             raise ValueError("poll_interval_s must be > 0")
 
         self._poll_interval_s = poll_interval_s
+        self._reconnect = reconnect
         self._on_state = on_state
         self._on_values = on_values
 
         self._state = ConnectionState.DISCONNECTED
         self._client: ClickClient | None = None
         self._poll_task: asyncio.Task[None] | None = None
+        self._poll_reads_failing = False
         self._poll_config = _PollConfig(addresses=(), plan=(), enabled=True)
 
         self._thread_lock = threading.Lock()
@@ -381,14 +400,25 @@ class ModbusService:
         if self._client is not None:
             await self._disconnect_async()
 
+        self._poll_reads_failing = False
         self._emit_state(ConnectionState.CONNECTING, None)
         candidate: ClickClient | None = None
         try:
-            candidate = ClickClient(host, port, timeout=timeout, device_id=device_id)
+            reconnect_delay = self._reconnect.delay_s if self._reconnect is not None else 0.0
+            reconnect_delay_max = self._reconnect.max_delay_s if self._reconnect is not None else 0.0
+            candidate = ClickClient(
+                host,
+                port,
+                timeout=timeout,
+                device_id=device_id,
+                reconnect_delay=reconnect_delay,
+                reconnect_delay_max=reconnect_delay_max,
+            )
             await candidate.__aenter__()
             if not candidate._client.connected:  # pyright: ignore[reportPrivateUsage]
                 raise OSError(f"Failed to connect to {host}:{port}")
             self._client = candidate
+            self._poll_reads_failing = False
             self._ensure_poll_task()
             self._emit_state(ConnectionState.CONNECTED, None)
         except Exception as exc:
@@ -411,6 +441,7 @@ class ModbusService:
 
         client = self._client
         self._client = None
+        self._poll_reads_failing = False
         if client is not None:
             await client.__aexit__(None, None, None)
 
@@ -439,13 +470,25 @@ class ModbusService:
 
                 poll_config = self._poll_config
                 if not poll_config.enabled or not poll_config.addresses:
+                    if self._poll_reads_failing:
+                        self._poll_reads_failing = False
+                        self._emit_state(ConnectionState.CONNECTED, None)
                     continue
 
                 try:
                     data = await self._read_plan_async(list(poll_config.plan))
-                except OSError as exc:
-                    self._emit_state(ConnectionState.ERROR, exc)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    error = exc if isinstance(exc, OSError) else OSError(str(exc))
+                    if not self._poll_reads_failing:
+                        self._poll_reads_failing = True
+                        self._emit_state(ConnectionState.ERROR, error)
                     continue
+
+                if self._poll_reads_failing:
+                    self._poll_reads_failing = False
+                    self._emit_state(ConnectionState.CONNECTED, None)
 
                 ordered: dict[str, PlcValue] = {}
                 for address in poll_config.addresses:
