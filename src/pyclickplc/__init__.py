@@ -11,21 +11,6 @@ from .banks import (
     BankConfig,
     DataType,
 )
-from .capabilities import (
-    CLICK_HARDWARE_PROFILE,
-    COMPARE_COMPATIBILITY,
-    COMPARE_CONSTANT_COMPATIBILITY,
-    COPY_COMPATIBILITY,
-    INSTRUCTION_ROLE_COMPATIBILITY,
-    LADDER_BANK_CAPABILITIES,
-    LADDER_WRITABLE_SC,
-    LADDER_WRITABLE_SD,
-    BankCapability,
-    ClickHardwareProfile,
-    CompareConstantKind,
-    CopyOperation,
-    InstructionRole,
-)
 from .client import ClickClient, ModbusResponse
 from .dataview import (
     DataviewFile,
