@@ -25,10 +25,14 @@ async def main():
         await plc.ds.write(1, 100)
         value = await plc.ds[1]                   # bare value
         result = await plc.ds.read(1, 3)          # DS1..DS3 (inclusive range)
+        xd_word = await plc.xd[3]                 # XD3 (display-indexed, 0..8)
+        await plc.ydu.write(0x1234)               # YD0u explicit upper-byte alias
+        xdu_word = await plc.xdu.read()           # {"XD0u": ...}
 
         # Address interface
         await plc.addr.write("df1", 3.14)
         by_addr = await plc.addr.read("df1")
+        yd_display = await plc.addr.read("YD0-YD8")  # display-step range for XD/YD
 
     # Tag interface (programmatic tags)
     tags = {
@@ -43,7 +47,7 @@ async def main():
 asyncio.run(main())
 ```
 
-All `read()` methods return `ModbusResponse`, a mapping keyed by canonical uppercase addresses (`"DS1"`, `"X001"`). Lookups are normalized (`resp["ds1"]` resolves `"DS1"`). Use `await plc.ds[1]` for a bare value.
+All `read()` methods return `ModbusResponse`, a mapping keyed by canonical uppercase addresses (`"DS1"`, `"X001"`). Lookups are normalized (`resp["ds1"]` resolves `"DS1"`). Use `await plc.ds[1]` for a bare value. `plc.xd`/`plc.yd` are display-indexed (`0..8`) with `plc.xdu`/`plc.ydu` aliases for `XD0u`/`YD0u`.
 
 ## ModbusService (Sync + Polling)
 
@@ -186,6 +190,8 @@ display = format_address_display("XD", 1)   # "XD0u"
 
 normalized = normalize_address("x1")    # "X001"
 ```
+
+Note: address helper functions remain MDB-oriented for XD/YD internals (`parse_address("XD3")` returns MDB index `6`).
 
 Full API reference is available via MkDocs (including advanced modules).
 

@@ -10,7 +10,14 @@ from typing import Any, ClassVar, Generic, Literal, TypeAlias, TypeVar, cast, ov
 
 from pymodbus.client import AsyncModbusTcpClient
 
-from .addresses import AddressNormalizerMixin, AddressRecord, format_address_display, parse_address
+from .addresses import (
+    AddressNormalizerMixin,
+    AddressRecord,
+    format_address_display,
+    parse_address,
+    xd_yd_display_to_mdb,
+    xd_yd_mdb_to_display,
+)
 from .banks import BANKS
 from .modbus import (
     MODBUS_MAPPINGS,
@@ -30,6 +37,8 @@ FloatBankName: TypeAlias = Literal["DF"]
 StrBankName: TypeAlias = Literal["TXT"]
 
 BoolBankAttr: TypeAlias = Literal["x", "X", "y", "Y", "c", "C", "t", "T", "ct", "CT", "sc", "SC"]
+DisplayBankAttr: TypeAlias = Literal["xd", "XD", "yd", "YD"]
+UpperByteAttr: TypeAlias = Literal["xdu", "XDU", "ydu", "YDU"]
 IntBankAttr: TypeAlias = Literal[
     "ds",
     "DS",
@@ -43,10 +52,6 @@ IntBankAttr: TypeAlias = Literal[
     "CTD",
     "sd",
     "SD",
-    "xd",
-    "XD",
-    "yd",
-    "YD",
 ]
 FloatBankAttr: TypeAlias = Literal["df", "DF"]
 StrBankAttr: TypeAlias = Literal["txt", "TXT"]
@@ -479,6 +484,93 @@ class AddressAccessor(Generic[TValue_co]):
         return self._read_single(key)
 
 
+class DisplayAddressAccessor(Generic[TValue_co]):
+    """Display-indexed accessor for XD/YD banks.
+
+    Uses display index range ``0..8`` and excludes hidden odd MDB slots.
+    """
+
+    def __init__(self, plc: ClickClient, bank: str) -> None:
+        if bank not in {"XD", "YD"}:
+            raise ValueError(f"DisplayAddressAccessor supports XD/YD only, got {bank!r}")
+        self._plc = plc
+        self._bank = bank
+        self._raw = cast(AddressAccessor[TValue_co], plc._get_accessor(bank))
+
+    def _validate_display_index(self, index: int) -> None:
+        if index < 0 or index > 8:
+            raise ValueError(f"{self._bank} must be in [0, 8]")
+
+    @staticmethod
+    def _display_to_mdb(index: int) -> int:
+        return xd_yd_display_to_mdb(index, upper_byte=False)
+
+    async def _read_single_display(self, index: int) -> TValue_co:
+        self._validate_display_index(index)
+        return await self._raw._read_single(self._display_to_mdb(index))
+
+    async def read(self, start: int, end: int | None = None) -> ModbusResponse[TValue_co]:
+        if end is None:
+            value = await self._read_single_display(start)
+            return ModbusResponse({f"{self._bank}{start}": value})
+
+        if end <= start:
+            raise ValueError("End address must be greater than start address.")
+        self._validate_display_index(start)
+        self._validate_display_index(end)
+
+        result: dict[str, TValue_co] = {}
+        for idx in range(start, end + 1):
+            result[f"{self._bank}{idx}"] = await self._read_single_display(idx)
+        return ModbusResponse(result)
+
+    async def write(
+        self,
+        start: int,
+        data: bool | int | float | str | list[bool] | list[int] | list[float] | list[str],
+    ) -> None:
+        if isinstance(data, list):
+            for offset, value in enumerate(data):
+                index = start + offset
+                self._validate_display_index(index)
+                await self._raw.write(self._display_to_mdb(index), value)
+            return
+
+        self._validate_display_index(start)
+        await self._raw.write(self._display_to_mdb(start), data)
+
+    def __getitem__(self, key: int) -> Coroutine[Any, Any, TValue_co]:
+        if isinstance(key, slice):
+            raise TypeError("Slicing is not supported. Use read(start, end) for range reads.")
+        return self._read_single_display(key)
+
+    def __repr__(self) -> str:
+        return f"<DisplayAddressAccessor({self._bank}, max=8)>"
+
+
+class FixedAddressAccessor(Generic[TValue_co]):
+    """Fixed-address alias accessor (e.g. XD0u/YD0u)."""
+
+    def __init__(self, plc: ClickClient, bank: str, index: int) -> None:
+        self._plc = plc
+        self._bank = bank
+        self._index = index
+        self._name = format_address_display(bank, index)
+        self._raw = cast(AddressAccessor[TValue_co], plc._get_accessor(bank))
+
+    async def read(self) -> ModbusResponse[TValue_co]:
+        return await self._raw.read(self._index)
+
+    async def write(
+        self,
+        data: bool | int | float | str | list[bool] | list[int] | list[float] | list[str],
+    ) -> None:
+        await self._raw.write(self._index, data)
+
+    def __repr__(self) -> str:
+        return f"<FixedAddressAccessor({self._name})>"
+
+
 # ==============================================================================
 # AddressInterface
 # ==============================================================================
@@ -498,6 +590,21 @@ class AddressInterface:
             bank2, end = parse_address(parts[1])
             if bank1 != bank2:
                 raise ValueError("Inter-bank ranges are unsupported.")
+
+            if bank1 in {"XD", "YD"}:
+                start_display_name = format_address_display(bank1, start)
+                end_display_name = format_address_display(bank1, end)
+                if start_display_name.endswith("u") or end_display_name.endswith("u"):
+                    raise ValueError(
+                        f"{bank1} ranges cannot include upper-byte addresses; read {bank1}0u separately."
+                    )
+                start_display = xd_yd_mdb_to_display(start)
+                end_display = xd_yd_mdb_to_display(end)
+                if end_display <= start_display:
+                    raise ValueError("End address must be greater than start address.")
+                accessor = self._plc._get_display_accessor(bank1)
+                return await accessor.read(start_display, end_display)
+
             if end <= start:
                 raise ValueError("End address must be greater than start address.")
             accessor = self._plc._get_accessor(bank1)
@@ -618,7 +725,14 @@ class ClickClient:
         )
         self._device_id = device_id
         self._accessors: dict[str, AddressAccessor[PlcValue]] = {}
+        self._display_accessors: dict[str, DisplayAddressAccessor[int]] = {}
+        self._upper_byte_accessors: dict[str, FixedAddressAccessor[int]] = {
+            "XD": FixedAddressAccessor(self, "XD", 1),
+            "YD": FixedAddressAccessor(self, "YD", 1),
+        }
         self.tags: dict[str, dict[str, str]] = {}
+        self.xdu = self._upper_byte_accessors["XD"]
+        self.ydu = self._upper_byte_accessors["YD"]
         self.addr = AddressInterface(self)
         self.tag = TagInterface(self)
 
@@ -664,6 +778,12 @@ class ClickClient:
     def __getattr__(self, name: BoolBankAttr) -> AddressAccessor[bool]: ...
 
     @overload
+    def __getattr__(self, name: DisplayBankAttr) -> DisplayAddressAccessor[int]: ...
+
+    @overload
+    def __getattr__(self, name: UpperByteAttr) -> FixedAddressAccessor[int]: ...
+
+    @overload
     def __getattr__(self, name: IntBankAttr) -> AddressAccessor[int]: ...
 
     @overload
@@ -672,10 +792,24 @@ class ClickClient:
     @overload
     def __getattr__(self, name: StrBankAttr) -> AddressAccessor[str]: ...
 
-    def __getattr__(self, name: str) -> AddressAccessor[PlcValue]:
+    def _get_display_accessor(self, bank: str) -> DisplayAddressAccessor[int]:
+        bank_upper = bank.upper()
+        if bank_upper not in {"XD", "YD"}:
+            raise AttributeError(f"'{bank}' is not a supported display-indexed address type.")
+        if bank_upper not in self._display_accessors:
+            self._display_accessors[bank_upper] = DisplayAddressAccessor(self, bank_upper)
+        return self._display_accessors[bank_upper]
+
+    def __getattr__(
+        self, name: str
+    ) -> AddressAccessor[PlcValue] | DisplayAddressAccessor[int] | FixedAddressAccessor[int]:
         if name.startswith("_"):
             raise AttributeError(name)
         upper = name.upper()
+        if upper in {"XDU", "YDU"}:
+            return self._upper_byte_accessors[upper[:2]]
+        if upper in {"XD", "YD"}:
+            return self._get_display_accessor(upper)
         if upper not in MODBUS_MAPPINGS:
             raise AttributeError(f"'{name}' is not a supported address type.")
         return self._get_accessor(upper)

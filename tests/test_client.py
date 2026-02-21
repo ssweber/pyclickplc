@@ -16,6 +16,8 @@ from pyclickplc.client import (
     AddressAccessor,
     AddressInterface,
     ClickClient,
+    DisplayAddressAccessor,
+    FixedAddressAccessor,
     ModbusResponse,
     TagInterface,
 )
@@ -155,6 +157,24 @@ class TestClickClient:
         assert isinstance(accessor, AddressAccessor)
 
     @pytest.mark.asyncio
+    async def test_getattr_xd_is_display_indexed_accessor(self):
+        plc = _make_plc()
+        assert isinstance(plc.xd, DisplayAddressAccessor)
+
+    @pytest.mark.asyncio
+    async def test_getattr_yd_is_display_indexed_accessor(self):
+        plc = _make_plc()
+        assert isinstance(plc.yd, DisplayAddressAccessor)
+
+    @pytest.mark.asyncio
+    async def test_upper_byte_aliases_are_available(self):
+        plc = _make_plc()
+        assert isinstance(plc.xdu, FixedAddressAccessor)
+        assert isinstance(plc.ydu, FixedAddressAccessor)
+        assert plc.XDU is plc.xdu
+        assert plc.YDU is plc.ydu
+
+    @pytest.mark.asyncio
     async def test_getattr_case_insensitive(self):
         plc = _make_plc()
         accessor1 = plc.df
@@ -211,6 +231,16 @@ class TestAddressAccessorRepr:
     async def test_repr_x(self):
         plc = _make_plc()
         assert repr(plc.x) == "<AddressAccessor(X, max=816)>"
+
+    @pytest.mark.asyncio
+    async def test_repr_xd_display_accessor(self):
+        plc = _make_plc()
+        assert repr(plc.xd) == "<DisplayAddressAccessor(XD, max=8)>"
+
+    @pytest.mark.asyncio
+    async def test_repr_xdu_fixed_accessor(self):
+        plc = _make_plc()
+        assert repr(plc.xdu) == "<FixedAddressAccessor(XD0u)>"
 
 
 # ==============================================================================
@@ -314,6 +344,91 @@ class TestAddressAccessorReadRange:
         plc = _make_plc()
         with pytest.raises(ValueError, match="greater than start"):
             await plc.df.read(10, 5)
+
+
+# ==============================================================================
+# DisplayAddressAccessor — XD/YD ergonomics
+# ==============================================================================
+
+
+class TestDisplayAddressAccessor:
+    @pytest.mark.asyncio
+    async def test_read_xd_display_single(self):
+        plc = _make_plc()
+
+        async def fake_read_registers(address: int, count: int, bank: str) -> list[int]:
+            del bank
+            return [address + i for i in range(count)]
+
+        object.__setattr__(plc, "_read_registers", AsyncMock(side_effect=fake_read_registers))
+        result = await plc.xd.read(3)
+        assert result == {"XD3": 57350}
+
+    @pytest.mark.asyncio
+    async def test_read_xd_display_range_has_no_hidden_slots(self):
+        plc = _make_plc()
+
+        async def fake_read_registers(address: int, count: int, bank: str) -> list[int]:
+            del bank
+            return [address + i for i in range(count)]
+
+        object.__setattr__(plc, "_read_registers", AsyncMock(side_effect=fake_read_registers))
+        result = await plc.xd.read(0, 4)
+        assert list(result.keys()) == ["XD0", "XD1", "XD2", "XD3", "XD4"]
+        assert list(result.values()) == [57344, 57346, 57348, 57350, 57352]
+
+    @pytest.mark.asyncio
+    async def test_write_yd_display_single(self):
+        plc = _make_plc()
+        await plc.yd.write(3, 0xABCD)
+        _get_write_registers_mock(plc).assert_called_once_with(57862, [0xABCD])
+
+    @pytest.mark.asyncio
+    async def test_write_yd_display_list(self):
+        plc = _make_plc()
+        await plc.yd.write(0, [1, 2, 3])
+        assert _get_write_registers_mock(plc).call_count == 3
+        assert _get_write_registers_mock(plc).call_args_list[0].args == (57856, [1])
+        assert _get_write_registers_mock(plc).call_args_list[1].args == (57858, [2])
+        assert _get_write_registers_mock(plc).call_args_list[2].args == (57860, [3])
+
+    @pytest.mark.asyncio
+    async def test_write_xd_display_not_writable(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="not writable"):
+            await plc.xd.write(1, 0x1234)
+
+    @pytest.mark.asyncio
+    async def test_read_xd_out_of_range_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError):
+            await plc.xd.read(9)
+
+
+# ==============================================================================
+# FixedAddressAccessor — XD0u/YD0u
+# ==============================================================================
+
+
+class TestFixedAddressAccessor:
+    @pytest.mark.asyncio
+    async def test_read_xdu(self):
+        plc = _make_plc()
+        _set_read_registers(plc, [0x1234])
+        result = await plc.xdu.read()
+        assert result == {"XD0u": 0x1234}
+
+    @pytest.mark.asyncio
+    async def test_write_xdu_not_writable(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="not writable"):
+            await plc.xdu.write(0x1234)
+
+    @pytest.mark.asyncio
+    async def test_write_ydu(self):
+        plc = _make_plc()
+        await plc.ydu.write(0x1234)
+        _get_write_registers_mock(plc).assert_called_once_with(57857, [0x1234])
 
 
 # ==============================================================================
@@ -527,6 +642,51 @@ class TestAddressInterface:
         plc = _make_plc()
         with pytest.raises(ValueError, match="greater than start"):
             await plc.addr.read("df10-df5")
+
+    @pytest.mark.asyncio
+    async def test_xd_range_is_display_step(self):
+        plc = _make_plc()
+
+        async def fake_read_registers(address: int, count: int, bank: str) -> list[int]:
+            del bank
+            return [address + i for i in range(count)]
+
+        object.__setattr__(plc, "_read_registers", AsyncMock(side_effect=fake_read_registers))
+        result = await plc.addr.read("XD0-XD4")
+        assert list(result.keys()) == ["XD0", "XD1", "XD2", "XD3", "XD4"]
+        assert list(result.values()) == [57344, 57346, 57348, 57350, 57352]
+
+    @pytest.mark.asyncio
+    async def test_yd_range_is_display_step(self):
+        plc = _make_plc()
+
+        async def fake_read_registers(address: int, count: int, bank: str) -> list[int]:
+            del bank
+            return [address + i for i in range(count)]
+
+        object.__setattr__(plc, "_read_registers", AsyncMock(side_effect=fake_read_registers))
+        result = await plc.addr.read("YD0-YD2")
+        assert list(result.keys()) == ["YD0", "YD1", "YD2"]
+        assert list(result.values()) == [57856, 57858, 57860]
+
+    @pytest.mark.asyncio
+    async def test_xd_range_rejects_upper_byte_start(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="upper-byte"):
+            await plc.addr.read("XD0u-XD1")
+
+    @pytest.mark.asyncio
+    async def test_xd_range_rejects_upper_byte_end(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="upper-byte"):
+            await plc.addr.read("XD0-XD0u")
+
+    @pytest.mark.asyncio
+    async def test_single_xd0u_read_still_works(self):
+        plc = _make_plc()
+        _set_read_registers(plc, [99])
+        result = await plc.addr.read("XD0u")
+        assert result == {"XD0u": 99}
 
     @pytest.mark.asyncio
     async def test_invalid_address_raises(self):
@@ -827,6 +987,18 @@ class TestAddressAccessorGetitem:
         assert value is True
 
     @pytest.mark.asyncio
+    async def test_getitem_xd_is_display_indexed(self):
+        plc = _make_plc()
+
+        async def fake_read_registers(address: int, count: int, bank: str) -> list[int]:
+            del bank
+            return [address + i for i in range(count)]
+
+        object.__setattr__(plc, "_read_registers", AsyncMock(side_effect=fake_read_registers))
+        value = await plc.xd[3]
+        assert value == 57350
+
+    @pytest.mark.asyncio
     async def test_getitem_slice_raises(self):
         plc = _make_plc()
         with pytest.raises(TypeError, match="Slicing is not supported"):
@@ -837,3 +1009,9 @@ class TestAddressAccessorGetitem:
         plc = _make_plc()
         with pytest.raises(ValueError):
             await plc.df[0]
+
+    @pytest.mark.asyncio
+    async def test_getitem_xd_out_of_range_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError):
+            await plc.xd[9]
