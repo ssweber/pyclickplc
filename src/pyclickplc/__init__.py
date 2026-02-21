@@ -14,7 +14,7 @@ from .banks import (
 from .client import ClickClient, ModbusResponse
 from .dataview import (
     DataviewFile,
-    DataviewRow,
+    DataViewRecord,
     check_cdv_file,
     get_data_type_for_address,
     read_cdv,
@@ -30,7 +30,7 @@ from .modbus import (
     unpack_value,
 )
 from .modbus_service import ConnectionState, ModbusService, ReconnectConfig, WriteResult
-from .nicknames import read_csv, write_csv
+from .nicknames import AddressRecordMap, read_csv, write_csv
 from .server import ClickServer, MemoryDataProvider, ServerClientInfo
 from .server_tui import run_server_tui
 from .validation import validate_comment, validate_initial_value, validate_nickname
@@ -72,7 +72,7 @@ __all__ = [
     "ServerClientInfo",
     "run_server_tui",
     "DataviewFile",
-    "DataviewRow",
+    "DataViewRecord",
     "check_cdv_file",
     "get_data_type_for_address",
     "validate_new_value",
@@ -80,8 +80,10 @@ __all__ = [
     "write_cdv",
     "verify_cdv",
     "read_csv",
+    "AddressRecordMap",
     "write_csv",
     "validate_nickname",
     "validate_comment",
     "validate_initial_value",
 ]
+

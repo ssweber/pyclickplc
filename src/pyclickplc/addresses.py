@@ -185,6 +185,26 @@ def normalize_address(address: str) -> str | None:
     return format_address_display(memory_type, mdb_address)
 
 
+class AddressNormalizerMixin:
+    """Shared helpers for address normalization and parsing."""
+
+    @staticmethod
+    def _normalize_address(address: str) -> str | None:
+        return normalize_address(address)
+
+    @classmethod
+    def _normalize_address_strict(cls, address: str) -> str:
+        normalized = cls._normalize_address(address)
+        if normalized is None:
+            raise ValueError(f"Invalid address format: {address!r}")
+        return normalized
+
+    @classmethod
+    def _parse_address_strict(cls, address: str) -> tuple[str, int]:
+        normalized = cls._normalize_address_strict(address)
+        return parse_address(normalized)
+
+
 # ==============================================================================
 # AddressRecord Data Model
 # ==============================================================================

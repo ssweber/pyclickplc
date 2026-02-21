@@ -10,7 +10,7 @@ from typing import Any, ClassVar, Generic, Literal, TypeAlias, TypeVar, cast, ov
 
 from pymodbus.client import AsyncModbusTcpClient
 
-from .addresses import format_address_display, normalize_address, parse_address
+from .addresses import AddressNormalizerMixin, AddressRecord, format_address_display, parse_address
 from .banks import BANKS
 from .modbus import (
     MODBUS_MAPPINGS,
@@ -18,7 +18,7 @@ from .modbus import (
     plc_to_modbus,
     unpack_value,
 )
-from .nicknames import DATA_TYPE_CODE_TO_STR, read_csv
+from .nicknames import DATA_TYPE_CODE_TO_STR
 from .validation import assert_runtime_value
 
 PlcValue = bool | int | float | str
@@ -56,7 +56,7 @@ StrBankAttr: TypeAlias = Literal["txt", "TXT"]
 # ==============================================================================
 
 
-class ModbusResponse(Mapping[str, TValue_co], Generic[TValue_co]):
+class ModbusResponse(AddressNormalizerMixin, Mapping[str, TValue_co], Generic[TValue_co]):
     """Immutable mapping with normalized PLC address keys.
 
     Keys are stored in canonical uppercase form (``DS1``, ``X001``).
@@ -72,7 +72,7 @@ class ModbusResponse(Mapping[str, TValue_co], Generic[TValue_co]):
     # -- Mapping interface --------------------------------------------------
 
     def __getitem__(self, key: str) -> TValue_co:
-        normalized = normalize_address(key)
+        normalized = self._normalize_address(key)
         if normalized is not None and normalized in self._data:
             return self._data[normalized]
         raise KeyError(key)
@@ -80,7 +80,7 @@ class ModbusResponse(Mapping[str, TValue_co], Generic[TValue_co]):
     def __contains__(self, key: object) -> bool:
         if not isinstance(key, str):
             return False
-        normalized = normalize_address(key)
+        normalized = self._normalize_address(key)
         return normalized is not None and normalized in self._data
 
     def __iter__(self) -> Iterator[str]:
@@ -99,7 +99,7 @@ class ModbusResponse(Mapping[str, TValue_co], Generic[TValue_co]):
                 return False
             normalized: dict[str, object] = {}
             for k, v in other.items():
-                nk = normalize_address(k) if isinstance(k, str) else None
+                nk = self._normalize_address(k) if isinstance(k, str) else None
                 if nk is None:
                     return False
                 normalized[nk] = v
@@ -139,17 +139,28 @@ _DATA_TYPE_STR: dict[str, str] = {
 # ==============================================================================
 
 
-def _load_tags(filepath: str) -> dict[str, dict[str, str]]:
-    """Load tags from nicknames CSV using nicknames.read_csv."""
-    records = read_csv(filepath)
+def _build_tags_from_records(records: Mapping[str, AddressRecord]) -> dict[str, dict[str, str]]:
+    """Build ClickClient tag definitions from AddressRecords."""
     tags: dict[str, dict[str, str]] = {}
-    for r in records.values():
-        if r.nickname and not r.nickname.startswith("_"):
-            tags[r.nickname] = {
-                "address": r.display_address,
-                "type": DATA_TYPE_CODE_TO_STR.get(r.data_type, ""),
-                "comment": r.comment,
-            }
+    seen: dict[str, tuple[str, str]] = {}
+    for record in records.values():
+        nickname = record.nickname.strip()
+        if nickname == "":
+            continue
+        key = nickname.lower()
+        if key in seen:
+            first_name, first_address = seen[key]
+            raise ValueError(
+                "Case-insensitive duplicate nickname in ClickClient tags: "
+                f"{first_name!r}@{first_address} conflicts with "
+                f"{nickname!r}@{record.display_address}"
+            )
+        seen[key] = (nickname, record.display_address)
+        tags[nickname] = {
+            "address": record.display_address,
+            "type": DATA_TYPE_CODE_TO_STR.get(record.data_type, ""),
+            "comment": record.comment,
+        }
     # Sort by address
     return dict(sorted(tags.items(), key=lambda item: item[1]["address"]))
 
@@ -518,20 +529,33 @@ class TagInterface:
     def __init__(self, plc: ClickClient) -> None:
         self._plc = plc
 
+    @staticmethod
+    def _resolve_tag_name(tags: Mapping[str, dict[str, str]], tag_name: str) -> str:
+        if tag_name in tags:
+            return tag_name
+        lowered = tag_name.lower()
+        matches = [name for name in tags if name.lower() == lowered]
+        if len(matches) == 1:
+            return matches[0]
+        available = list(tags.keys())[:5]
+        if len(matches) > 1:
+            raise KeyError(
+                f"Tag '{tag_name}' is ambiguous due to case-colliding names. Available: {available}"
+            )
+        raise KeyError(f"Tag '{tag_name}' not found. Available: {available}")
+
     async def read(self, tag_name: str | None = None) -> dict[str, PlcValue] | PlcValue:
         """Read single tag or all tags."""
         tags = self._plc.tags
         if tag_name is not None:
-            if tag_name not in tags:
-                available = list(tags.keys())[:5]
-                raise KeyError(f"Tag '{tag_name}' not found. Available: {available}")
-            tag_info = tags[tag_name]
+            resolved_name = self._resolve_tag_name(tags, tag_name)
+            tag_info = tags[resolved_name]
             resp = await self._plc.addr.read(tag_info["address"])
             # Single-address read → extract the lone value
             return next(iter(resp.values()))
 
         if not tags:
-            raise ValueError("No tags loaded. Provide a tag file or specify a tag name.")
+            raise ValueError("No tags loaded. Provide tags to ClickClient or specify a tag name.")
 
         all_tags: dict[str, PlcValue] = {}
         for name, info in tags.items():
@@ -546,10 +570,8 @@ class TagInterface:
     ) -> None:
         """Write value by tag name."""
         tags = self._plc.tags
-        if tag_name not in tags:
-            available = list(tags.keys())[:5]
-            raise KeyError(f"Tag '{tag_name}' not found. Available: {available}")
-        tag_info = tags[tag_name]
+        resolved_name = self._resolve_tag_name(tags, tag_name)
+        tag_info = tags[resolved_name]
         await self._plc.addr.write(tag_info["address"], data)
 
     def read_all(self) -> dict[str, dict[str, str]]:
@@ -571,7 +593,7 @@ class ClickClient:
         self,
         host: str,
         port: int = 502,
-        tag_filepath: str = "",
+        tags: Mapping[str, AddressRecord] | None = None,
         timeout: int = 1,
         device_id: int = 1,
         reconnect_delay: float = 0.0,
@@ -600,8 +622,8 @@ class ClickClient:
         self.addr = AddressInterface(self)
         self.tag = TagInterface(self)
 
-        if tag_filepath:
-            self.tags = _load_tags(tag_filepath)
+        if tags is not None:
+            self.tags = _build_tags_from_records(tags)
 
     async def _call_modbus(self, method: Any, /, **kwargs: Any) -> Any:
         """Call pymodbus methods with device_id, falling back to legacy slave."""
@@ -720,3 +742,4 @@ class ClickClient:
             )
         if result.isError():
             raise OSError(f"Modbus write error at register {address}: {result}")
+

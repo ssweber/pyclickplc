@@ -1,11 +1,14 @@
 """Tests for pyclickplc.nicknames — CSV read/write for address data."""
 
-from pyclickplc.addresses import AddressRecord
+import pytest
+
+from pyclickplc.addresses import AddressRecord, get_addr_key
 from pyclickplc.banks import DataType
 from pyclickplc.nicknames import (
     CSV_COLUMNS,
     DATA_TYPE_CODE_TO_STR,
     DATA_TYPE_STR_TO_CODE,
+    AddressRecordMap,
     read_csv,
     write_csv,
 )
@@ -49,6 +52,7 @@ class TestReadCsv:
         )
 
         records = read_csv(csv_path)
+        assert isinstance(records, AddressRecordMap)
         assert len(records) == 2
 
         # Find the X001 record
@@ -64,6 +68,45 @@ class TestReadCsv:
         assert len(ds_records) == 1
         assert ds_records[0].nickname == "Temp"
         assert ds_records[0].retentive is True
+
+        # Existing int-key access remains intact
+        assert records[get_addr_key("X", 1)].nickname == "Input1"
+        assert records[get_addr_key("DS", 1)].nickname == "Temp"
+
+    def test_read_addr_lookup_normalized(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'X001,BIT,"Input1",0,No,""\n'
+            'DS1,INT,"Temp",0,Yes,""\n',
+            encoding="utf-8",
+        )
+        records = read_csv(csv_path)
+        assert records.addr["x1"].nickname == "Input1"
+        assert records.addr["X001"].nickname == "Input1"
+        assert records.addr["ds1"].nickname == "Temp"
+
+    def test_read_tag_lookup_case_insensitive(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'X001,BIT,"MyTag",0,No,""\n',
+            encoding="utf-8",
+        )
+        records = read_csv(csv_path)
+        assert records.tag["MyTag"].display_address == "X001"
+        assert records.tag["mytag"].display_address == "X001"
+
+    def test_read_tag_lookup_excludes_empty_nickname(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'X001,BIT,"",0,No,""\n',
+            encoding="utf-8",
+        )
+        records = read_csv(csv_path)
+        with pytest.raises(KeyError):
+            _ = records.tag[""]
 
     def test_read_empty_rows_skipped(self, tmp_path):
         csv_path = tmp_path / "test.csv"
@@ -88,6 +131,27 @@ class TestReadCsv:
 
         records = read_csv(csv_path)
         assert len(records) == 1
+
+    def test_read_duplicate_nickname_case_insensitive_raises(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'X001,BIT,"Pump",0,No,""\n'
+            'X002,BIT,"pump",0,No,""\n',
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="Case-insensitive duplicate nickname"):
+            read_csv(csv_path)
+
+    def test_tag_lookup_rejects_case_collisions_after_mutation(self):
+        records = AddressRecordMap(
+            {
+                1: AddressRecord(memory_type="X", address=1, nickname="Pump"),
+                2: AddressRecord(memory_type="X", address=2, nickname="pump"),
+            }
+        )
+        with pytest.raises(ValueError, match="duplicate tag nickname"):
+            _ = records.tag["pump"]
 
 
 class TestWriteCsv:
@@ -177,3 +241,4 @@ class TestRoundTrip:
         assert ds_records[0].nickname == "Speed"
         assert ds_records[0].comment == "Motor speed"
         assert ds_records[0].retentive is True
+

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
-from pyclickplc.server import ServerClientInfo
+from pyclickplc.server import ClickServer, ServerClientInfo
 from pyclickplc.server_tui import run_server_tui
 
 
@@ -64,7 +65,9 @@ async def test_run_server_tui_status_help_shutdown():
     output: list[str] = []
 
     await run_server_tui(
-        server, input_fn=_input_from(["status", "help", "shutdown"]), output_fn=output.append
+        cast(ClickServer, server),
+        input_fn=_input_from(["status", "help", "shutdown"]),
+        output_fn=output.append,
     )
 
     assert server.start_calls == 1
@@ -78,7 +81,11 @@ async def test_run_server_tui_clients_empty():
     server = _FakeServer()
     output: list[str] = []
 
-    await run_server_tui(server, input_fn=_input_from(["clients", "shutdown"]), output_fn=output.append)
+    await run_server_tui(
+        cast(ClickServer, server),
+        input_fn=_input_from(["clients", "shutdown"]),
+        output_fn=output.append,
+    )
 
     assert "No clients connected." in output
 
@@ -88,7 +95,9 @@ async def test_run_server_tui_disconnect_all():
     output: list[str] = []
 
     await run_server_tui(
-        server, input_fn=_input_from(["disconnect all", "shutdown"]), output_fn=output.append
+        cast(ClickServer, server),
+        input_fn=_input_from(["disconnect all", "shutdown"]),
+        output_fn=output.append,
     )
 
     assert server.disconnect_all_calls == 1
@@ -100,7 +109,9 @@ async def test_run_server_tui_disconnect_single_success():
     output: list[str] = []
 
     await run_server_tui(
-        server, input_fn=_input_from(["disconnect abc", "shutdown"]), output_fn=output.append
+        cast(ClickServer, server),
+        input_fn=_input_from(["disconnect abc", "shutdown"]),
+        output_fn=output.append,
     )
 
     assert server.disconnect_client_calls == ["abc"]
@@ -112,7 +123,9 @@ async def test_run_server_tui_disconnect_single_not_found():
     output: list[str] = []
 
     await run_server_tui(
-        server, input_fn=_input_from(["disconnect missing", "shutdown"]), output_fn=output.append
+        cast(ClickServer, server),
+        input_fn=_input_from(["disconnect missing", "shutdown"]),
+        output_fn=output.append,
     )
 
     assert server.disconnect_client_calls == ["missing"]
@@ -123,7 +136,11 @@ async def test_run_server_tui_unknown_command():
     server = _FakeServer()
     output: list[str] = []
 
-    await run_server_tui(server, input_fn=_input_from(["badcmd", "shutdown"]), output_fn=output.append)
+    await run_server_tui(
+        cast(ClickServer, server),
+        input_fn=_input_from(["badcmd", "shutdown"]),
+        output_fn=output.append,
+    )
 
     assert any("Unknown command: badcmd." in line for line in output)
 
@@ -135,7 +152,7 @@ async def test_run_server_tui_eof_triggers_stop():
     def _eof(_: str) -> str:
         raise EOFError
 
-    await run_server_tui(server, input_fn=_eof, output_fn=output.append)
+    await run_server_tui(cast(ClickServer, server), input_fn=_eof, output_fn=output.append)
 
     assert server.stop_calls == 1
     assert "EOF received, shutting down server." in output
@@ -148,7 +165,7 @@ async def test_run_server_tui_keyboard_interrupt_triggers_stop():
     def _interrupt(_: str) -> str:
         raise KeyboardInterrupt
 
-    await run_server_tui(server, input_fn=_interrupt, output_fn=output.append)
+    await run_server_tui(cast(ClickServer, server), input_fn=_interrupt, output_fn=output.append)
 
     assert server.stop_calls == 1
     assert "Interrupted, shutting down server." in output
@@ -158,7 +175,9 @@ async def test_run_server_tui_does_not_restart_running_server():
     server = _FakeServer(running=True)
     output: list[str] = []
 
-    await run_server_tui(server, input_fn=_input_from(["shutdown"]), output_fn=output.append)
+    await run_server_tui(
+        cast(ClickServer, server), input_fn=_input_from(["shutdown"]), output_fn=output.append
+    )
 
     assert server.start_calls == 0
     assert server.stop_calls == 1

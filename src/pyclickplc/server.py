@@ -13,7 +13,7 @@ from pymodbus.constants import ExcCodes
 from pymodbus.datastore import ModbusBaseDeviceContext, ModbusServerContext
 from pymodbus.server import ModbusTcpServer
 
-from .addresses import format_address_display, parse_address
+from .addresses import AddressNormalizerMixin, format_address_display, parse_address
 from .banks import BANKS, DataType
 from .modbus import (
     MODBUS_MAPPINGS,
@@ -54,7 +54,7 @@ _DEFAULTS: dict[DataType, PlcValue] = {
 }
 
 
-class MemoryDataProvider:
+class MemoryDataProvider(AddressNormalizerMixin):
     """In-memory DataProvider for testing and simple use cases."""
 
     def __init__(self) -> None:
@@ -62,8 +62,8 @@ class MemoryDataProvider:
 
     def _normalize(self, address: str) -> tuple[str, str, int]:
         """Normalize address and return (normalized, bank, index)."""
-        bank, index = parse_address(address)
-        normalized = format_address_display(bank, index)
+        normalized = self._normalize_address_strict(address)
+        bank, index = parse_address(normalized)
         return normalized, bank, index
 
     def _default(self, bank: str) -> PlcValue:

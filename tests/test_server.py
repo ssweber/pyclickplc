@@ -85,6 +85,11 @@ class TestMemoryDataProvider:
         p.set("x1", True)
         assert p.get("X001") is True
 
+    def test_address_normalization_y(self):
+        p = MemoryDataProvider()
+        p.set("y1", True)
+        assert p.get("Y001") is True
+
     def test_overwrite(self):
         p = MemoryDataProvider()
         p.set("DS1", 10)

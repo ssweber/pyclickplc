@@ -22,5 +22,5 @@ asyncio.run(main())
 
 - Bank accessors: `plc.ds`, `plc.df`, `plc.y`, etc.
 - String addresses: `plc.addr.read("DS1")`, `plc.addr.write("C1", True)`
-- Tags (with `tag_filepath`): `plc.tag.read("Name")`, `plc.tag.write("Name", value)`
+- Tags (with `tags=`): `plc.tag.read("name")`, `plc.tag.write("name", value)` (case-insensitive)
 

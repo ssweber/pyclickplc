@@ -8,7 +8,7 @@ from pyclickplc.dataview import (
     WRITABLE_SC,
     WRITABLE_SD,
     DataviewFile,
-    DataviewRow,
+    DataViewRecord,
     DisplayParseResult,
     _CdvStorageCode,
     check_cdv_file,
@@ -114,11 +114,11 @@ class TestIsAddressWritable:
         assert is_address_writable("") is False
 
 
-class TestDataviewRow:
-    """Tests for DataviewRow dataclass."""
+class TestDataViewRecord:
+    """Tests for DataViewRecord dataclass."""
 
     def test_default_values(self):
-        row = DataviewRow()
+        row = DataViewRecord()
         assert row.address == ""
         assert row.data_type is None
         assert row.new_value is None
@@ -126,7 +126,7 @@ class TestDataviewRow:
         assert row.comment == ""
 
     def test_is_empty(self):
-        row = DataviewRow()
+        row = DataViewRecord()
         assert row.is_empty is True
 
         row.address = "X001"
@@ -136,28 +136,28 @@ class TestDataviewRow:
         assert row.is_empty is True
 
     def test_is_writable(self):
-        row = DataviewRow(address="X001")
+        row = DataViewRecord(address="X001")
         assert row.is_writable is True
 
         row.address = "XD0"
         assert row.is_writable is False
 
     def test_memory_type(self):
-        row = DataviewRow(address="DS100")
+        row = DataViewRecord(address="DS100")
         assert row.memory_type == "DS"
 
         row.address = ""
         assert row.memory_type is None
 
     def test_address_number(self):
-        row = DataviewRow(address="DS100")
+        row = DataViewRecord(address="DS100")
         assert row.address_number == "100"
 
         row.address = "XD0u"
         assert row.address_number == "0u"
 
     def test_update_data_type(self):
-        row = DataviewRow(address="DS100")
+        row = DataViewRecord(address="DS100")
         assert row.update_data_type() is True
         assert row.data_type == DataType.INT
 
@@ -165,7 +165,7 @@ class TestDataviewRow:
         assert row.update_data_type() is False
 
     def test_clear(self):
-        row = DataviewRow(
+        row = DataViewRecord(
             address="X001",
             data_type=DataType.BIT,
             new_value=True,
@@ -492,17 +492,17 @@ class TestDataviewFileDisplayHelpers:
         assert parsed_invalid.error == "Must be integer"
 
     def test_validate_row_display(self):
-        row = DataviewRow(address="XD0", data_type=DataType.HEX)
+        row = DataViewRecord(address="XD0", data_type=DataType.HEX)
         assert DataviewFile.validate_row_display(row, "0001") == (False, "Read-only address")
 
-        row = DataviewRow(address="DS1")
+        row = DataViewRecord(address="DS1")
         assert DataviewFile.validate_row_display(row, "100") == (False, "No address set")
 
-        row = DataviewRow(address="DS1", data_type=DataType.INT)
+        row = DataViewRecord(address="DS1", data_type=DataType.INT)
         assert DataviewFile.validate_row_display(row, "abc") == (False, "Must be integer")
 
     def test_set_row_new_value_from_display(self):
-        row = DataviewRow(address="DS1", data_type=DataType.INT)
+        row = DataViewRecord(address="DS1", data_type=DataType.INT)
         DataviewFile.set_row_new_value_from_display(row, "100")
         assert row.new_value == 100
 
@@ -698,3 +698,4 @@ class TestCheckCdv:
         issues = check_cdv_file(cdv)
         assert len(issues) == 1
         assert "not writable" in issues[0]
+

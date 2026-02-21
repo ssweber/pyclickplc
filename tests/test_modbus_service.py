@@ -79,13 +79,13 @@ class _FakeClickClient:
         self,
         host: str,
         port: int = 502,
-        tag_filepath: str = "",
+        tags: dict[str, object] | None = None,
         timeout: int = 1,
         device_id: int = 1,
         reconnect_delay: float = 0.0,
         reconnect_delay_max: float = 0.0,
     ) -> None:
-        del tag_filepath
+        del tags
         del timeout
         del device_id
         self.host = host

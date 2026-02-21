@@ -1,6 +1,6 @@
 """DataView model and CDV file I/O for CLICK PLC DataView files.
 
-Provides the DataviewRow dataclass, CDV file read/write,
+Provides the DataViewRecord dataclass, CDV file read/write,
 value conversion functions between CDV storage, native Python types,
 UI display strings, and CDV verification helpers.
 """
@@ -142,7 +142,7 @@ def is_address_writable(address: str) -> bool:
 
 
 @dataclass
-class DataviewRow:
+class DataViewRecord:
     """Represents a single row in a CLICK DataView.
 
     A dataview row contains an address to monitor and optionally a new value
@@ -210,16 +210,16 @@ class DataviewRow:
         self.comment = ""
 
 
-def create_empty_dataview(count: int = MAX_DATAVIEW_ROWS) -> list[DataviewRow]:
+def create_empty_dataview(count: int = MAX_DATAVIEW_ROWS) -> list[DataViewRecord]:
     """Create a new empty dataview with the specified number of rows.
 
     Args:
         count: Number of rows to create (default MAX_DATAVIEW_ROWS).
 
     Returns:
-        List of empty DataviewRow objects.
+        List of empty DataViewRecord objects.
     """
-    return [DataviewRow() for _ in range(count)]
+    return [DataViewRecord() for _ in range(count)]
 
 
 # --- Value Conversion Functions ---
@@ -445,7 +445,7 @@ def _default_cdv_header(has_new_values: bool) -> str:
     return f"{-1 if has_new_values else 0},0,0"
 
 
-def _rows_snapshot(rows: list[DataviewRow]) -> list[tuple[str, DataType | None, DataviewValue]]:
+def _rows_snapshot(rows: list[DataViewRecord]) -> list[tuple[str, DataType | None, DataviewValue]]:
     return [(row.address, row.data_type, row.new_value) for row in rows]
 
 
@@ -515,15 +515,15 @@ def _values_equal_for_data_type(
     return expected_norm == actual_norm
 
 
-def _row_placeholder(rows: list[DataviewRow], index: int) -> DataviewRow:
-    return rows[index] if index < len(rows) else DataviewRow()
+def _row_placeholder(rows: list[DataViewRecord], index: int) -> DataViewRecord:
+    return rows[index] if index < len(rows) else DataViewRecord()
 
 
 @dataclass
 class DataviewFile:
     """CDV file model with row data in native Python types."""
 
-    rows: list[DataviewRow] = field(default_factory=create_empty_dataview)
+    rows: list[DataViewRecord] = field(default_factory=create_empty_dataview)
     has_new_values: bool = False
     header: str = "0,0,0"
     path: Path | None = None
@@ -565,14 +565,14 @@ class DataviewFile:
         return DisplayParseResult(ok=True, value=native)
 
     @staticmethod
-    def validate_row_display(row: DataviewRow, display_str: str) -> tuple[bool, str]:
+    def validate_row_display(row: DataViewRecord, display_str: str) -> tuple[bool, str]:
         """Validate a user edit for a specific row."""
         if not row.is_writable:
             return False, "Read-only address"
         return DataviewFile.validate_display(display_str, row.data_type)
 
     @staticmethod
-    def set_row_new_value_from_display(row: DataviewRow, display_str: str) -> None:
+    def set_row_new_value_from_display(row: DataViewRecord, display_str: str) -> None:
         """Strictly set a row's native new_value from a display string."""
         ok, error = DataviewFile.validate_row_display(row, display_str)
         if not ok:
@@ -688,7 +688,7 @@ class DataviewFile:
         lines: list[str] = [self.header]
         rows_to_save = list(self.rows[:MAX_DATAVIEW_ROWS])
         while len(rows_to_save) < MAX_DATAVIEW_ROWS:
-            rows_to_save.append(DataviewRow())
+            rows_to_save.append(DataViewRecord())
 
         new_storage_tokens: list[str | None] = []
         for row in rows_to_save:
@@ -924,7 +924,7 @@ def check_cdv_file(path: Path | str) -> list[str]:
 
 def verify_cdv(
     path: Path | str,
-    rows: list[DataviewRow],
+    rows: list[DataViewRecord],
     has_new_values: bool | None = None,
 ) -> list[str]:
     """Verify in-memory rows against a CDV file using native value comparison."""
@@ -941,3 +941,4 @@ def verify_cdv(
         path=Path(path),
     )
     return dataview.verify(path)
+

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pyclickplc.addresses import AddressRecord
 from pyclickplc.banks import DataType
 from pyclickplc.client import (
     AddressAccessor,
@@ -25,9 +26,9 @@ from pyclickplc.modbus import MODBUS_MAPPINGS, pack_value
 # ==============================================================================
 
 
-def _make_plc(tag_filepath: str = "") -> ClickClient:
+def _make_plc() -> ClickClient:
     """Create a ClickClient without connecting."""
-    plc = ClickClient("localhost", 5020, tag_filepath=tag_filepath)
+    plc = ClickClient("localhost", 5020)
     # Mock internal transport methods
     _set_read_coils(plc, [False])
     _set_write_coils(plc)
@@ -112,6 +113,40 @@ class TestClickClient:
         plc = ClickClient("192.168.1.100", reconnect_delay=0.5, reconnect_delay_max=2.0)
         assert plc._client.comm_params.reconnect_delay == 0.5
         assert plc._client.comm_params.reconnect_delay_max == 2.0
+
+    @pytest.mark.asyncio
+    async def test_construction_with_programmatic_tags(self):
+        plc = ClickClient(
+            "192.168.1.100",
+            tags={
+                "ignored": AddressRecord(memory_type="DF", address=1, nickname="Temp"),
+                "other": AddressRecord(memory_type="C", address=1, nickname="Valve"),
+            },
+        )
+        assert set(plc.tags.keys()) == {"Temp", "Valve"}
+        assert plc.tags["Temp"]["address"] == "DF1"
+
+    @pytest.mark.asyncio
+    async def test_construction_with_programmatic_tags_skips_empty_nickname(self):
+        plc = ClickClient(
+            "192.168.1.100",
+            tags={
+                "first": AddressRecord(memory_type="DF", address=1, nickname=""),
+                "second": AddressRecord(memory_type="C", address=1, nickname="Valve"),
+            },
+        )
+        assert set(plc.tags.keys()) == {"Valve"}
+
+    @pytest.mark.asyncio
+    async def test_construction_with_programmatic_tags_rejects_case_collisions(self):
+        with pytest.raises(ValueError, match="duplicate nickname"):
+            ClickClient(
+                "192.168.1.100",
+                tags={
+                    "a": AddressRecord(memory_type="DF", address=1, nickname="Pump"),
+                    "b": AddressRecord(memory_type="DF", address=2, nickname="pump"),
+                },
+            )
 
     @pytest.mark.asyncio
     async def test_getattr_df(self):
@@ -543,6 +578,16 @@ class TestTagInterface:
             await plc.tag.read("NonExistent")
 
     @pytest.mark.asyncio
+    async def test_read_tag_case_insensitive(self):
+        plc = self._plc_with_tags()
+        regs = pack_value(25.0, DataType.FLOAT)
+        _set_read_registers(plc, regs)
+        value = await plc.tag.read("temp")
+        import math
+
+        assert math.isclose(_as_float(value), 25.0, rel_tol=1e-6)
+
+    @pytest.mark.asyncio
     async def test_read_all_tags(self):
         plc = self._plc_with_tags()
         regs = pack_value(25.0, DataType.FLOAT)
@@ -570,6 +615,12 @@ class TestTagInterface:
         plc = self._plc_with_tags()
         with pytest.raises(KeyError, match="not found"):
             await plc.tag.write("NonExistent", 42)
+
+    @pytest.mark.asyncio
+    async def test_write_tag_case_insensitive(self):
+        plc = self._plc_with_tags()
+        await plc.tag.write("temp", 30.0)
+        _get_write_registers_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
     async def test_read_all_definitions(self):

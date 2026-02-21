@@ -6,6 +6,8 @@
 from pyclickplc import read_csv, write_csv
 
 records = read_csv("nicknames.csv")
+motor = records.addr["ds1"]
+tag = records.tag["mytag"]
 count = write_csv("output.csv", records)
 ```
 

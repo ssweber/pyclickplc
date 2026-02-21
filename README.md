@@ -17,7 +17,7 @@ Requires Python 3.11+. The Modbus client and server depend on [pymodbus](https:/
 
 ```python
 import asyncio
-from pyclickplc import ClickClient
+from pyclickplc import AddressRecord, ClickClient
 
 async def main():
     async with ClickClient("192.168.1.10", 502) as plc:
@@ -30,10 +30,13 @@ async def main():
         await plc.addr.write("df1", 3.14)
         by_addr = await plc.addr.read("df1")
 
-    # Tag interface (requires tag_filepath on client construction)
-    async with ClickClient("192.168.1.10", 502, tag_filepath="nicknames.csv") as tagged:
+    # Tag interface (programmatic tags)
+    tags = {
+        "temp_source": AddressRecord(memory_type="DF", address=1, nickname="MyTag"),
+    }
+    async with ClickClient("192.168.1.10", 502, tags=tags) as tagged:
         await tagged.tag.write("MyTag", 42)
-        tag_value = await tagged.tag.read("MyTag")
+        tag_value = await tagged.tag.read("mytag")  # case-insensitive
         all_tag_values = await tagged.tag.read()
         tag_defs = tagged.tag.read_all()  # synchronous tag metadata
 
@@ -137,10 +140,14 @@ Read and write CLICK software nickname CSV files.
 ```python
 from pyclickplc import read_csv, write_csv
 
-# Read — returns dict[addr_key, AddressRecord]
+# Read — returns AddressRecordMap (dict[int, AddressRecord] compatible)
 records = read_csv("nicknames.csv")
 for key, record in records.items():
     print(record.display_address, record.nickname, record.comment)
+
+# Address/nickname lookup views
+ds1 = records.addr["ds1"]
+tag = records.tag["mytag"]  # case-insensitive nickname lookup
 
 # Write — only records with content are written
 count = write_csv("output.csv", records)
