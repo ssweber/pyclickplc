@@ -651,21 +651,31 @@ class TagInterface:
             )
         raise KeyError(f"Tag '{tag_name}' not found. Available: {available}")
 
-    async def read(self, tag_name: str | None = None) -> dict[str, PlcValue] | PlcValue:
-        """Read single tag or all tags."""
+    async def read(self, tag_name: str) -> PlcValue:
+        """Read a single tag value by name (case-insensitive)."""
         tags = self._plc.tags
-        if tag_name is not None:
-            resolved_name = self._resolve_tag_name(tags, tag_name)
-            tag_info = tags[resolved_name]
-            resp = await self._plc.addr.read(tag_info["address"])
-            # Single-address read → extract the lone value
-            return next(iter(resp.values()))
+        resolved_name = self._resolve_tag_name(tags, tag_name)
+        tag_info = tags[resolved_name]
+        resp = await self._plc.addr.read(tag_info["address"])
+        return next(iter(resp.values()))
 
+    async def read_all(self, *, include_system: bool = False) -> dict[str, PlcValue]:
+        """Read all tag values.
+
+        Args:
+            include_system: If False (default), skip SC/SD system banks.
+        """
+        tags = self._plc.tags
         if not tags:
             raise ValueError("No tags loaded. Provide tags to ClickClient or specify a tag name.")
 
+        system_banks = frozenset({"SC", "SD"})
         all_tags: dict[str, PlcValue] = {}
         for name, info in tags.items():
+            if not include_system:
+                bank, _ = parse_address(info["address"])
+                if bank in system_banks:
+                    continue
             resp = await self._plc.addr.read(info["address"])
             all_tags[name] = next(iter(resp.values()))
         return all_tags
@@ -681,9 +691,6 @@ class TagInterface:
         tag_info = tags[resolved_name]
         await self._plc.addr.write(tag_info["address"], data)
 
-    def read_all(self) -> dict[str, dict[str, str]]:
-        """Return a copy of all tag definitions (synchronous)."""
-        return dict(self._plc.tags)
 
 
 # ==============================================================================

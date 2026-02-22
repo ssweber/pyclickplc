@@ -6,6 +6,7 @@ Utilities for AutomationDirect CLICK PLCs: Modbus TCP client/server, address hel
 
 ```bash
 uv add pyclickplc
+# or
 pip install pyclickplc
 ```
 
@@ -34,20 +35,32 @@ async def main():
         by_addr = await plc.addr.read("df1")
         yd_display = await plc.addr.read("YD0-YD8")  # display-step range for XD/YD
 
-    # Tag interface (programmatic tags)
-    tags = {
-        "temp_source": AddressRecord(memory_type="DF", address=1, nickname="MyTag"),
-    }
-    async with ClickClient("192.168.1.10", 502, tags=tags) as tagged:
-        await tagged.tag.write("MyTag", 42)
-        tag_value = await tagged.tag.read("mytag")  # case-insensitive
-        all_tag_values = await tagged.tag.read()
-        tag_defs = tagged.tag.read_all()  # synchronous tag metadata
+asyncio.run(main())
+```
+
+Tags let you reference addresses by nickname:
+
+```python
+from pyclickplc import AddressRecord, ClickClient
+
+tags = {
+    "temp_source": AddressRecord(memory_type="DF", address=1, nickname="MyTag"),
+}
+
+async def main():
+    async with ClickClient("192.168.1.10", 502, tags=tags) as plc:
+        await plc.tag.write("MyTag", 42)
+        tag_value = await plc.tag.read("mytag")  # case-insensitive
+        all_tag_values = await plc.tag.read_all()  # excludes SC/SD by default
 
 asyncio.run(main())
 ```
 
-All `read()` methods return `ModbusResponse`, a mapping keyed by canonical uppercase addresses (`"DS1"`, `"X001"`). Lookups are normalized (`resp["ds1"]` resolves `"DS1"`). Use `await plc.ds[1]` for a bare value. `plc.xd`/`plc.yd` are display-indexed (`0..8`) with `plc.xdu`/`plc.ydu` aliases for `XD0u`/`YD0u`.
+All `read()` methods return `ModbusResponse`, a mapping keyed by canonical uppercase addresses (`"DS1"`, `"X001"`):
+
+- Lookups are normalized: `resp["ds1"]` resolves `"DS1"`
+- `await plc.ds[1]` returns a bare value instead of a mapping
+- `plc.xd`/`plc.yd` are display-indexed (`0..8`); `plc.xdu`/`plc.ydu` are aliases for `XD0u`/`YD0u`
 
 ## ModbusService (Sync + Polling)
 
@@ -190,10 +203,6 @@ display = format_address_display("XD", 1)   # "XD0u"
 
 normalized = normalize_address("x1")    # "X001"
 ```
-
-Note: address helper functions remain MDB-oriented for XD/YD internals (`parse_address("XD3")` returns MDB index `6`).
-
-Full API reference is available via MkDocs (including advanced modules).
 
 ## Development
 

@@ -753,7 +753,7 @@ class TestTagInterface:
         regs = pack_value(25.0, DataType.FLOAT)
         _set_read_registers(plc, regs)
         _set_read_coils(plc, [True])
-        result = await plc.tag.read()
+        result = await plc.tag.read_all()
         assert isinstance(result, dict)
         assert "Temp" in result
         assert "Valve" in result
@@ -762,7 +762,32 @@ class TestTagInterface:
     async def test_read_all_no_tags_raises(self):
         plc = _make_plc()
         with pytest.raises(ValueError, match="No tags loaded"):
-            await plc.tag.read()
+            await plc.tag.read_all()
+
+    @pytest.mark.asyncio
+    async def test_read_all_excludes_system_by_default(self):
+        plc = self._plc_with_tags()
+        plc.tags["SysFlag"] = {"address": "SC1", "type": "BIT", "comment": "System"}
+        plc.tags["SysData"] = {"address": "SD1", "type": "INT", "comment": "System"}
+        regs = pack_value(25.0, DataType.FLOAT)
+        _set_read_registers(plc, regs)
+        _set_read_coils(plc, [True])
+        result = await plc.tag.read_all()
+        assert "Temp" in result
+        assert "Valve" in result
+        assert "SysFlag" not in result
+        assert "SysData" not in result
+
+    @pytest.mark.asyncio
+    async def test_read_all_includes_system_when_requested(self):
+        plc = self._plc_with_tags()
+        plc.tags["SysFlag"] = {"address": "SC1", "type": "BIT", "comment": "System"}
+        regs = pack_value(25.0, DataType.FLOAT)
+        _set_read_registers(plc, regs)
+        _set_read_coils(plc, [True])
+        result = await plc.tag.read_all(include_system=True)
+        assert "Temp" in result
+        assert "SysFlag" in result
 
     @pytest.mark.asyncio
     async def test_write_tag(self):
@@ -782,15 +807,6 @@ class TestTagInterface:
         await plc.tag.write("temp", 30.0)
         _get_write_registers_mock(plc).assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_read_all_definitions(self):
-        plc = self._plc_with_tags()
-        result = plc.tag.read_all()
-        assert "Temp" in result
-        assert result["Temp"]["address"] == "DF1"
-        # Should be a copy
-        result["New"] = {"address": "DS1"}
-        assert "New" not in plc.tags
 
 
 # ==============================================================================
