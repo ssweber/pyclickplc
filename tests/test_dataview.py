@@ -698,4 +698,3 @@ class TestCheckCdv:
         issues = check_cdv_file(cdv)
         assert len(issues) == 1
         assert "not writable" in issues[0]
-

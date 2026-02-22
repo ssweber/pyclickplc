@@ -5,7 +5,7 @@ Utilities for AutomationDirect CLICK PLCs: Modbus TCP client/server, address hel
 ## Installation
 
 ```bash
-uv install pyclickplc
+uv add pyclickplc
 pip install pyclickplc
 ```
 

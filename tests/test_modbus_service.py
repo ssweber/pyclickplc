@@ -153,9 +153,7 @@ def _wait_for(predicate, *, timeout: float = 1.0) -> None:
 
 def _service_threads() -> list[threading.Thread]:
     return [
-        t
-        for t in threading.enumerate()
-        if t.name == "pyclickplc-modbus-service" and t.is_alive()
+        t for t in threading.enumerate() if t.name == "pyclickplc-modbus-service" and t.is_alive()
     ]
 
 

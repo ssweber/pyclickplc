@@ -361,6 +361,13 @@ class ClickServer:
         host: str = "localhost",
         port: int = 502,
     ) -> None:
+        """Create a ClickServer.
+
+        Args:
+            provider: Backend that stores and retrieves PLC values.
+            host: Interface to bind (default ``"localhost"``).
+            port: Modbus TCP port (default 502).
+        """
         self.provider = provider
         self.host = host
         self.port = port
@@ -389,7 +396,9 @@ class ClickServer:
             return []
         clients: list[ServerClientInfo] = []
         for client_id, connection in self._server.active_connections.items():
-            clients.append(ServerClientInfo(client_id=client_id, peer=self._format_peer(connection)))
+            clients.append(
+                ServerClientInfo(client_id=client_id, peer=self._format_peer(connection))
+            )
         return clients
 
     def disconnect_client(self, client_id: str) -> bool:

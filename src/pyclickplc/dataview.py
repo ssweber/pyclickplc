@@ -697,8 +697,14 @@ class DataviewFile:
                 new_storage_tokens.append(None)
                 continue
 
-            data_type = row.data_type if row.data_type is not None else get_data_type_for_address(row.address)
-            cdv_code = _CdvStorageCode.INT if data_type is None else _DATA_TYPE_TO_CDV_CODE[data_type]
+            data_type = (
+                row.data_type
+                if row.data_type is not None
+                else get_data_type_for_address(row.address)
+            )
+            cdv_code = (
+                _CdvStorageCode.INT if data_type is None else _DATA_TYPE_TO_CDV_CODE[data_type]
+            )
 
             if row.new_value is not None:
                 if data_type is None:
@@ -771,6 +777,7 @@ class DataviewFile:
 def read_cdv(path: Path | str) -> DataviewFile:
     """Read a CDV file into a DataviewFile model."""
     return DataviewFile.load(path)
+
 
 def write_cdv(path: Path | str, dataview: DataviewFile) -> None:
     """Write a DataviewFile to a CDV path."""
@@ -876,9 +883,7 @@ def check_cdv_file(path: Path | str) -> list[str]:
 
         row_num = i + 1
         raw_new_value = (
-            dataview._row_storage_tokens[i]
-            if i < len(dataview._row_storage_tokens)
-            else None
+            dataview._row_storage_tokens[i] if i < len(dataview._row_storage_tokens) else None
         )
 
         try:
@@ -941,4 +946,3 @@ def verify_cdv(
         path=Path(path),
     )
     return dataview.verify(path)
-

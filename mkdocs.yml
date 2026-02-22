@@ -15,17 +15,12 @@ nav:
   - API Reference:
       - Overview: reference/index.md
       - Modules:
-          - pyclickplc: reference/api/pyclickplc.md
-          - addresses: reference/api/addresses.md
-          - banks: reference/api/banks.md
-          - capabilities: reference/api/capabilities.md
-          - blocks: reference/api/blocks.md
           - client: reference/api/client.md
-          - dataview: reference/api/dataview.md
-          - modbus: reference/api/modbus.md
           - modbus_service: reference/api/modbus_service.md
-          - nicknames: reference/api/nicknames.md
           - server: reference/api/server.md
+          - addresses: reference/api/addresses.md
+          - nicknames: reference/api/nicknames.md
+          - dataview: reference/api/dataview.md
           - validation: reference/api/validation.md
 
 plugins:

@@ -201,6 +201,14 @@ class ModbusService:
         on_state: Callable[[ConnectionState, Exception | None], None] | None = None,
         on_values: Callable[[ModbusResponse[PlcValue]], None] | None = None,
     ) -> None:
+        """Create a ModbusService.
+
+        Args:
+            poll_interval_s: Seconds between poll cycles (must be > 0).
+            reconnect: Optional reconnect backoff configuration.
+            on_state: Callback fired on connection state changes.
+            on_values: Callback fired with polled values each cycle.
+        """
         if poll_interval_s <= 0:
             raise ValueError("poll_interval_s must be > 0")
 
@@ -405,7 +413,9 @@ class ModbusService:
         candidate: ClickClient | None = None
         try:
             reconnect_delay = self._reconnect.delay_s if self._reconnect is not None else 0.0
-            reconnect_delay_max = self._reconnect.max_delay_s if self._reconnect is not None else 0.0
+            reconnect_delay_max = (
+                self._reconnect.max_delay_s if self._reconnect is not None else 0.0
+            )
             candidate = ClickClient(
                 host,
                 port,

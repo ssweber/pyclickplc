@@ -706,6 +706,17 @@ class ClickClient:
         reconnect_delay: float = 0.0,
         reconnect_delay_max: float = 0.0,
     ) -> None:
+        """Create a ClickClient.
+
+        Args:
+            host: PLC hostname or IP. Legacy ``"host:port"`` format is accepted.
+            port: Modbus TCP port (default 502).
+            tags: Optional tag name → AddressRecord mapping for the tag interface.
+            timeout: Connection timeout in seconds.
+            device_id: Modbus device/unit ID (0–247).
+            reconnect_delay: Initial reconnect delay in seconds (0 = no reconnect).
+            reconnect_delay_max: Maximum reconnect backoff in seconds.
+        """
         # Backwards compatibility for legacy "host:port" first argument.
         if ":" in host and port == 502:
             host, port_str = host.rsplit(":", 1)
@@ -876,4 +887,3 @@ class ClickClient:
             )
         if result.isError():
             raise OSError(f"Modbus write error at register {address}: {result}")
-
