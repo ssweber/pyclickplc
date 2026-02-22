@@ -7,7 +7,7 @@ Repository = "https://github.com/ssweber/pyclickplc"
 
 [project]
 name = "pyclickplc"
-description = "Utilities for AutomationDirect CLICK Plcs"
+description = "Utilities for AutomationDirect CLICK PLCs: Modbus TCP client/server, address helpers, nickname CSV I/O, and DataView CDV I/O."
 authors = [
     { name="ssweber", email="57631333+ssweber@users.noreply.github.com" },
 ]
