@@ -7,6 +7,7 @@ import pytest
 from pyclickplc.banks import DataType
 from pyclickplc.validation import (
     FORBIDDEN_CHARS,
+    SYSTEM_NICKNAME_TYPES,
     assert_runtime_value,
     validate_comment,
     validate_initial_value,
@@ -39,6 +40,30 @@ class TestValidateNickname:
         valid, error = validate_nickname("_invalid")
         assert valid is False
         assert "Cannot start with _" in error
+
+    def test_system_allows_underscore(self):
+        assert validate_nickname("_IO1_Module_Error", is_system=True) == (True, "")
+        assert validate_nickname("_SystemName", is_system=True) == (True, "")
+
+    def test_system_allows_forbidden_chars(self):
+        # SC nicknames contain /
+        assert validate_nickname("Comm/Port_1", is_system=True) == (True, "")
+        # SD nicknames contain ( and )
+        assert validate_nickname("_Fixed_Scan_Time(ms)", is_system=True) == (True, "")
+
+    def test_system_still_enforces_length_and_reserved(self):
+        # Length still enforced for system nicknames
+        valid, error = validate_nickname("_" + "a" * 24, is_system=True)
+        assert valid is False
+        assert "Too long" in error
+
+        # Reserved keywords still enforced
+        valid, error = validate_nickname("log", is_system=True)
+        assert valid is False
+        assert "Reserved" in error
+
+    def test_system_nickname_types_constant(self):
+        assert SYSTEM_NICKNAME_TYPES == {"SC", "SD", "X"}
 
     def test_reserved_keywords_case_insensitive(self):
         for keyword in ("log", "LOG", "Log", "sin", "SIN", "and", "or", "pi"):
