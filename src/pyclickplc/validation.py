@@ -19,6 +19,11 @@ from .banks import (
 NICKNAME_MAX_LENGTH = 24
 COMMENT_MAX_LENGTH = 128
 
+# Memory types whose nicknames may start with _ (PLC system-generated).
+# SC/SD have system-preset names; X gets auto-generated feedback signals
+# (e.g. _IO1_Module_Error) when analog input cards are installed.
+SYSTEM_NICKNAME_TYPES: frozenset[str] = frozenset({"SC", "SD", "X"})
+
 # Characters forbidden in nicknames
 # Note: Space is allowed, hyphen (-) and period (.) are forbidden
 FORBIDDEN_CHARS: frozenset[str] = frozenset("%\"<>!#$&'()*+-./:;=?@[\\]^`{|}~")
@@ -63,13 +68,15 @@ FLOAT_MAX = 3.4028235e38
 # ==============================================================================
 
 
-def validate_nickname(nickname: str) -> tuple[bool, str]:
+def validate_nickname(nickname: str, *, is_system: bool = False) -> tuple[bool, str]:
     """Validate nickname format (length, characters, reserved words).
 
     Does NOT check uniqueness -- that is application-specific.
 
     Args:
         nickname: The nickname to validate
+        is_system: If True, allow leading underscores (PLC system-generated names
+            for SC, SD, and X banks).
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
@@ -80,7 +87,7 @@ def validate_nickname(nickname: str) -> tuple[bool, str]:
     if len(nickname) > NICKNAME_MAX_LENGTH:
         return False, f"Too long ({len(nickname)}/24)"
 
-    if nickname.startswith("_"):
+    if nickname.startswith("_") and not is_system:
         return False, "Cannot start with _"
 
     if nickname.lower() in RESERVED_NICKNAMES:

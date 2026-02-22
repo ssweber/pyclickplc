@@ -33,7 +33,12 @@ from .modbus_service import ConnectionState, ModbusService, ReconnectConfig, Wri
 from .nicknames import AddressRecordMap, read_csv, write_csv
 from .server import ClickServer, MemoryDataProvider, ServerClientInfo
 from .server_tui import run_server_tui
-from .validation import validate_comment, validate_initial_value, validate_nickname
+from .validation import (
+    SYSTEM_NICKNAME_TYPES,
+    validate_comment,
+    validate_initial_value,
+    validate_nickname,
+)
 
 __all__ = [
     "BankConfig",
@@ -82,6 +87,7 @@ __all__ = [
     "read_csv",
     "AddressRecordMap",
     "write_csv",
+    "SYSTEM_NICKNAME_TYPES",
     "validate_nickname",
     "validate_comment",
     "validate_initial_value",
