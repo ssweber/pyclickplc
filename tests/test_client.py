@@ -169,10 +169,10 @@ class TestClickClient:
     @pytest.mark.asyncio
     async def test_upper_byte_aliases_are_available(self):
         plc = _make_plc()
-        assert isinstance(plc.xdu, FixedAddressAccessor)
-        assert isinstance(plc.ydu, FixedAddressAccessor)
-        assert plc.XDU is plc.xdu
-        assert plc.YDU is plc.ydu
+        assert isinstance(plc.xd0u, FixedAddressAccessor)
+        assert isinstance(plc.yd0u, FixedAddressAccessor)
+        assert plc.XD0U is plc.xd0u
+        assert plc.YD0U is plc.yd0u
 
     @pytest.mark.asyncio
     async def test_getattr_case_insensitive(self):
@@ -238,9 +238,9 @@ class TestAddressAccessorRepr:
         assert repr(plc.xd) == "<DisplayAddressAccessor(XD, max=8)>"
 
     @pytest.mark.asyncio
-    async def test_repr_xdu_fixed_accessor(self):
+    async def test_repr_xd0u_fixed_accessor(self):
         plc = _make_plc()
-        assert repr(plc.xdu) == "<FixedAddressAccessor(XD0u)>"
+        assert repr(plc.xd0u) == "<FixedAddressAccessor(XD0u)>"
 
 
 # ==============================================================================
@@ -412,22 +412,22 @@ class TestDisplayAddressAccessor:
 
 class TestFixedAddressAccessor:
     @pytest.mark.asyncio
-    async def test_read_xdu(self):
+    async def test_read_xd0u(self):
         plc = _make_plc()
         _set_read_registers(plc, [0x1234])
-        result = await plc.xdu.read()
+        result = await plc.xd0u.read()
         assert result == {"XD0u": 0x1234}
 
     @pytest.mark.asyncio
-    async def test_write_xdu_not_writable(self):
+    async def test_write_xd0u_not_writable(self):
         plc = _make_plc()
         with pytest.raises(ValueError, match="not writable"):
-            await plc.xdu.write(0x1234)
+            await plc.xd0u.write(0x1234)
 
     @pytest.mark.asyncio
-    async def test_write_ydu(self):
+    async def test_write_yd0u(self):
         plc = _make_plc()
-        await plc.ydu.write(0x1234)
+        await plc.yd0u.write(0x1234)
         _get_write_registers_mock(plc).assert_called_once_with(57857, [0x1234])
 
 

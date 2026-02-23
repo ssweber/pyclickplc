@@ -38,7 +38,7 @@ StrBankName: TypeAlias = Literal["TXT"]
 
 BoolBankAttr: TypeAlias = Literal["x", "X", "y", "Y", "c", "C", "t", "T", "ct", "CT", "sc", "SC"]
 DisplayBankAttr: TypeAlias = Literal["xd", "XD", "yd", "YD"]
-UpperByteAttr: TypeAlias = Literal["xdu", "XDU", "ydu", "YDU"]
+UpperByteAttr: TypeAlias = Literal["xd0u", "XD0U", "yd0u", "YD0U"]
 IntBankAttr: TypeAlias = Literal[
     "ds",
     "DS",
@@ -749,8 +749,8 @@ class ClickClient:
             "YD": FixedAddressAccessor(self, "YD", 1),
         }
         self.tags: dict[str, dict[str, str]] = {}
-        self.xdu = self._upper_byte_accessors["XD"]
-        self.ydu = self._upper_byte_accessors["YD"]
+        self.xd0u = self._upper_byte_accessors["XD"]
+        self.yd0u = self._upper_byte_accessors["YD"]
         self.addr = AddressInterface(self)
         self.tag = TagInterface(self)
 
@@ -824,7 +824,7 @@ class ClickClient:
         if name.startswith("_"):
             raise AttributeError(name)
         upper = name.upper()
-        if upper in {"XDU", "YDU"}:
+        if upper in {"XD0U", "YD0U"}:
             return self._upper_byte_accessors[upper[:2]]
         if upper in {"XD", "YD"}:
             return self._get_display_accessor(upper)

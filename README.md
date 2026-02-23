@@ -27,8 +27,8 @@ async def main():
         value = await plc.ds[1]                   # bare value
         result = await plc.ds.read(1, 3)          # DS1..DS3 (inclusive range)
         xd_word = await plc.xd[3]                 # XD3 (display-indexed, 0..8)
-        await plc.ydu.write(0x1234)               # YD0u explicit upper-byte alias
-        xdu_word = await plc.xdu.read()           # {"XD0u": ...}
+        await plc.yd0u.write(0x1234)               # YD0u explicit upper-byte alias
+        xd0u_word = await plc.xd0u.read()           # {"XD0u": ...}
 
         # Address interface
         await plc.addr.write("df1", 3.14)
@@ -60,7 +60,7 @@ All `read()` methods return `ModbusResponse`, a mapping keyed by canonical upper
 
 - Lookups are normalized: `resp["ds1"]` resolves `"DS1"`
 - `await plc.ds[1]` returns a bare value instead of a mapping
-- `plc.xd`/`plc.yd` are display-indexed (`0..8`); `plc.xdu`/`plc.ydu` are aliases for `XD0u`/`YD0u`
+- `plc.xd`/`plc.yd` are display-indexed (`0..8`); `plc.xd0u`/`plc.yd0u` are aliases for `XD0u`/`YD0u`
 
 ## ModbusService (Sync + Polling)
 
