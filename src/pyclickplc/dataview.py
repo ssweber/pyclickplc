@@ -88,7 +88,7 @@ WRITABLE_SD: frozenset[int] = frozenset(
 
 # Max rows in a dataview
 MAX_DATAVIEW_ROWS = 100
-DataviewValue: TypeAlias = bool | int | float | str | None
+DataViewValue: TypeAlias = bool | int | float | str | None
 
 
 def get_data_type_for_address(address: str) -> DataType | None:
@@ -153,7 +153,7 @@ class DataViewRecord:
     # Core data (stored in CDV file)
     address: str = ""  # e.g., "X001", "DS1", "CTD250"
     data_type: DataType | None = None  # DataType for the address
-    new_value: DataviewValue = None  # Native Python value for optional write
+    new_value: DataViewValue = None  # Native Python value for optional write
 
     # Display-only fields (populated from SharedAddressData)
     nickname: str = field(default="", compare=False)
@@ -437,7 +437,7 @@ class DisplayParseResult:
     """Result object for non-throwing display -> native parsing."""
 
     ok: bool
-    value: DataviewValue = None
+    value: DataViewValue = None
     error: str = ""
 
 
@@ -445,11 +445,11 @@ def _default_cdv_header(has_new_values: bool) -> str:
     return f"{-1 if has_new_values else 0},0,0"
 
 
-def _rows_snapshot(rows: list[DataViewRecord]) -> list[tuple[str, DataType | None, DataviewValue]]:
+def _rows_snapshot(rows: list[DataViewRecord]) -> list[tuple[str, DataType | None, DataViewValue]]:
     return [(row.address, row.data_type, row.new_value) for row in rows]
 
 
-def _coerce_for_compare(value: DataviewValue, data_type: DataType) -> DataviewValue:
+def _coerce_for_compare(value: DataViewValue, data_type: DataType) -> DataViewValue:
     if value is None:
         return None
 
@@ -494,8 +494,8 @@ def _coerce_for_compare(value: DataviewValue, data_type: DataType) -> DataviewVa
 
 
 def _values_equal_for_data_type(
-    expected: DataviewValue,
-    actual: DataviewValue,
+    expected: DataViewValue,
+    actual: DataViewValue,
     data_type: DataType | None,
 ) -> bool:
     if expected is None and actual is None:
@@ -520,7 +520,7 @@ def _row_placeholder(rows: list[DataViewRecord], index: int) -> DataViewRecord:
 
 
 @dataclass
-class DataviewFile:
+class DataViewFile:
     """CDV file model with row data in native Python types."""
 
     rows: list[DataViewRecord] = field(default_factory=create_empty_dataview)
@@ -528,7 +528,7 @@ class DataviewFile:
     header: str = "0,0,0"
     path: Path | None = None
     _original_bytes: bytes | None = field(default=None, repr=False, compare=False)
-    _original_rows: list[tuple[str, DataType | None, DataviewValue]] = field(
+    _original_rows: list[tuple[str, DataType | None, DataViewValue]] = field(
         default_factory=list,
         repr=False,
         compare=False,
@@ -538,7 +538,7 @@ class DataviewFile:
     _row_storage_tokens: list[str | None] = field(default_factory=list, repr=False, compare=False)
 
     @staticmethod
-    def value_to_display(value: DataviewValue, data_type: DataType | None) -> str:
+    def value_to_display(value: DataViewValue, data_type: DataType | None) -> str:
         """Render a native value as a display string."""
         if data_type is None:
             return ""
@@ -556,7 +556,7 @@ class DataviewFile:
         """Parse a display string to a native value without raising."""
         if not display_str:
             return DisplayParseResult(ok=True, value=None)
-        ok, error = DataviewFile.validate_display(display_str, data_type)
+        ok, error = DataViewFile.validate_display(display_str, data_type)
         if not ok or data_type is None:
             return DisplayParseResult(ok=False, error=error)
         native = display_to_datatype(display_str, data_type)
@@ -569,21 +569,21 @@ class DataviewFile:
         """Validate a user edit for a specific row."""
         if not row.is_writable:
             return False, "Read-only address"
-        return DataviewFile.validate_display(display_str, row.data_type)
+        return DataViewFile.validate_display(display_str, row.data_type)
 
     @staticmethod
     def set_row_new_value_from_display(row: DataViewRecord, display_str: str) -> None:
         """Strictly set a row's native new_value from a display string."""
-        ok, error = DataviewFile.validate_row_display(row, display_str)
+        ok, error = DataViewFile.validate_row_display(row, display_str)
         if not ok:
             raise ValueError(error)
-        parsed = DataviewFile.try_parse_display(display_str, row.data_type)
+        parsed = DataViewFile.try_parse_display(display_str, row.data_type)
         if not parsed.ok:
             raise ValueError(parsed.error)
         row.new_value = parsed.value
 
     @classmethod
-    def load(cls, path: Path | str) -> DataviewFile:
+    def load(cls, path: Path | str) -> DataViewFile:
         """Load a CDV file and parse new values into native Python types."""
         path_obj = Path(path)
         if not path_obj.exists():
@@ -733,7 +733,7 @@ class DataviewFile:
         if target is None:
             raise ValueError("No path provided for verify")
 
-        disk = DataviewFile.load(target)
+        disk = DataViewFile.load(target)
         issues: list[str] = []
 
         for i in range(MAX_DATAVIEW_ROWS):
@@ -774,13 +774,13 @@ class DataviewFile:
         return issues
 
 
-def read_cdv(path: Path | str) -> DataviewFile:
-    """Read a CDV file into a DataviewFile model."""
-    return DataviewFile.load(path)
+def read_cdv(path: Path | str) -> DataViewFile:
+    """Read a CDV file into a DataViewFile model."""
+    return DataViewFile.load(path)
 
 
-def write_cdv(path: Path | str, dataview: DataviewFile) -> None:
-    """Write a DataviewFile to a CDV path."""
+def write_cdv(path: Path | str, dataview: DataViewFile) -> None:
+    """Write a DataViewFile to a CDV path."""
     dataview.save(path)
 
 
@@ -873,7 +873,7 @@ def check_cdv_file(path: Path | str) -> list[str]:
     filename = path.name
 
     try:
-        dataview = DataviewFile.load(path)
+        dataview = DataViewFile.load(path)
     except Exception as exc:  # pragma: no cover - exercised by caller tests
         return [f"CDV {filename}: Error loading file - {exc}"]
 
@@ -939,7 +939,7 @@ def verify_cdv(
             row.new_value is not None for row in rows[:MAX_DATAVIEW_ROWS] if not row.is_empty
         )
 
-    dataview = DataviewFile(
+    dataview = DataViewFile(
         rows=rows,
         has_new_values=has_values,
         header=_default_cdv_header(has_values),

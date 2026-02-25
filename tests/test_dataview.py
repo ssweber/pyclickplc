@@ -7,7 +7,7 @@ from pyclickplc.dataview import (
     MAX_DATAVIEW_ROWS,
     WRITABLE_SC,
     WRITABLE_SD,
-    DataviewFile,
+    DataViewFile,
     DataViewRecord,
     DisplayParseResult,
     _CdvStorageCode,
@@ -32,7 +32,7 @@ def load_cdv(path):
 
 
 def save_cdv(path, rows, has_new_values: bool, header: str | None = None):
-    dataview = DataviewFile(
+    dataview = DataViewFile(
         rows=rows,
         has_new_values=has_new_values,
         header=header or f"{-1 if has_new_values else 0},0,0",
@@ -475,42 +475,42 @@ class TestValidateNewValue:
         assert validate_new_value("100", DataType.INT) == (True, "")
 
 
-class TestDataviewFileDisplayHelpers:
+class TestDataViewFileDisplayHelpers:
     def test_value_to_display(self):
-        assert DataviewFile.value_to_display(100, DataType.INT) == "100"
-        assert DataviewFile.value_to_display(None, DataType.INT) == ""
+        assert DataViewFile.value_to_display(100, DataType.INT) == "100"
+        assert DataViewFile.value_to_display(None, DataType.INT) == ""
 
     def test_try_parse_display(self):
-        parsed = DataviewFile.try_parse_display("100", DataType.INT)
+        parsed = DataViewFile.try_parse_display("100", DataType.INT)
         assert parsed == DisplayParseResult(ok=True, value=100, error="")
 
-        parsed_empty = DataviewFile.try_parse_display("", DataType.INT)
+        parsed_empty = DataViewFile.try_parse_display("", DataType.INT)
         assert parsed_empty == DisplayParseResult(ok=True, value=None, error="")
 
-        parsed_invalid = DataviewFile.try_parse_display("abc", DataType.INT)
+        parsed_invalid = DataViewFile.try_parse_display("abc", DataType.INT)
         assert parsed_invalid.ok is False
         assert parsed_invalid.error == "Must be integer"
 
     def test_validate_row_display(self):
         row = DataViewRecord(address="XD0", data_type=DataType.HEX)
-        assert DataviewFile.validate_row_display(row, "0001") == (False, "Read-only address")
+        assert DataViewFile.validate_row_display(row, "0001") == (False, "Read-only address")
 
         row = DataViewRecord(address="DS1")
-        assert DataviewFile.validate_row_display(row, "100") == (False, "No address set")
+        assert DataViewFile.validate_row_display(row, "100") == (False, "No address set")
 
         row = DataViewRecord(address="DS1", data_type=DataType.INT)
-        assert DataviewFile.validate_row_display(row, "abc") == (False, "Must be integer")
+        assert DataViewFile.validate_row_display(row, "abc") == (False, "Must be integer")
 
     def test_set_row_new_value_from_display(self):
         row = DataViewRecord(address="DS1", data_type=DataType.INT)
-        DataviewFile.set_row_new_value_from_display(row, "100")
+        DataViewFile.set_row_new_value_from_display(row, "100")
         assert row.new_value == 100
 
-        DataviewFile.set_row_new_value_from_display(row, "")
+        DataViewFile.set_row_new_value_from_display(row, "")
         assert row.new_value is None
 
         with pytest.raises(ValueError, match="Must be integer"):
-            DataviewFile.set_row_new_value_from_display(row, "abc")
+            DataViewFile.set_row_new_value_from_display(row, "abc")
 
 
 class TestLoadCdv:
@@ -597,7 +597,7 @@ class TestSaveCdv:
         assert loaded_rows[0].new_value is True
 
 
-class TestDataviewFileIO:
+class TestDataViewFileIO:
     def test_read_write_aliases(self, tmp_path):
         cdv = tmp_path / "test.cdv"
         rows = create_empty_dataview()
@@ -607,7 +607,7 @@ class TestDataviewFileIO:
         save_cdv(cdv, rows, has_new_values=True)
 
         dataview = read_cdv(cdv)
-        assert isinstance(dataview, DataviewFile)
+        assert isinstance(dataview, DataViewFile)
         assert dataview.rows[0].new_value == 42
 
         out = tmp_path / "out.cdv"
@@ -624,7 +624,7 @@ class TestDataviewFileIO:
         cdv.write_text("".join(lines), encoding="utf-16")
         original_bytes = cdv.read_bytes()
 
-        dataview = DataviewFile.load(cdv)
+        dataview = DataViewFile.load(cdv)
         dataview.save()
 
         assert cdv.read_bytes() == original_bytes

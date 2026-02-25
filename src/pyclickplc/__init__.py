@@ -13,7 +13,7 @@ from .banks import (
 )
 from .client import ClickClient, ModbusResponse
 from .dataview import (
-    DataviewFile,
+    DataViewFile,
     DataViewRecord,
     check_cdv_file,
     get_data_type_for_address,
@@ -63,7 +63,7 @@ __all__ = [
     "MemoryDataProvider",
     "ServerClientInfo",
     "run_server_tui",
-    "DataviewFile",
+    "DataViewFile",
     "DataViewRecord",
     "check_cdv_file",
     "get_data_type_for_address",
