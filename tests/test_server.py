@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
+from pymodbus.server import ModbusTcpServer
 
 from pyclickplc.banks import DataType
 from pyclickplc.modbus import modbus_to_plc_register, pack_value, plc_to_modbus
@@ -557,12 +559,12 @@ class TestClickServerRuntimeControls:
 
     def test_is_running_true_when_server_active(self):
         server = ClickServer(MemoryDataProvider())
-        server._server = _FakeServer(active=True)  # type: ignore[assignment]
+        server._server = cast(ModbusTcpServer, _FakeServer(active=True))
         assert server.is_running() is True
 
     def test_is_running_false_when_server_inactive(self):
         server = ClickServer(MemoryDataProvider())
-        server._server = _FakeServer(active=False)  # type: ignore[assignment]
+        server._server = cast(ModbusTcpServer, _FakeServer(active=False))
         assert server.is_running() is False
 
     def test_list_clients_empty_when_not_started(self):
@@ -574,7 +576,7 @@ class TestClickServerRuntimeControls:
         fake = _FakeServer(active=True)
         fake.active_connections["abc"] = _FakeConnection(("127.0.0.1", 5020))
         fake.active_connections["def"] = _FakeConnection(None)
-        server._server = fake  # type: ignore[assignment]
+        server._server = cast(ModbusTcpServer, fake)
 
         clients = server.list_clients()
         assert len(clients) == 2
@@ -586,7 +588,7 @@ class TestClickServerRuntimeControls:
     def test_disconnect_client_unknown_returns_false(self):
         server = ClickServer(MemoryDataProvider())
         fake = _FakeServer(active=True)
-        server._server = fake  # type: ignore[assignment]
+        server._server = cast(ModbusTcpServer, fake)
         assert server.disconnect_client("missing") is False
 
     def test_disconnect_client_known_returns_true(self):
@@ -594,7 +596,7 @@ class TestClickServerRuntimeControls:
         fake = _FakeServer(active=True)
         connection = _FakeConnection(("127.0.0.1", 1234))
         fake.active_connections["known"] = connection
-        server._server = fake  # type: ignore[assignment]
+        server._server = cast(ModbusTcpServer, fake)
 
         assert server.disconnect_client("known") is True
         connection.close.assert_called_once_with()
@@ -606,7 +608,7 @@ class TestClickServerRuntimeControls:
         c2 = _FakeConnection(("127.0.0.1", 2222))
         fake.active_connections["a"] = c1
         fake.active_connections["b"] = c2
-        server._server = fake  # type: ignore[assignment]
+        server._server = cast(ModbusTcpServer, fake)
 
         count = server.disconnect_all_clients()
         assert count == 2

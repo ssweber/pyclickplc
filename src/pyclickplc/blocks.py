@@ -7,8 +7,9 @@ block operations for CLICK PLC address editors.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     pass
@@ -75,9 +76,7 @@ class StructuredBlockName:
 
 
 _STRUCTURED_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
-_UDT_BLOCK_NAME_RE = re.compile(
-    rf"^(?P<base>{_STRUCTURED_IDENT})\.(?P<field>{_STRUCTURED_IDENT})$"
-)
+_UDT_BLOCK_NAME_RE = re.compile(rf"^(?P<base>{_STRUCTURED_IDENT})\.(?P<field>{_STRUCTURED_IDENT})$")
 _NAMED_ARRAY_BLOCK_NAME_RE = re.compile(
     rf"^(?P<base>{_STRUCTURED_IDENT}):named_array\((?P<count>[1-9][0-9]*),(?P<stride>[1-9][0-9]*)\)$"
 )
