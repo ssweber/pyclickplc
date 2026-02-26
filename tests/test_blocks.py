@@ -9,9 +9,12 @@ from pyclickplc.blocks import (
     extract_block_name,
     find_block_range_indices,
     find_paired_tag_index,
+    format_block_tag,
     get_block_type,
+    group_udt_block_names,
     is_block_tag,
     parse_block_tag,
+    parse_structured_block_name,
     strip_block_tag,
     validate_block_span,
 )
@@ -200,6 +203,75 @@ class TestHelperFunctions:
     def test_strip_block_tag_with_inequality(self):
         text = "Value < 10"
         assert strip_block_tag(text) == text
+
+
+class TestOpaqueStructuredNames:
+    """BlockTag.name should remain an opaque string."""
+
+    def test_structured_names_round_trip(self):
+        names = [
+            "Base.field",
+            "Base:named_array(2,3)",
+            "Base:block(5)",
+            "Base:block(start=5)",
+        ]
+
+        for name in names:
+            open_comment = format_block_tag(name, "open")
+            close_comment = format_block_tag(name, "close")
+            self_closing_comment = format_block_tag(name, "self-closing")
+
+            assert parse_block_tag(open_comment).name == name
+            assert parse_block_tag(close_comment).name == name
+            assert parse_block_tag(self_closing_comment).name == name
+
+            assert extract_block_name(open_comment) == name
+            assert extract_block_name(close_comment) == name
+            assert extract_block_name(self_closing_comment) == name
+
+
+class TestStructuredBlockNameHelpers:
+    """Tests for opt-in structured block-name parsing helpers."""
+
+    def test_parse_structured_block_name_udt(self):
+        parsed = parse_structured_block_name("Alarm.id")
+        assert parsed.kind == "udt"
+        assert parsed.base == "Alarm"
+        assert parsed.field == "id"
+
+    def test_parse_structured_block_name_named_array(self):
+        parsed = parse_structured_block_name("AlarmPacked:named_array(2,3)")
+        assert parsed.kind == "named_array"
+        assert parsed.base == "AlarmPacked"
+        assert parsed.count == 2
+        assert parsed.stride == 3
+
+    def test_parse_structured_block_name_block_start(self):
+        parsed = parse_structured_block_name("WordBank:block(start=5)")
+        assert parsed.kind == "block"
+        assert parsed.base == "WordBank"
+        assert parsed.start == 5
+
+    def test_parse_structured_block_name_plain_fallback(self):
+        parsed = parse_structured_block_name("Alarm.bad-name")
+        assert parsed.kind == "plain"
+        assert parsed.base == "Alarm.bad-name"
+
+    def test_group_udt_block_names(self):
+        grouped = group_udt_block_names(
+            [
+                "Alarm.id",
+                "Alarm.On",
+                "Alarm.id",
+                "AlarmPacked:named_array(2,3)",
+                "WordBank:block(5)",
+                "Pump.state",
+            ]
+        )
+        assert grouped == {
+            "Alarm": ("id", "On"),
+            "Pump": ("state",),
+        }
 
 
 # Helper dataclass for testing matching functions

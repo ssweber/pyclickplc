@@ -6,8 +6,9 @@ block operations for CLICK PLC address editors.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Iterable, Literal, Protocol
 
 if TYPE_CHECKING:
     pass
@@ -49,6 +50,101 @@ class BlockTag:
     tag_type: Literal["open", "close", "self-closing"] | None
     remaining_text: str
     bg_color: str | None
+
+
+@dataclass(frozen=True)
+class StructuredBlockName:
+    """Opt-in parse result for structured block naming conventions.
+
+    `parse_block_tag()` treats block names as opaque strings. This helper is
+    intentionally separate and optional for callers that want to interpret
+    naming conventions such as:
+    - UDT fields: ``Base.field``
+    - Named arrays: ``Base:named_array(count,stride)``
+    - Plain blocks with logical start override:
+      ``Base:block(n)`` / ``Base:block(start=n)``
+    """
+
+    raw: str
+    kind: Literal["plain", "udt", "named_array", "block"]
+    base: str
+    field: str | None = None
+    count: int | None = None
+    stride: int | None = None
+    start: int | None = None
+
+
+_STRUCTURED_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
+_UDT_BLOCK_NAME_RE = re.compile(
+    rf"^(?P<base>{_STRUCTURED_IDENT})\.(?P<field>{_STRUCTURED_IDENT})$"
+)
+_NAMED_ARRAY_BLOCK_NAME_RE = re.compile(
+    rf"^(?P<base>{_STRUCTURED_IDENT}):named_array\((?P<count>[1-9][0-9]*),(?P<stride>[1-9][0-9]*)\)$"
+)
+_BLOCK_START_BLOCK_NAME_RE = re.compile(
+    rf"^(?P<base>{_STRUCTURED_IDENT}):block\((?P<start>(?:0|[1-9][0-9]*|start=(?:0|[1-9][0-9]*)))\)$"
+)
+
+
+def parse_structured_block_name(name: str) -> StructuredBlockName:
+    """Parse optional structured naming conventions from a block name.
+
+    This parser is non-throwing and non-strict by design. Names that do not
+    exactly match a supported convention are returned as ``kind="plain"``.
+    """
+    named_array_match = _NAMED_ARRAY_BLOCK_NAME_RE.fullmatch(name)
+    if named_array_match is not None:
+        return StructuredBlockName(
+            raw=name,
+            kind="named_array",
+            base=named_array_match.group("base"),
+            count=int(named_array_match.group("count")),
+            stride=int(named_array_match.group("stride")),
+        )
+
+    udt_match = _UDT_BLOCK_NAME_RE.fullmatch(name)
+    if udt_match is not None:
+        return StructuredBlockName(
+            raw=name,
+            kind="udt",
+            base=udt_match.group("base"),
+            field=udt_match.group("field"),
+        )
+
+    block_start_match = _BLOCK_START_BLOCK_NAME_RE.fullmatch(name)
+    if block_start_match is not None:
+        start_token = block_start_match.group("start")
+        if start_token.startswith("start="):
+            start = int(start_token.split("=", maxsplit=1)[1])
+        else:
+            start = int(start_token)
+        return StructuredBlockName(
+            raw=name,
+            kind="block",
+            base=block_start_match.group("base"),
+            start=start,
+        )
+
+    return StructuredBlockName(raw=name, kind="plain", base=name)
+
+
+def group_udt_block_names(names: Iterable[str]) -> dict[str, tuple[str, ...]]:
+    """Group UDT field block names by base name.
+
+    Returns:
+        Mapping of ``Base`` -> ordered tuple of unique field names for tags
+        that match ``Base.field``.
+    """
+    grouped: dict[str, list[str]] = {}
+    for name in names:
+        structured = parse_structured_block_name(name)
+        if structured.kind != "udt" or structured.field is None:
+            continue
+        fields = grouped.setdefault(structured.base, [])
+        if structured.field not in fields:
+            fields.append(structured.field)
+
+    return {base: tuple(fields) for base, fields in grouped.items()}
 
 
 def _extract_bg_attribute(tag_content: str) -> tuple[str, str | None]:
