@@ -41,24 +41,46 @@ class TestValidateNickname:
         assert valid is False
         assert "Cannot start with _" in error
 
-    def test_system_allows_underscore(self):
-        assert validate_nickname("_IO1_Module_Error", is_system=True) == (True, "")
-        assert validate_nickname("_SystemName", is_system=True) == (True, "")
+    def test_non_system_rejects_leading_underscore(self):
+        valid, error = validate_nickname("_SystemName")
+        assert valid is False
+        assert "Cannot start with _" in error
 
     def test_system_allows_forbidden_chars(self):
         # SC nicknames contain /
-        assert validate_nickname("Comm/Port_1", is_system=True) == (True, "")
+        assert validate_nickname("Comm/Port_1", system_bank="SC") == (True, "")
         # SD nicknames contain ( and )
-        assert validate_nickname("_Fixed_Scan_Time(ms)", is_system=True) == (True, "")
+        assert validate_nickname("_Fixed_Scan_Time(ms)", system_bank="SD") == (
+            True,
+            "",
+        )
+
+    def test_non_system_rejects_sc_sd_punctuation(self):
+        valid, error = validate_nickname("Comm/Port_1")
+        assert valid is False
+        assert "Invalid" in error
+
+    def test_x_system_requires_io_prefix(self):
+        valid, error = validate_nickname("_SystemName", system_bank="X")
+        assert valid is False
+        assert "_IO<number>" in error
+
+    def test_x_system_rejects_forbidden_chars(self):
+        valid, error = validate_nickname("_IO1.Module", system_bank="X")
+        assert valid is False
+        assert "Invalid" in error
+
+    def test_x_system_allows_io_style_name(self):
+        assert validate_nickname("_IO1_Module_Error", system_bank="X") == (True, "")
 
     def test_system_still_enforces_length_and_reserved(self):
         # Length still enforced for system nicknames
-        valid, error = validate_nickname("_" + "a" * 24, is_system=True)
+        valid, error = validate_nickname("_" + "a" * 24, system_bank="SC")
         assert valid is False
         assert "Too long" in error
 
         # Reserved keywords still enforced
-        valid, error = validate_nickname("log", is_system=True)
+        valid, error = validate_nickname("log", system_bank="SC")
         assert valid is False
         assert "Reserved" in error
 

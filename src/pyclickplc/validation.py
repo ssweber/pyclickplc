@@ -68,16 +68,17 @@ FLOAT_MAX = 3.4028235e38
 # ==============================================================================
 
 
-def validate_nickname(nickname: str, *, is_system: bool = False) -> tuple[bool, str]:
+def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple[bool, str]:
     """Validate nickname format (length, characters, reserved words).
 
     Does NOT check uniqueness -- that is application-specific.
 
     Args:
         nickname: The nickname to validate
-        is_system: If True, skip leading underscore and forbidden character checks
-            (PLC system-generated names for SC, SD, and X banks). Length and
-            reserved keyword checks still apply.
+        system_bank: Optional system bank context:
+            - "SC"/"SD": allows PLC system punctuation
+            - "X": allows only _IO<number>... style system names
+            - None: standard user nickname rules
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
@@ -88,14 +89,32 @@ def validate_nickname(nickname: str, *, is_system: bool = False) -> tuple[bool, 
     if len(nickname) > NICKNAME_MAX_LENGTH:
         return False, f"Too long ({len(nickname)}/24)"
 
-    if not is_system:
-        if nickname.startswith("_"):
-            return False, "Cannot start with _"
-
+    def _forbidden_char_error() -> str:
         invalid_chars = set(nickname) & FORBIDDEN_CHARS
         if invalid_chars:
             chars_display = "".join(sorted(invalid_chars)[:3])
-            return False, f"Invalid: {chars_display}"
+            return f"Invalid: {chars_display}"
+        return ""
+
+    bank = system_bank.upper() if system_bank else None
+
+    if bank in {"SC", "SD"}:
+        # SC/SD may contain PLC-owned punctuation and leading underscores.
+        pass
+    elif bank == "X":
+        # X system names are PLC auto-generated feedback aliases (_IO...).
+        if not nickname.startswith("_IO") or len(nickname) == 3 or not nickname[3].isdigit():
+            return False, "X system names must start with _IO<number>"
+        invalid_error = _forbidden_char_error()
+        if invalid_error:
+            return False, invalid_error
+    else:
+        # Standard user nickname rules.
+        if nickname.startswith("_"):
+            return False, "Cannot start with _"
+        invalid_error = _forbidden_char_error()
+        if invalid_error:
+            return False, invalid_error
 
     if nickname.lower() in RESERVED_NICKNAMES:
         return False, "Reserved keyword"
