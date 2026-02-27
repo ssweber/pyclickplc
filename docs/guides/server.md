@@ -52,3 +52,7 @@ Supported commands:
 - `disconnect all`
 - `shutdown` (`exit` / `quit`)
 
+## Related Reference
+
+- `API Reference -> Server API`
+
