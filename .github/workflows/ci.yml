@@ -56,8 +56,8 @@ jobs:
       - name: Install all dependencies
         run: uv sync --all-extras --dev
 
-      - name: Run linting
-        run: uv run python devtools/lint.py
+      - name: Run linting (read-only checks)
+        run: uv run python devtools/lint.py --check
 
       - name: Run tests
         run: uv run pytest

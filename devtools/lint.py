@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -14,19 +15,39 @@ DOC_PATHS = [str(Path("README.md"))]
 reconfigure(emoji=not get_console().options.legacy_windows)
 
 
-def main():
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run lint/type checks for the repository.")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Run read-only checks suitable for CI (no autofix).",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
     rprint()
 
     errcount = 0
 
     # 1. Spell check
-    errcount += run(["codespell", "--write-changes", *SRC_PATHS, *DOC_PATHS])
+    if args.check:
+        errcount += run(["codespell", *SRC_PATHS, *DOC_PATHS])
+    else:
+        errcount += run(["codespell", "--write-changes", *SRC_PATHS, *DOC_PATHS])
 
     # 2. Ruff Linter
-    errcount += run(["ruff", "check", "--fix", *SRC_PATHS])
+    if args.check:
+        errcount += run(["ruff", "check", *SRC_PATHS])
+    else:
+        errcount += run(["ruff", "check", "--fix", *SRC_PATHS])
 
     # 3. Ruff Formatter
-    errcount += run(["ruff", "format", *SRC_PATHS])
+    if args.check:
+        errcount += run(["ruff", "format", "--check", *SRC_PATHS])
+    else:
+        errcount += run(["ruff", "format", *SRC_PATHS])
 
     errcount += run(["ty", "check"])
 
