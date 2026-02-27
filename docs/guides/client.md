@@ -24,3 +24,9 @@ asyncio.run(main())
 - String addresses: `plc.addr.read("DS1")`, `plc.addr.write("C1", True)`
 - Tags (with `tags=`): `plc.tag.read("name")`, `plc.tag.write("name", value)` (case-insensitive)
 
+## Related Guides
+
+- Native value and bank typing rules: [`guides/types.md`](types.md)
+- Canonical normalized addressing and XD/YD details: [`guides/addressing.md`](addressing.md)
+- Full API signatures: `API Reference -> Client API`
+

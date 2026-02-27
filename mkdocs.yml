@@ -9,19 +9,20 @@ nav:
   - Home: index.md
   - Core Usage:
       - Modbus Client: guides/client.md
+      - Native Value Types: guides/types.md
+      - Addressing: guides/addressing.md
       - Modbus Service: guides/modbus_service.md
       - Modbus Server: guides/server.md
       - File I/O: guides/files.md
   - API Reference:
       - Overview: reference/index.md
-      - Modules:
-          - client: reference/api/client.md
-          - modbus_service: reference/api/modbus_service.md
-          - server: reference/api/server.md
-          - addresses: reference/api/addresses.md
-          - nicknames: reference/api/nicknames.md
-          - dataview: reference/api/dataview.md
-          - validation: reference/api/validation.md
+      - Client API: reference/api/client.md
+      - Service API: reference/api/service.md
+      - Server API: reference/api/server.md
+      - Files API: reference/api/files.md
+      - Addressing API: reference/api/addressing.md
+      - Validation API: reference/api/validation.md
+      - Advanced API: reference/api/advanced.md
 
 plugins:
   - search

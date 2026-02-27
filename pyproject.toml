@@ -2,8 +2,7 @@
 
 [project.urls]
 Repository = "https://github.com/ssweber/pyclickplc"
-# Homepage = "https://..."
-# Documentation = "https://..."
+Documentation = "https://ssweber.github.io/pyclickplc/"
 
 [project]
 name = "pyclickplc"

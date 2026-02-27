@@ -10,8 +10,14 @@
 
 ## Start Here
 
-- Core usage guides are under `Core Usage` in the left nav.
-- Full API docs are generated under `API Reference`.
+- Use the `Core Usage` guides for task-oriented docs.
+- Use `API Reference` for the versioned public API surface.
+- `Advanced API` documents lower-level helpers that may evolve more quickly.
+
+## v0.1 Stability Policy
+
+- Stable core: client/service/server/file I/O/address/validation APIs.
+- Evolving edges: low-level Modbus mapping helpers and bank metadata.
 
 ## Local Docs Commands
 

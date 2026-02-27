@@ -30,3 +30,9 @@ display = format_address_display("X", 1)  # "X001"
 normalized = normalize_address("x1")  # "X001"
 ```
 
+## Related Guides
+
+- Address semantics and edge cases: [`guides/addressing.md`](addressing.md)
+- Native value contract: [`guides/types.md`](types.md)
+- Full API signatures: `API Reference -> Files API`
+

@@ -35,10 +35,15 @@ svc.close()  # same as disconnect()
 - The next sync call (`connect`, `read`, `write`, etc.) will start the loop again.
 - `reconnect=ReconnectConfig(...)` controls ClickClient auto-reconnect backoff.
 
-## Error Semantics
+## Error Semantics and Thread Safety
 
 - Invalid addresses/values at write-time are returned per address with `ok=False`.
 - Invalid addresses passed to `read(...)` raise `ValueError`.
 - Transport/protocol errors raise `OSError` for reads and are reported per-address for writes.
 - `on_state` and `on_values` callbacks run on the service thread.
 - Do not call synchronous service methods (`connect`, `disconnect`, `read`, `write`, poll config methods) from these callbacks. Marshal work to another thread/UI loop.
+
+## Related Guides
+
+- Native value rules and write validation: [`guides/types.md`](types.md)
+- Address parsing/normalization rules: [`guides/addressing.md`](addressing.md)
