@@ -39,11 +39,9 @@ All read/write APIs operate on native Python values.
 
 ```python
 import asyncio
-from pyclickplc import AddressRecord, ClickClient
+from pyclickplc import ClickClient, read_csv
 
-tags = {
-    "temp_source": AddressRecord(memory_type="DF", address=1, nickname="MyTag"),
-}
+tags = read_csv("nicknames.csv")
 
 async def main():
     async with ClickClient("192.168.1.10", 502, tags=tags) as plc:
