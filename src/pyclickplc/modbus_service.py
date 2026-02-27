@@ -239,9 +239,22 @@ class ModbusService:
         device_id: int = 1,
         timeout: int = 1,
     ) -> None:
+        """Connect to a CLICK PLC endpoint.
+
+        Args:
+            host: PLC hostname or IP address.
+            port: Modbus TCP port.
+            device_id: Modbus unit/device ID.
+            timeout: Client timeout in seconds.
+
+        Raises:
+            OSError: Connection attempt failed.
+            ValueError: Invalid connection arguments.
+        """
         self._submit_wait(self._connect_async(host, port, device_id=device_id, timeout=timeout))
 
     def disconnect(self) -> None:
+        """Disconnect from the PLC and stop the service loop thread."""
         thread = self._thread
         if thread is None:
             return
@@ -253,19 +266,30 @@ class ModbusService:
                 self._stop_loop_thread()
 
     def close(self) -> None:
+        """Alias for :meth:`disconnect`."""
         self.disconnect()
 
     # Poll configuration -----------------------------------------------------
 
     def set_poll_addresses(self, addresses: Iterable[str]) -> None:
+        """Replace the active polling address set.
+
+        Args:
+            addresses: Address strings to poll each cycle.
+
+        Raises:
+            ValueError: Any address is invalid.
+        """
         normalized, parsed = _normalize_addresses_for_read(addresses)
         plan = _build_read_plan(normalized, parsed)
         self._submit_wait(self._set_poll_config_async(tuple(normalized), tuple(plan), enabled=True))
 
     def clear_poll_addresses(self) -> None:
+        """Clear the active polling address set."""
         self._submit_wait(self._set_poll_config_async((), (), enabled=True))
 
     def stop_polling(self) -> None:
+        """Pause polling while keeping the current configured address set."""
         self._submit_wait(
             self._set_poll_config_async(
                 self._poll_config.addresses,
@@ -277,6 +301,18 @@ class ModbusService:
     # Sync operations --------------------------------------------------------
 
     def read(self, addresses: Iterable[str]) -> ModbusResponse[PlcValue]:
+        """Synchronously read one or more addresses.
+
+        Args:
+            addresses: Address strings to read.
+
+        Returns:
+            ModbusResponse keyed by canonical normalized addresses.
+
+        Raises:
+            ValueError: Any address is invalid.
+            OSError: Not connected or transport/protocol read failure.
+        """
         normalized, parsed = _normalize_addresses_for_read(addresses)
         plan = _build_read_plan(normalized, parsed)
         result = self._submit_wait(self._read_plan_async(plan))
@@ -289,6 +325,15 @@ class ModbusService:
         self,
         values: Mapping[str, PlcValue] | Iterable[tuple[str, PlcValue]],
     ) -> list[WriteResult]:
+        """Synchronously write one or more address values.
+
+        Args:
+            values: Mapping or iterable of ``(address, value)`` pairs.
+
+        Returns:
+            Per-item write outcomes preserving input order.
+            Validation and write failures are reported in each ``WriteResult``.
+        """
         items: list[tuple[object, object]]
         if isinstance(values, Mapping):
             items = list(values.items())

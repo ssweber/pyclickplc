@@ -133,6 +133,21 @@ def _write_reference_page(page: ReferencePage) -> None:
         page.summary,
         "",
     ]
+    if page.slug == "client":
+        lines.extend(
+            [
+                "## Client Surface",
+                "",
+                "- Dynamic bank accessors: `plc.ds`, `plc.df`, `plc.y`, `plc.txt`, etc.",
+                "- Display-indexed accessors: `plc.xd` and `plc.yd` use display indices `0..8`.",
+                "- Upper-byte aliases: `plc.xd0u` and `plc.yd0u` expose `XD0u` / `YD0u`.",
+                "- String-address interface: `plc.addr.read(...)` and `plc.addr.write(...)`.",
+                "- Nickname/tag interface: `plc.tag.read(...)`, `plc.tag.write(...)`, and `plc.tag.read_all(...)`.",
+                "",
+                "Because accessor attributes are dynamic, this section is hand-curated and complements docstring-generated signatures below.",
+                "",
+            ]
+        )
     for symbol in page.symbols:
         lines.append(f"::: {PACKAGE}.{symbol}")
         lines.append("")
