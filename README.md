@@ -110,6 +110,10 @@ See the addressing guide for details:
 - CLICK nickname CSV I/O: `read_csv`, `write_csv`, `AddressRecordMap`
 - CLICK DataView CDV I/O: `read_cdv`, `write_cdv`, `verify_cdv`, `check_cdv_file`
 
+Server docs:
+- Guide: https://ssweber.github.io/pyclickplc/guides/server/
+- API: https://ssweber.github.io/pyclickplc/reference/api/server/
+
 ## v0.1 API Stability
 
 `pyclickplc` v0.1 follows a “stable core, evolving edges” policy.
