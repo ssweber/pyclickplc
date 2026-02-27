@@ -1,6 +1,7 @@
 site_name: pyclickplc
 site_description: Documentation for pyclickplc
 repo_url: https://github.com/ssweber/pyclickplc
+site_url: https://ssweber.github.io/pyclickplc/
 
 theme:
   name: material
@@ -44,3 +45,11 @@ plugins:
             show_root_heading: true
             show_signature_annotations: true
             show_source: false
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Core Usage:
+          - guides/*.md
+        API Reference:
+          - reference/index.md
+          - reference/api/*.md

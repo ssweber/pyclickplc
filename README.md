@@ -3,6 +3,8 @@
 Utilities for AutomationDirect CLICK PLCs: Modbus TCP client/server, address helpers, nickname CSV I/O, and DataView CDV I/O.
 
 Documentation: https://ssweber.github.io/pyclickplc/
+LLM docs index: https://ssweber.github.io/pyclickplc/llms.txt
+LLM full context: https://ssweber.github.io/pyclickplc/llms-full.txt
 
 ## Installation
 
