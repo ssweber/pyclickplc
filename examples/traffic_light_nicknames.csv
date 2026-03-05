@@ -1,0 +1,5 @@
+Address,Data Type,Nickname,Initial Value,Retentive,Address Comment
+C1,BIT,"RedLight",0,No,""
+C2,BIT,"YellowLight",0,No,""
+C3,BIT,"GreenLight",0,No,""
+TXT1,TEXT,"TrafficState",,Yes,""

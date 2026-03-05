@@ -14,6 +14,7 @@ nav:
       - Addressing: guides/addressing.md
       - Modbus Service: guides/modbus_service.md
       - Modbus Server: guides/server.md
+      - Examples: guides/examples.md
       - File I/O: guides/files.md
   - API Reference:
       - Overview: reference/index.md
