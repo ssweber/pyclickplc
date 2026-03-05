@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeAlias
 
-from .addresses import format_address_display, parse_address
+from .addresses import format_address_display, normalize_address, parse_address
 from .banks import MEMORY_TYPE_TO_DATA_TYPE, DataType
 from .validation import (
     FLOAT_MAX,
@@ -21,6 +21,7 @@ from .validation import (
     INT2_MIN,
     INT_MAX,
     INT_MIN,
+    assert_runtime_value,
     validate_initial_value,
 )
 
@@ -148,6 +149,8 @@ class DataViewRecord:
     A dataview row contains an address to monitor and optionally a new value
     to write to that address. The nickname and comment are display-only
     fields populated from SharedAddressData.
+    For user-facing creation from display addresses, prefer
+    ``make_dataview_record(...)``.
     """
 
     # Core data (stored in CDV file)
@@ -158,6 +161,56 @@ class DataViewRecord:
     # Display-only fields (populated from SharedAddressData)
     nickname: str = field(default="", compare=False)
     comment: str = field(default="", compare=False)
+
+    @classmethod
+    def from_address(
+        cls,
+        address: str,
+        *,
+        new_value: DataViewValue = None,
+    ) -> DataViewRecord:
+        """Build a DataViewRecord from a display address string."""
+        normalized = normalize_address(address)
+        if normalized is None:
+            raise ValueError(f"Invalid address format: {address!r}")
+
+        data_type = get_data_type_for_address(normalized)
+        if new_value is not None:
+            if not is_address_writable(normalized):
+                raise ValueError(f"Read-only address: {normalized}")
+            if data_type is None:
+                raise ValueError(f"Cannot infer data type for address: {normalized}")
+            bank, index = parse_address(normalized)
+            assert_runtime_value(data_type, new_value, bank=bank, index=index)
+
+        return cls(
+            address=normalized,
+            data_type=data_type,
+            new_value=new_value,
+        )
+
+    def __repr__(self) -> str:
+        """Return a concise, user-friendly representation."""
+        parts: list[str] = []
+
+        if self.address.strip():
+            parts.append(f"address={self.address!r}")
+        if self.data_type is not None:
+            try:
+                data_type_name = DataType(self.data_type).name
+            except ValueError:
+                data_type_name = str(self.data_type)
+            parts.append(f"data_type={data_type_name!r}")
+        if self.new_value is not None:
+            parts.append(f"new_value={self.new_value!r}")
+        if self.nickname != "":
+            parts.append(f"nickname={self.nickname!r}")
+        if self.comment != "":
+            parts.append(f"comment={self.comment!r}")
+
+        if not parts:
+            return "DataViewRecord()"
+        return f"DataViewRecord({', '.join(parts)})"
 
     @property
     def is_empty(self) -> bool:
@@ -208,6 +261,18 @@ class DataViewRecord:
         self.new_value = None
         self.nickname = ""
         self.comment = ""
+
+
+def make_dataview_record(
+    address: str,
+    *,
+    new_value: DataViewValue = None,
+) -> DataViewRecord:
+    """Create a DataViewRecord from a display address with inferred defaults."""
+    return DataViewRecord.from_address(
+        address,
+        new_value=new_value,
+    )
 
 
 def create_empty_dataview(count: int = MAX_DATAVIEW_ROWS) -> list[DataViewRecord]:

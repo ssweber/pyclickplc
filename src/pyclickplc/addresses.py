@@ -15,6 +15,7 @@ from .banks import (
     DATA_TYPE_DISPLAY,
     DEFAULT_RETENTIVE,
     MEMORY_TYPE_BASES,
+    MEMORY_TYPE_TO_DATA_TYPE,
     NON_EDITABLE_TYPES,
     DataType,
     is_valid_address,
@@ -215,6 +216,8 @@ class AddressRecord:
     """Immutable record for a single PLC address.
 
     Simpler than ClickNick's AddressRow -- omits all UI validation state.
+    For user-facing creation from display addresses, prefer
+    ``make_address_record(...)``.
     """
 
     # --- Identity ---
@@ -230,6 +233,59 @@ class AddressRecord:
     # --- Metadata ---
     data_type: int = DataType.BIT
     used: bool | None = None  # None = unknown
+
+    @classmethod
+    def from_address(
+        cls,
+        address: str,
+        *,
+        nickname: str = "",
+        comment: str = "",
+        initial_value: str = "",
+        retentive: bool | None = None,
+        used: bool | None = None,
+    ) -> AddressRecord:
+        """Build an AddressRecord from a display address string."""
+        normalized = normalize_address(address)
+        if normalized is None:
+            raise ValueError(f"Invalid address format: {address!r}")
+
+        memory_type, mdb_address = parse_address(normalized)
+        data_type = MEMORY_TYPE_TO_DATA_TYPE.get(memory_type)
+        if data_type is None:
+            raise ValueError(f"Unknown memory type: {memory_type!r}")
+
+        resolved_retentive = (
+            DEFAULT_RETENTIVE.get(memory_type, False) if retentive is None else retentive
+        )
+        return cls(
+            memory_type=memory_type,
+            address=mdb_address,
+            nickname=nickname,
+            comment=comment,
+            initial_value=initial_value,
+            retentive=resolved_retentive,
+            data_type=data_type,
+            used=used,
+        )
+
+    def __repr__(self) -> str:
+        """Return a concise, user-friendly representation."""
+        data_type_name = DATA_TYPE_DISPLAY.get(self.data_type, str(self.data_type))
+        parts = [f"address={self.display_address!r}", f"data_type={data_type_name!r}"]
+
+        if self.nickname != "":
+            parts.append(f"nickname={self.nickname!r}")
+        if self.comment != "":
+            parts.append(f"comment={self.comment!r}")
+        if self.initial_value != "":
+            parts.append(f"initial_value={self.initial_value!r}")
+        if self.retentive != DEFAULT_RETENTIVE.get(self.memory_type, False):
+            parts.append(f"retentive={self.retentive!r}")
+        if self.used is not None:
+            parts.append(f"used={self.used!r}")
+
+        return f"AddressRecord({', '.join(parts)})"
 
     @property
     def addr_key(self) -> int:
@@ -280,3 +336,23 @@ class AddressRecord:
     def can_edit_retentive(self) -> bool:
         """True if retentive setting can be edited for this memory type."""
         return self.memory_type not in NON_EDITABLE_TYPES
+
+
+def make_address_record(
+    address: str,
+    *,
+    nickname: str = "",
+    comment: str = "",
+    initial_value: str = "",
+    retentive: bool | None = None,
+    used: bool | None = None,
+) -> AddressRecord:
+    """Create an AddressRecord from a display address with inferred defaults."""
+    return AddressRecord.from_address(
+        address,
+        nickname=nickname,
+        comment=comment,
+        initial_value=initial_value,
+        retentive=retentive,
+        used=used,
+    )

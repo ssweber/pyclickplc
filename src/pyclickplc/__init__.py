@@ -3,6 +3,7 @@
 from .addresses import (
     AddressRecord,
     format_address_display,
+    make_address_record,
     normalize_address,
     parse_address,
 )
@@ -17,6 +18,7 @@ from .dataview import (
     DataViewRecord,
     check_cdv_file,
     get_data_type_for_address,
+    make_dataview_record,
     read_cdv,
     validate_new_value,
     verify_cdv,
@@ -45,6 +47,7 @@ __all__ = [
     "BANKS",
     "DataType",
     "AddressRecord",
+    "make_address_record",
     "format_address_display",
     "parse_address",
     "normalize_address",
@@ -65,6 +68,7 @@ __all__ = [
     "run_server_tui",
     "DataViewFile",
     "DataViewRecord",
+    "make_dataview_record",
     "check_cdv_file",
     "get_data_type_for_address",
     "validate_new_value",

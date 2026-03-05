@@ -11,6 +11,7 @@ from pyclickplc.addresses import (
     get_addr_key,
     is_xd_yd_hidden_slot,
     is_xd_yd_upper_byte,
+    make_address_record,
     normalize_address,
     parse_addr_key,
     parse_address,
@@ -261,3 +262,59 @@ class TestAddressRecord:
 
         rec2 = replace(rec, retentive=False)
         assert rec2.is_default_retentive is False
+
+    def test_from_address_normalizes_and_infers(self):
+        rec = AddressRecord.from_address("x1")
+        assert rec.memory_type == "X"
+        assert rec.address == 1
+        assert rec.display_address == "X001"
+        assert rec.data_type == DataType.BIT
+        assert rec.retentive is False
+
+    def test_from_address_uses_default_retentive(self):
+        rec = AddressRecord.from_address("ds1")
+        assert rec.memory_type == "DS"
+        assert rec.address == 1
+        assert rec.data_type == DataType.INT
+        assert rec.retentive is True
+
+    def test_from_address_overrides_retentive(self):
+        rec = AddressRecord.from_address("ds1", retentive=False)
+        assert rec.retentive is False
+
+    def test_from_address_xd0u_maps_to_mdb_1(self):
+        rec = AddressRecord.from_address("xd0u")
+        assert rec.memory_type == "XD"
+        assert rec.address == 1
+        assert rec.display_address == "XD0u"
+
+    @pytest.mark.parametrize("address", ["", "BAD1", "X017"])
+    def test_from_address_invalid_raises(self, address: str):
+        with pytest.raises(ValueError, match="Invalid address format"):
+            AddressRecord.from_address(address)
+
+    def test_make_address_record_uses_friendly_constructor(self):
+        rec = make_address_record("ds1", nickname="Temp")
+        assert rec == AddressRecord.from_address("ds1", nickname="Temp")
+
+    def test_make_address_record_invalid_raises(self):
+        with pytest.raises(ValueError, match="Invalid address format"):
+            make_address_record("INVALID")
+
+    def test_repr_concise_default(self):
+        rec = AddressRecord(memory_type="DS", address=1, data_type=DataType.INT, retentive=True)
+        assert repr(rec) == "AddressRecord(address='DS1', data_type='INT')"
+
+    def test_repr_includes_meaningful_fields(self):
+        rec = AddressRecord.from_address(
+            "ds1",
+            nickname="Temp",
+            comment="Tank",
+            initial_value="5",
+            retentive=False,
+            used=True,
+        )
+        assert repr(rec) == (
+            "AddressRecord(address='DS1', data_type='INT', nickname='Temp', "
+            "comment='Tank', initial_value='5', retentive=False, used=True)"
+        )

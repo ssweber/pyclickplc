@@ -30,6 +30,16 @@ display = format_address_display("X", 1)  # "X001"
 normalized = normalize_address("x1")  # "X001"
 ```
 
+## Friendly Record Constructors
+
+```python
+from pyclickplc import make_address_record, make_dataview_record
+
+nick = make_address_record("ds1", nickname="TankTemp")
+row = make_dataview_record("x1")
+write_row = make_dataview_record("df1", new_value=3.14)
+```
+
 ## Related Guides
 
 - Address semantics and edge cases: [`guides/addressing.md`](addressing.md)

@@ -18,6 +18,7 @@ from pyclickplc.dataview import (
     display_to_datatype,
     get_data_type_for_address,
     is_address_writable,
+    make_dataview_record,
     read_cdv,
     storage_to_datatype,
     validate_new_value,
@@ -178,6 +179,56 @@ class TestDataViewRecord:
         assert row.new_value is None
         assert row.nickname == ""
         assert row.comment == ""
+
+    def test_from_address_normalizes_and_infers(self):
+        row = DataViewRecord.from_address("ds1")
+        assert row.address == "DS1"
+        assert row.data_type == DataType.INT
+        assert row.new_value is None
+
+    def test_from_address_with_typed_new_value(self):
+        row = DataViewRecord.from_address("df1", new_value=3.14)
+        assert row.address == "DF1"
+        assert row.data_type == DataType.FLOAT
+        assert row.new_value == 3.14
+
+    def test_from_address_invalid_raises(self):
+        with pytest.raises(ValueError, match="Invalid address format"):
+            DataViewRecord.from_address("INVALID")
+
+    def test_from_address_readonly_with_value_raises(self):
+        with pytest.raises(ValueError, match="Read-only address: XD0"):
+            DataViewRecord.from_address("xd0", new_value=1)
+
+    def test_from_address_readonly_without_value(self):
+        row = DataViewRecord.from_address("xd0")
+        assert row.address == "XD0"
+        assert row.data_type == DataType.HEX
+        assert row.new_value is None
+
+    def test_from_address_type_validation(self):
+        with pytest.raises(ValueError, match="DS1 value must be int"):
+            DataViewRecord.from_address("ds1", new_value=True)
+
+    def test_make_dataview_record_uses_friendly_constructor(self):
+        row = make_dataview_record("df1", new_value=3.14)
+        assert row == DataViewRecord.from_address("df1", new_value=3.14)
+
+    def test_make_dataview_record_invalid_raises(self):
+        with pytest.raises(ValueError, match="Invalid address format"):
+            make_dataview_record("INVALID")
+
+    def test_repr_empty(self):
+        assert repr(DataViewRecord()) == "DataViewRecord()"
+
+    def test_repr_populated(self):
+        row = DataViewRecord.from_address("ds1", new_value=42)
+        row.nickname = "Level"
+        row.comment = "Main tank"
+        assert repr(row) == (
+            "DataViewRecord(address='DS1', data_type='INT', new_value=42, "
+            "nickname='Level', comment='Main tank')"
+        )
 
 
 class TestCreateEmptyDataview:
