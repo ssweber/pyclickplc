@@ -7,7 +7,7 @@ Provides functions to read and write address data in CLICK software CSV format
 from __future__ import annotations
 
 import csv
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -271,7 +271,10 @@ def read_csv(path: str | Path) -> AddressRecordMap:
     return result
 
 
-def write_csv(path: str | Path, records: Mapping[int, AddressRecord]) -> int:
+def write_csv(
+    path: str | Path,
+    records: Mapping[int, AddressRecord] | Iterable[AddressRecord],
+) -> int:
     """Write AddressRecords to a user-format CSV file.
 
     Only records with content (nickname, comment, non-default initial value
@@ -280,14 +283,20 @@ def write_csv(path: str | Path, records: Mapping[int, AddressRecord]) -> int:
 
     Args:
         path: Path to write the CSV file.
-        records: Dict mapping addr_key to AddressRecord.
+        records: Address records to write. Accepts a mapping keyed by addr_key
+            or any iterable of AddressRecord values.
 
     Returns:
         Number of rows written.
     """
     # Collect records with content, sorted by memory type order and address
+    if isinstance(records, Mapping):
+        record_iter = records.values()
+    else:
+        record_iter = records
+
     rows_to_write = sorted(
-        (r for r in records.values() if r.has_content),
+        (r for r in record_iter if r.has_content),
         key=lambda r: (MEMORY_TYPE_BASES.get(r.memory_type, 0xFFFFFFFF), r.address),
     )
 

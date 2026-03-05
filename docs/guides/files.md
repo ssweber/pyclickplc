@@ -9,6 +9,10 @@ records = read_csv("nicknames.csv")
 motor = records.addr["ds1"]
 tag = records.tag["mytag"]
 count = write_csv("output.csv", records)
+
+# write_csv also accepts an iterable of AddressRecord values
+# (keys are ignored for writing)
+# count = write_csv("output.csv", [record_a, record_b])
 ```
 
 ## DataView CDV

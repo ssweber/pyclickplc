@@ -198,6 +198,21 @@ class TestWriteCsv:
         assert "X001" in lines[1]
         assert "DS1" in lines[2]
 
+    def test_write_accepts_record_iterable(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        records = [
+            AddressRecord(memory_type="DS", address=1, nickname="DS_Nick"),
+            AddressRecord(memory_type="X", address=1, nickname="X_Nick"),
+        ]
+
+        count = write_csv(csv_path, records)
+        assert count == 2
+
+        content = csv_path.read_text(encoding="utf-8")
+        lines = content.strip().split("\n")
+        assert "X001" in lines[1]
+        assert "DS1" in lines[2]
+
 
 class TestRoundTrip:
     """Tests for write then read round-trip."""
