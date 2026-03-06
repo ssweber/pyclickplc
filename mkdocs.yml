@@ -8,14 +8,16 @@ theme:
 
 nav:
   - Home: index.md
-  - Core Usage:
-      - Modbus Client: guides/client.md
-      - Native Value Types: guides/types.md
+  - Getting Started:
+      - Quickstart: getting-started/quickstart.md
+  - Guides:
+      - Client: guides/client.md
+      - Types & Values: guides/types.md
       - Addressing: guides/addressing.md
       - Modbus Service: guides/modbus_service.md
-      - Modbus Server: guides/server.md
-      - Examples: guides/examples.md
+      - Server & Simulator: guides/server.md
       - File I/O: guides/files.md
+      - Examples: guides/examples.md
   - API Reference:
       - Overview: reference/index.md
       - Client API: reference/api/client.md
@@ -49,7 +51,9 @@ plugins:
   - llmstxt:
       full_output: llms-full.txt
       sections:
-        Core Usage:
+        Getting Started:
+          - getting-started/*.md
+        Guides:
           - guides/*.md
         API Reference:
           - reference/index.md

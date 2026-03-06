@@ -1,49 +1,55 @@
 # Modbus Service
 
-`ModbusService` provides a synchronous API on top of `ClickClient` for UI and service callers that do not want to manage `asyncio` directly.
+`ModbusService` wraps `ClickClient` for applications that don't want to manage an async loop — GUI apps, services, or anything that needs synchronous reads and background polling.
 
 ```python
 from pyclickplc import ModbusService, ReconnectConfig
 
 def on_values(values):
-    # Runs on the service thread.
-    # GUI apps should marshal this callback to the UI thread.
-    print(values)
+    print(values)  # ModbusResponse keyed by canonical addresses
 
 svc = ModbusService(
     poll_interval_s=0.5,
-    reconnect=ReconnectConfig(delay_s=0.5, max_delay_s=5.0),  # optional
+    reconnect=ReconnectConfig(delay_s=0.5, max_delay_s=5.0),
     on_values=on_values,
 )
 svc.connect("192.168.1.10", 502, device_id=1, timeout=1)
 
 svc.set_poll_addresses(["DS1", "DF1", "Y1"])
-latest = svc.read(["DS1", "DF1"])
-write_results = svc.write({"DS1": 10, "Y1": True})
+print(svc.read(["DS1", "DF1"]))
+print(svc.write({"DS1": 10, "Y1": True}))
 
-svc.close()  # same as disconnect()
+svc.disconnect()
 ```
 
-## API Notes
+## Polling lifecycle
 
-- `set_poll_addresses(addresses)` replaces the active poll set.
-- `clear_poll_addresses()` clears the set.
-- `stop_polling()` pauses polling until `set_poll_addresses(...)` is called again.
-- `read(...)` returns `ModbusResponse` keyed by canonical uppercase addresses.
-- `write(...)` accepts either a mapping or iterable of `(address, value)` pairs and returns per-address results.
-- `disconnect()` (or `close()`) fully stops the background service loop/thread.
-- The next sync call (`connect`, `read`, `write`, etc.) will start the loop again.
-- `reconnect=ReconnectConfig(...)` controls ClickClient auto-reconnect backoff.
+- `set_poll_addresses(addresses)` — start polling these addresses. Replaces any previous set.
+- `clear_poll_addresses()` — stop polling, clear the set.
+- `stop_polling()` — pause polling. Resumes when you call `set_poll_addresses` again.
+- `disconnect()` (or `close()`) — fully stop the background loop and thread.
 
-## Error Semantics and Thread Safety
+The next sync call (`connect`, `read`, `write`, etc.) restarts the loop automatically.
 
-- Invalid addresses/values at write-time are returned per address with `ok=False`.
+## Read and write
+
+- `read(addresses)` returns a `ModbusResponse` keyed by canonical normalized addresses.
+- `write(values)` accepts a mapping or iterable of `(address, value)` pairs. Returns per-address `WriteResult` entries with `ok` and `error` fields — non-writable or invalid addresses get an error result instead of raising.
+
+## Callbacks and threading
+
+`on_values` and `on_state` callbacks run on the service thread, not the main thread. GUI apps should marshal callback data to the UI thread before updating widgets.
+
+Do not call `connect`, `disconnect`, `read`, `write`, or poll config methods from inside a callback — this will deadlock.
+
+## Error handling
+
 - Invalid addresses passed to `read(...)` raise `ValueError`.
-- Transport/protocol errors raise `OSError` for reads and are reported per-address for writes.
-- `on_state` and `on_values` callbacks run on the service thread.
-- Do not call synchronous service methods (`connect`, `disconnect`, `read`, `write`, poll config methods) from these callbacks. Marshal work to another thread/UI loop.
+- Transport/protocol errors raise `OSError` for reads.
+- Write errors are reported per-address in the `WriteResult` (no exception raised).
 
-## Related Guides
+## See also
 
-- Native value rules and write validation: [`guides/types.md`](types.md)
-- Address parsing/normalization rules: [`guides/addressing.md`](addressing.md)
+- [Client guide](client.md) — async API for direct `asyncio` use
+- [Types & values](types.md) — native types and validation rules
+- [Addressing](addressing.md) — normalization and sparse ranges

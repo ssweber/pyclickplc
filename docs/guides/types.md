@@ -1,8 +1,8 @@
-# Native Value Types
+# Types & Values
 
-`pyclickplc` reads and writes native Python values.
+Every value you read or write is a native Python type.
 
-## Bank Family to Python Type
+## Bank family to Python type
 
 | Bank family | Python type | Example |
 | --- | --- | --- |
@@ -11,26 +11,34 @@
 | `DF` | `float` | `3.14` |
 | `TXT` | `str` | `"A"` |
 
-## Read Return Shapes
+No raw Modbus registers — the client handles packing and unpacking automatically.
 
-- `read()` returns `ModbusResponse` keyed by canonical normalized addresses.
-- Mapping lookups are normalized (`resp["ds1"]` resolves `DS1`).
-- Single index access like `await plc.ds[1]` returns a bare native Python value.
+## Read return shapes
 
-## Write Validation Rules
+Single-index reads return a bare value:
 
-- Type mismatches raise `ValueError` (for example writing `str` to `DS`).
-- Out-of-range values raise `ValueError`.
-- Non-writable addresses raise `ValueError`.
-- Transport/protocol failures raise `OSError`.
+```python
+ds1 = await plc.ds[1]  # int
+```
 
-## `ModbusService` Write Semantics
+Range reads return a `ModbusResponse`, a dict keyed by canonical normalized addresses:
 
-- `read(...)` invalid addresses raise `ValueError`.
-- `read(...)` transport failures raise `OSError`.
-- `write(...)` returns per-address `WriteResult` entries with `ok` and `error`.
+```python
+values = await plc.ds.read(1, 3)
+# {"DS1": 100, "DS2": 200, "DS3": 300}
 
-## See Also
+values["ds1"]  # 100 — lookups are case-insensitive
+```
 
-- Address semantics and normalization: [`guides/addressing.md`](addressing.md)
-- Full API contracts: `API Reference -> Client API` and `Service API`
+## Write validation
+
+Writes are validated before being sent to the PLC:
+
+- **Type mismatch** — writing `str` to `DS` raises `ValueError`.
+- **Out of range** — value exceeds the bank's data type limits raises `ValueError`.
+- **Not writable** — some addresses (certain SC/SD) are read-only and raise `ValueError`.
+
+## See also
+
+- [Client guide](client.md) — how to read and write values
+- [Addressing](addressing.md) — normalization and sparse ranges
