@@ -22,10 +22,10 @@ def test_generate_project_files_writes_expected_outputs(tmp_path):
     assert nicknames.addr["TXT1"].nickname == "TrafficState"
 
     dataview = read_cdv(dataview_path)
-    assert dataview.rows[0].address == "TXT1"
-    assert dataview.rows[1].address == "C1"
-    assert dataview.rows[2].address == "C2"
-    assert dataview.rows[3].address == "C3"
+    assert dataview.rows[0].address == "C1"
+    assert dataview.rows[1].address == "C2"
+    assert dataview.rows[2].address == "C3"
+    assert dataview.rows[3].address == "TXT1"
     assert dataview.rows[0].new_value is None
     assert dataview.rows[1].new_value is None
     assert dataview.rows[2].new_value is None

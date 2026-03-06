@@ -4,14 +4,8 @@
 
 ### Changed
 
-- `write_csv()` now accepts either:
-  - `Iterable[AddressRecord]` (preferred)
-  - `Mapping[int, AddressRecord]` (backward-compatible)
-
-### Deprecated
-
-- Passing `Mapping[int, AddressRecord]` to `write_csv()` is planned for deprecation in a future release.
-  Prefer passing an iterable of `AddressRecord` values.
+- `write_csv()` accepts `Iterable[AddressRecord]` or `Mapping[int, AddressRecord]`.
+- `write_cdv()` accepts `DataViewFile` or `Iterable[DataViewRecord]` — no need to wrap a list in `DataViewFile(rows=...)` for simple cases.
 
 ## 0.1.0 - 2026-02-26
 

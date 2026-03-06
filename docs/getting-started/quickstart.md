@@ -99,7 +99,6 @@ Generate nickname CSV and DataView CDV files that you can load in [ClickNick](ht
 
 ```python
 from pyclickplc import (
-    DataViewFile,
     make_address_record,
     make_dataview_record,
     write_cdv,
@@ -116,15 +115,9 @@ nicknames = [
 write_csv("traffic_light_nicknames.csv", nicknames)
 
 # DataView CDV — defines a monitoring view
-dataview = DataViewFile(
-    rows=[
-        make_dataview_record("TXT1"),
-        make_dataview_record("C1"),
-        make_dataview_record("C2"),
-        make_dataview_record("C3"),
-    ]
-)
-write_cdv("traffic_light_dataview.cdv", dataview)
+write_cdv("traffic_light_dataview.cdv", [
+    make_dataview_record(r.display_address) for r in nicknames
+])
 ```
 
 The CSV file uses the same format as CLICK programming software's nickname export. The CDV file is a UTF-16 LE CSV that CLICK's DataView feature reads directly.

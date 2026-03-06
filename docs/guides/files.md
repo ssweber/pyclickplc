@@ -69,19 +69,16 @@ write_cdv("output.cdv", dataview)
 ### Build a DataView
 
 ```python
-from pyclickplc import DataViewFile, make_dataview_record, write_cdv
+from pyclickplc import make_dataview_record, write_cdv
 
-dataview = DataViewFile(
-    rows=[
-        make_dataview_record("DS1"),
-        make_dataview_record("C1"),
-        make_dataview_record("DF1", new_value=3.14),  # pre-fill a write value
-    ]
-)
-write_cdv("monitoring.cdv", dataview)
+write_cdv("monitoring.cdv", [
+    make_dataview_record("DS1"),
+    make_dataview_record("C1"),
+    make_dataview_record("DF1", new_value=3.14),  # pre-fill a write value
+])
 ```
 
-`make_dataview_record` infers data type and formatting from the address. Use `new_value` to pre-populate a write value in the DataView.
+`write_cdv` accepts a list of `DataViewRecord` values (or a `DataViewFile` for full control). `make_dataview_record` infers data type from the address. Use `new_value` to pre-populate a write value.
 
 ## Address helpers
 

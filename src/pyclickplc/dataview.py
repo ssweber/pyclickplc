@@ -8,6 +8,7 @@ UI display strings, and CDV verification helpers.
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeAlias
@@ -844,8 +845,10 @@ def read_cdv(path: Path | str) -> DataViewFile:
     return DataViewFile.load(path)
 
 
-def write_cdv(path: Path | str, dataview: DataViewFile) -> None:
-    """Write a DataViewFile to a CDV path."""
+def write_cdv(path: Path | str, dataview: DataViewFile | Iterable[DataViewRecord]) -> None:
+    """Write a DataViewFile or list of DataViewRecords to a CDV path."""
+    if not isinstance(dataview, DataViewFile):
+        dataview = DataViewFile(rows=list(dataview))
     dataview.save(path)
 
 
