@@ -1,11 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-03-06
+
+### Added
+
+- `make_address_record()` and `make_dataview_record()` factory functions for building records from display addresses with inferred defaults.
+- `AddressRecord.from_address()` and `DataViewRecord.from_address()` classmethods.
+- Concise `__repr__` for `AddressRecord` and `DataViewRecord` (shows only populated fields).
+- Examples section with traffic light simulator and PLC datetime sync script.
 
 ### Changed
 
 - `write_csv()` accepts `Iterable[AddressRecord]` or `Mapping[int, AddressRecord]`.
-- `write_cdv()` accepts `DataViewFile` or `Iterable[DataViewRecord]` — no need to wrap a list in `DataViewFile(rows=...)` for simple cases.
+- `write_cdv()` accepts `Iterable[DataViewRecord]` or `DataViewFile`.
+- README and guides rewritten with code-first tone and progressive structure.
 
 ## 0.1.0 - 2026-02-26
 

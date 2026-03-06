@@ -27,6 +27,8 @@ nav:
       - Addressing API: reference/api/addressing.md
       - Validation API: reference/api/validation.md
       - Advanced API: reference/api/advanced.md
+  - Releases:
+      - v0.2.0: releases/v0.2.0.md
 
 plugins:
   - search
