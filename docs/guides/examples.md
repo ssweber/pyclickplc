@@ -49,3 +49,26 @@ plc_ip_addresses = [
     # Add more IP addresses as needed.
 ]
 ```
+
+## Going further: ladder logic with pyrung
+
+The traffic light above uses `asyncio.sleep` for timing — Python drives the state machine. A real CLICK PLC runs timer instructions in ladder logic. [pyrung](https://github.com/ssweber/pyrung) lets you write that logic in Python and simulate it scan-by-scan:
+
+```python
+from pyrung import Bool, Char, Int, Rung, on_delay, copy, program, Tms
+
+State = Char("State")
+GreenDone, GreenAcc = Bool("GreenDone"), Int("GreenAcc")
+
+@program
+def logic():
+    with Rung(State == "g"):
+        on_delay(GreenDone, GreenAcc, preset=3000, unit=Tms)
+    with Rung(GreenDone):
+        copy("y", State)
+    # ... yellow → red → green
+```
+
+Under the hood, pyrung provides its own `DataProvider` that bridges ladder state to `ClickServer` — so any `ClickClient` or Modbus tool sees live, scan-driven values instead of Python-controlled ones.
+
+See pyrung's [traffic light example](https://github.com/ssweber/pyrung/blob/main/examples/traffic_light.py) for the full version with timers, car counters, and deterministic scan stepping.
