@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from pyclickplc import MemoryDataProvider
 
 from ._traffic_light_loader import load_traffic_light_example

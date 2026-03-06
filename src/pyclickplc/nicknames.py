@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .addresses import AddressNormalizerMixin, AddressRecord, get_addr_key, parse_address
 from .banks import BANKS, DEFAULT_RETENTIVE, MEMORY_TYPE_BASES, MEMORY_TYPE_TO_DATA_TYPE, DataType
@@ -290,21 +290,25 @@ def write_csv(
         Number of rows written.
     """
     # Collect records with content, sorted by memory type order and address
+    record_iter: Iterable[AddressRecord]
     if isinstance(records, Mapping):
-        record_iter = records.values()
+        record_iter = cast(Iterable[AddressRecord], records.values())
     else:
         record_iter = records
 
-    rows_to_write = sorted(
-        (r for r in record_iter if r.has_content),
-        key=lambda r: (MEMORY_TYPE_BASES.get(r.memory_type, 0xFFFFFFFF), r.address),
+    rows_to_write = [record for record in record_iter if record.has_content]
+    rows_to_write.sort(
+        key=lambda record: (
+            MEMORY_TYPE_BASES.get(record.memory_type, 0xFFFFFFFF),
+            record.address,
+        )
     )
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
         # Write header manually (matching CLICK format)
         csvfile.write(",".join(CSV_COLUMNS) + "\n")
 
-        def format_quoted(text):
+        def format_quoted(text: str | None) -> str:
             if text is None:
                 return '""'
             escaped_text = str(text).replace('"', '""')
