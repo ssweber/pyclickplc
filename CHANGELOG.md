@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - 2026-03-26
+
+### Added
+
+- `read_plc_data()` and `write_plc_data()` for the CSV format used by Data > Read Data from PLC / Write Data into PLC.
+
 ## 0.2.0 - 2026-03-06
 
 ### Added
