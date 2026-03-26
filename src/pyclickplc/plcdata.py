@@ -21,7 +21,18 @@ _ROW_ADDR = re.compile(r"^([A-Z]+)(\d+)$")
 
 # Section order matches Click Programming Software export
 _SECTION_ORDER: tuple[str, ...] = (
-    "X", "Y", "C", "T", "CT", "DS", "DD", "DH", "DF", "TD", "CTD", "TXT",
+    "X",
+    "Y",
+    "C",
+    "T",
+    "CT",
+    "DS",
+    "DD",
+    "DH",
+    "DF",
+    "TD",
+    "CTD",
+    "TXT",
 )
 
 # X/Y layout: base unit row covers 1-16 + 21-36, expansion rows cover 1-16
