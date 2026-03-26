@@ -62,6 +62,8 @@ PAGES: tuple[ReferencePage, ...] = (
             "make_dataview_record",
             "get_data_type_for_address",
             "validate_new_value",
+            "read_plc_data",
+            "write_plc_data",
         ),
     ),
     ReferencePage(

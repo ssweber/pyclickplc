@@ -80,6 +80,45 @@ write_cdv("monitoring.cdv", [
 
 `write_cdv` accepts a list of `DataViewRecord` values (or a `DataViewFile` for full control). `make_dataview_record` infers data type from the address. Use `new_value` to pre-populate a write value.
 
+## PLC Data Dump
+
+Read and write the CSV files produced by Data > Read Data from PLC > Save to File (and consumed by Data > Write Data into PLC > Load from File).
+
+### Read
+
+```python
+from pyclickplc import read_plc_data
+
+# Full dump — every address in the file
+data = read_plc_data("data.csv")
+# {"X001": True, "X002": True, "C1": True, "DS3": 1, "DH1": 895, ...}
+
+# Only non-default values (skip False/0/0.0/"")
+data = read_plc_data("data.csv", skip_default=True)
+```
+
+Returns a flat dict mapping normalised addresses to native Python values (`bool` for bits, `int` for INT/INT2/HEX, `float` for FLOAT, `str` for TXT).
+
+### Write
+
+```python
+from pyclickplc import write_plc_data
+
+write_plc_data("output.csv", data)                  # infers banks from data keys
+write_plc_data("output.csv", data, banks=["DS"])     # only the DS bank
+write_plc_data("output.csv", data, banks=["DS", "DF"])  # specific banks
+```
+
+Unspecified addresses within included banks get bank defaults. Banks not in `banks` (or not present in data keys when `banks` is omitted) are excluded from the file.
+
+### Modify and write back
+
+```python
+data = read_plc_data("from_plc.csv")
+data["DS3"] = 42
+write_plc_data("to_plc.csv", data)
+```
+
 ## Address helpers
 
 Parse and normalize addresses without a client connection:
