@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 - 2026-03-29
+
+### Fixed
+
+- `read_csv()` no longer rejects duplicate nicknames for system addresses (SC/SD). Click auto-populates these and may produce duplicates that users cannot control.
+
 ## 0.3.0 - 2026-03-26
 
 ### Added
