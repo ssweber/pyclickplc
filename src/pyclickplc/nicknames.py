@@ -244,7 +244,9 @@ def read_csv(path: str | Path) -> AddressRecordMap:
 
             if nickname:
                 key = nickname.lower()
-                if key in seen_nicknames:
+                # Allow duplicate nicknames for system addresses (SC/SD) —
+                # Click auto-populates these and may produce duplicates.
+                if key in seen_nicknames and mem_type not in {"SC", "SD"}:
                     first_nickname, first_address, first_line = seen_nicknames[key]
                     raise ValueError(
                         "Case-insensitive duplicate nickname in CSV at "

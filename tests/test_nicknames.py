@@ -143,6 +143,18 @@ class TestReadCsv:
         with pytest.raises(ValueError, match="Case-insensitive duplicate nickname"):
             read_csv(csv_path)
 
+    def test_read_duplicate_system_nickname_allowed(self, tmp_path):
+        """SC/SD system addresses may have duplicate nicknames from Click."""
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'SD1,SINT,"SysFlag",0,No,""\n'
+            'SD2,SINT,"SysFlag",0,No,""\n',
+            encoding="utf-8",
+        )
+        records = read_csv(csv_path)
+        assert len(records) == 2
+
     def test_tag_lookup_rejects_case_collisions_after_mutation(self):
         records = AddressRecordMap(
             {
