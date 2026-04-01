@@ -7,7 +7,7 @@ block operations for CLICK PLC address editors.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -412,7 +412,7 @@ def is_block_name_available(
 
 
 def find_paired_tag_index(
-    rows: list[HasComment], row_idx: int, tag: BlockTag | None = None
+    rows: Sequence[HasComment], row_idx: int, tag: BlockTag | None = None
 ) -> int | None:
     """Find the row index of the paired open/close block tag.
 
@@ -473,7 +473,7 @@ def find_paired_tag_index(
 
 
 def find_block_range_indices(
-    rows: list[HasComment], row_idx: int, tag: BlockTag | None = None
+    rows: Sequence[HasComment], row_idx: int, tag: BlockTag | None = None
 ) -> tuple[int, int] | None:
     """Find the (start_idx, end_idx) range for a block tag.
 
@@ -514,7 +514,7 @@ def find_block_range_indices(
     return None
 
 
-def compute_all_block_ranges(rows: list[HasComment]) -> list[BlockRange]:
+def compute_all_block_ranges(rows: Sequence[HasComment]) -> list[BlockRange]:
     """Compute all block ranges from a list of rows using stack-based matching.
 
     Correctly handles nested blocks and multiple blocks with the same name.

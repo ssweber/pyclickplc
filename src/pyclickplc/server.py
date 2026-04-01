@@ -6,6 +6,7 @@ routed to a user-supplied DataProvider.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -88,7 +89,7 @@ class MemoryDataProvider(AddressNormalizerMixin):
         """Synchronous write convenience."""
         self.write(address, value)
 
-    def bulk_set(self, values: dict[str, PlcValue]) -> None:
+    def bulk_set(self, values: Mapping[str, PlcValue]) -> None:
         """Set multiple values at once."""
         for address, value in values.items():
             self.set(address, value)

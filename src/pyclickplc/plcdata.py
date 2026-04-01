@@ -9,7 +9,7 @@ directions.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from .addresses import format_address_display
@@ -178,7 +178,7 @@ def _format_value(value: bool | int | float | str, data_type: DataType) -> str:
 
 def write_plc_data(
     path: str | Path,
-    data: dict[str, bool | int | float | str],
+    data: Mapping[str, bool | int | float | str],
     *,
     banks: Iterable[str] | None = None,
 ) -> None:
