@@ -48,13 +48,10 @@ dev = [
     "pytest>=8.3.5",
     "pytest-asyncio>=1.0",
     "ruff>=0.11.0",
-    "codespell>=2.4.1",
-    "rich>=13.9.4",
     "ty>=0.0.14",
-    "funlog>=0.2.0",
 ]
 docs = [
-    "mkdocs>=1.6.1",
+    "mkdocs>=1.6.1,<2",
     "mkdocs-material>=9.6.0",
     "mkdocstrings[python]>=0.29.0",
     "mkdocs-gen-files>=0.5.0",
@@ -89,6 +86,8 @@ bump = true
 # The source location for the package.
 packages = ["src/pyclickplc"]
 
+[tool.uv]
+exclude-newer = "7 days"
 
 # ---- Settings ----
 
@@ -149,11 +148,6 @@ exclude = [
 # Note: unresolved-import is ignored because ty has issues with src-layout
 # projects and relative imports. The code runs correctly with Python.
 unresolved-import = "ignore"
-
-[tool.codespell]
-# Add here as needed:
-# ignore-words-list = "foo,bar"
-# skip = "foo.py,bar.py"
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]
