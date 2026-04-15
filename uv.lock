@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.11, <4.0"
 
 [options]
-exclude-newer = "2026-03-25T16:07:00.1421842Z"
+exclude-newer = "2026-04-08T12:25:42.0940238Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -601,7 +601,7 @@ docs = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pymodbus", specifier = ">=3.8" }]
+requires-dist = [{ name = "pymodbus", specifier = ">=3.12,<3.13" }]
 
 [package.metadata.requires-dev]
 dev = [

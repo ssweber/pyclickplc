@@ -757,13 +757,8 @@ class ClickClient:
             self.tags = _build_tags_from_records(tags)
 
     async def _call_modbus(self, method: Any, /, **kwargs: Any) -> Any:
-        """Call pymodbus methods with device_id, falling back to legacy slave."""
-        try:
-            return await method(device_id=self._device_id, **kwargs)
-        except TypeError as exc:
-            if "device_id" not in str(exc):
-                raise
-            return await method(slave=self._device_id, **kwargs)
+        """Call a pymodbus client method with device_id."""
+        return await method(device_id=self._device_id, **kwargs)
 
     @overload
     def _get_accessor(self, bank: BoolBankName) -> AddressAccessor[bool]: ...

@@ -37,7 +37,7 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
-    "pymodbus>=3.8",
+    "pymodbus>=3.12,<3.13",
 ]
 
 
