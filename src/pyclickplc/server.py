@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from pymodbus.constants import ExcCodes
-from pymodbus.datastore import ModbusBaseDeviceContext, ModbusServerContext
+from pymodbus.datastore import ModbusDeviceContext, ModbusServerContext
 from pymodbus.server import ModbusTcpServer
 
 from .addresses import AddressNormalizerMixin, format_address_display, parse_address
@@ -121,7 +121,7 @@ def _format_plc_address(bank: str, index: int) -> str:
     return format_address_display(bank, index)
 
 
-class _ClickDeviceContext(ModbusBaseDeviceContext):
+class _ClickDeviceContext(ModbusDeviceContext):
     """Custom pymodbus context routing Modbus requests to a DataProvider."""
 
     def __init__(self, provider: DataProvider) -> None:
