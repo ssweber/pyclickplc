@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass
 
+import pytest
+
 from pyclickplc.blocks import (
     BlockRange,
     BlockTag,
+    compose_structured_block_name,
     compute_all_block_ranges,
     extract_block_name,
     find_block_range_indices,
@@ -211,7 +214,9 @@ class TestOpaqueStructuredNames:
     def test_structured_names_round_trip(self):
         names = [
             "Base.field",
+            "Base.field:udt",
             "Base:named_array(2,3)",
+            "Base:block",
             "Base:block(5)",
             "Base:block(start=5)",
         ]
@@ -239,6 +244,12 @@ class TestStructuredBlockNameHelpers:
         assert parsed.base == "Alarm"
         assert parsed.field == "id"
 
+    def test_parse_structured_block_name_udt_with_suffix(self):
+        parsed = parse_structured_block_name("Motor.Speed:udt")
+        assert parsed.kind == "udt"
+        assert parsed.base == "Motor"
+        assert parsed.field == "Speed"
+
     def test_parse_structured_block_name_named_array(self):
         parsed = parse_structured_block_name("AlarmPacked:named_array(2,3)")
         assert parsed.kind == "named_array"
@@ -252,10 +263,70 @@ class TestStructuredBlockNameHelpers:
         assert parsed.base == "WordBank"
         assert parsed.start == 5
 
+    def test_parse_structured_block_name_block_plain(self):
+        parsed = parse_structured_block_name("Alarms:block")
+        assert parsed.kind == "block"
+        assert parsed.base == "Alarms"
+        assert parsed.start is None
+
     def test_parse_structured_block_name_plain_fallback(self):
         parsed = parse_structured_block_name("Alarm.bad-name")
         assert parsed.kind == "plain"
         assert parsed.base == "Alarm.bad-name"
+
+    def test_compose_plain(self):
+        assert compose_structured_block_name("Motor") == "Motor"
+
+    def test_compose_udt(self):
+        assert compose_structured_block_name("Motor", "udt", field="Speed") == "Motor.Speed:udt"
+
+    def test_compose_named_array(self):
+        name = compose_structured_block_name("Ch", "named_array", count=2, stride=3)
+        assert name == "Ch:named_array(2,3)"
+
+    def test_compose_block_no_start(self):
+        assert compose_structured_block_name("Alarms", "block") == "Alarms:block"
+
+    def test_compose_block_with_start(self):
+        name = compose_structured_block_name("Alarms", "block", start=0)
+        assert name == "Alarms:block(start=0)"
+
+    def test_compose_udt_missing_field_raises(self):
+        with pytest.raises(ValueError, match="field"):
+            compose_structured_block_name("Motor", "udt")
+
+    def test_compose_named_array_missing_args_raises(self):
+        with pytest.raises(ValueError, match="count and stride"):
+            compose_structured_block_name("Ch", "named_array", count=2)
+
+    def test_compose_roundtrip_udt(self):
+        composed = compose_structured_block_name("Motor", "udt", field="Speed")
+        parsed = parse_structured_block_name(composed)
+        assert parsed.kind == "udt"
+        assert parsed.base == "Motor"
+        assert parsed.field == "Speed"
+
+    def test_compose_roundtrip_named_array(self):
+        composed = compose_structured_block_name("Ch", "named_array", count=2, stride=3)
+        parsed = parse_structured_block_name(composed)
+        assert parsed.kind == "named_array"
+        assert parsed.base == "Ch"
+        assert parsed.count == 2
+        assert parsed.stride == 3
+
+    def test_compose_roundtrip_block_start(self):
+        composed = compose_structured_block_name("Alarms", "block", start=5)
+        parsed = parse_structured_block_name(composed)
+        assert parsed.kind == "block"
+        assert parsed.base == "Alarms"
+        assert parsed.start == 5
+
+    def test_compose_roundtrip_block_no_start(self):
+        composed = compose_structured_block_name("Alarms", "block")
+        parsed = parse_structured_block_name(composed)
+        assert parsed.kind == "block"
+        assert parsed.base == "Alarms"
+        assert parsed.start is None
 
     def test_group_udt_block_names(self):
         grouped = group_udt_block_names(
@@ -272,6 +343,10 @@ class TestStructuredBlockNameHelpers:
             "Alarm": ("id", "On"),
             "Pump": ("state",),
         }
+
+    def test_group_udt_block_names_with_suffix(self):
+        grouped = group_udt_block_names(["Motor.Speed:udt", "Motor.Running:udt"])
+        assert grouped == {"Motor": ("Speed", "Running")}
 
 
 # Helper dataclass for testing matching functions

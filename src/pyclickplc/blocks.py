@@ -60,10 +60,9 @@ class StructuredBlockName:
     `parse_block_tag()` treats block names as opaque strings. This helper is
     intentionally separate and optional for callers that want to interpret
     naming conventions such as:
-    - UDT fields: ``Base.field``
+    - Semantic blocks: ``Base:block`` / ``Base:block(start=n)``
+    - UDT fields: ``Base.field:udt`` (or bare ``Base.field``)
     - Named arrays: ``Base:named_array(count,stride)``
-    - Plain blocks with logical start override:
-      ``Base:block(n)`` / ``Base:block(start=n)``
     """
 
     raw: str
@@ -76,13 +75,16 @@ class StructuredBlockName:
 
 
 _STRUCTURED_IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
-_UDT_BLOCK_NAME_RE = re.compile(rf"^(?P<base>{_STRUCTURED_IDENT})\.(?P<field>{_STRUCTURED_IDENT})$")
+_UDT_BLOCK_NAME_RE = re.compile(
+    rf"^(?P<base>{_STRUCTURED_IDENT})\.(?P<field>{_STRUCTURED_IDENT})(?::udt)?$"
+)
 _NAMED_ARRAY_BLOCK_NAME_RE = re.compile(
     rf"^(?P<base>{_STRUCTURED_IDENT}):named_array\((?P<count>[1-9][0-9]*),(?P<stride>[1-9][0-9]*)\)$"
 )
 _BLOCK_START_BLOCK_NAME_RE = re.compile(
     rf"^(?P<base>{_STRUCTURED_IDENT}):block\((?P<start>(?:0|[1-9][0-9]*|start=(?:0|[1-9][0-9]*)))\)$"
 )
+_BLOCK_PLAIN_RE = re.compile(rf"^(?P<base>{_STRUCTURED_IDENT}):block$")
 
 
 def parse_structured_block_name(name: str) -> StructuredBlockName:
@@ -124,7 +126,45 @@ def parse_structured_block_name(name: str) -> StructuredBlockName:
             start=start,
         )
 
+    block_plain_match = _BLOCK_PLAIN_RE.fullmatch(name)
+    if block_plain_match is not None:
+        return StructuredBlockName(
+            raw=name,
+            kind="block",
+            base=block_plain_match.group("base"),
+        )
+
     return StructuredBlockName(raw=name, kind="plain", base=name)
+
+
+def compose_structured_block_name(
+    base: str,
+    kind: Literal["plain", "udt", "named_array", "block"] = "plain",
+    *,
+    field: str | None = None,
+    count: int | None = None,
+    stride: int | None = None,
+    start: int | None = None,
+) -> str:
+    """Compose a structured block name string from its components.
+
+    Inverse of ``parse_structured_block_name()``.
+    """
+    if kind == "plain":
+        return base
+    if kind == "udt":
+        if not field:
+            raise ValueError("UDT kind requires a field name")
+        return f"{base}.{field}:udt"
+    if kind == "named_array":
+        if count is None or stride is None:
+            raise ValueError("Named array requires count and stride")
+        return f"{base}:named_array({count},{stride})"
+    if kind == "block":
+        if start is not None:
+            return f"{base}:block(start={start})"
+        return f"{base}:block"
+    raise ValueError(f"Unknown kind: {kind}")
 
 
 def group_udt_block_names(names: Iterable[str]) -> dict[str, tuple[str, ...]]:
