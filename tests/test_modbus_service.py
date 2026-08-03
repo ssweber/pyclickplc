@@ -157,6 +157,23 @@ def _service_threads() -> list[threading.Thread]:
     ]
 
 
+def _record_state(
+    states: list[ConnectionState],
+    errors: list[Exception | None],
+    state: ConnectionState,
+    error: Exception | None,
+) -> None:
+    states.append(state)
+    errors.append(error)
+
+
+def _record_values(
+    values: list[ModbusResponse], event: threading.Event, response: ModbusResponse
+) -> None:
+    values.append(response)
+    event.set()
+
+
 class TestLifecycleState:
     def test_reconnect_config_validation(self):
         with pytest.raises(ValueError):
@@ -172,7 +189,7 @@ class TestLifecycleState:
 
         state_service = ModbusService(
             poll_interval_s=0.03,
-            on_state=lambda s, e: (states.append(s), errors.append(e)),
+            on_state=lambda s, e: _record_state(states, errors, s, e),
         )
         try:
             state_service.connect("localhost", 15020)
@@ -197,7 +214,7 @@ class TestLifecycleState:
         errors: list[Exception | None] = []
         svc = ModbusService(
             poll_interval_s=0.03,
-            on_state=lambda s, e: (states.append(s), errors.append(e)),
+            on_state=lambda s, e: _record_state(states, errors, s, e),
         )
         try:
             with pytest.raises(OSError):
@@ -244,7 +261,7 @@ class TestLifecycleState:
         errors: list[Exception | None] = []
         svc = ModbusService(
             poll_interval_s=0.03,
-            on_state=lambda s, e: (states.append(s), errors.append(e)),
+            on_state=lambda s, e: _record_state(states, errors, s, e),
         )
         try:
             svc.connect("localhost", 15020)
@@ -318,7 +335,7 @@ class TestPollConfiguration:
 
         callback_service = ModbusService(
             poll_interval_s=0.03,
-            on_values=lambda r: (values_seen.append(r), callback_event.set()),
+            on_values=lambda r: _record_values(values_seen, callback_event, r),
         )
         try:
             callback_service.connect("localhost", 15020)

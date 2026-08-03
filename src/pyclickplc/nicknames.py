@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeVar, cast, overload
 
 from .addresses import AddressNormalizerMixin, AddressRecord, get_addr_key, parse_address
 from .banks import BANKS, DEFAULT_RETENTIVE, MEMORY_TYPE_BASES, MEMORY_TYPE_TO_DATA_TYPE, DataType
@@ -37,6 +37,8 @@ DATA_TYPE_CODE_TO_STR: dict[int, str] = {
     4: "HEX",
     6: "TEXT",
 }
+
+_DefaultT = TypeVar("_DefaultT")
 
 
 class AddressLookupView(AddressNormalizerMixin):
@@ -173,11 +175,18 @@ class AddressRecordMap(dict[int, AddressRecord]):
         super().clear()
         self._mark_dirty()
 
-    def pop(self, key: int, default: Any = ...):
+    @overload
+    def pop(self, key: object) -> AddressRecord: ...
+
+    @overload
+    def pop(self, key: object, default: _DefaultT) -> AddressRecord | _DefaultT: ...
+
+    def pop(self, key: object, default: Any = ...) -> Any:
+        typed_key = cast(int, key)
         if default is ...:
-            value = super().pop(key)
+            value = super().pop(typed_key)
         else:
-            value = super().pop(key, default)
+            value = super().pop(typed_key, default)
         self._mark_dirty()
         return value
 
