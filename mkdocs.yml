@@ -30,6 +30,10 @@ nav:
   - Releases:
       - v0.2.0: releases/v0.2.0.md
 
+not_in_nav: |
+  AGENTS.md
+  CLAUDE.md
+
 plugins:
   - search
   - gen-files:
