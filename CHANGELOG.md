@@ -4,6 +4,7 @@
 
 ### Added
 
+- Maintained AutomationDirect guidance for 344 documented SC/SD system nicknames, including conservative canonicalization helpers and source metadata for downstream repair workflows.
 - `compose_structured_block_name()` for building structured block name strings from components (inverse of `parse_structured_block_name()`).
 - `parse_structured_block_name()` now recognizes `Base.Field:udt` (with explicit `:udt` suffix) and `Base:block` (without start override) in addition to existing patterns.
 

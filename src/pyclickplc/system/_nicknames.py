@@ -1,0 +1,438 @@
+"""Canonical AutomationDirect CLICK system nicknames.
+
+CLICK project databases can retain stale system nicknames after software and
+firmware updates. This catalog records the current vendor value by address, but
+repairs remain deliberately narrow: a value is changed only when it is an
+explicitly recorded stale alias. Unfamiliar values, including blanks unless a
+specific incident justifies filling them, are preserved so newer vendor data is
+never silently replaced by this snapshot.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+
+AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE = (
+    "https://cdn.automationdirect.com/static/helpfiles/click/Content/109.htm"
+)
+AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE = (
+    "https://cdn.automationdirect.com/static/helpfiles/click/Content/110.htm"
+)
+AUTOMATIONDIRECT_SYSTEM_NICKNAME_REVIEWED_ON = date(2026, 9, 2)
+
+
+@dataclass(frozen=True)
+class SystemNicknameGuidance:
+    """Vendor guidance and safe repair inputs for one system address."""
+
+    nickname: str
+    repair_from: frozenset[str]
+    source: str
+    reviewed_on: date
+
+
+# Transcribed from AutomationDirect CLICK help topics CL109 and CL110.
+#
+# Omitted intentionally:
+# - SD73/SD74 have two documented names selected by CPU type.
+# - SD150 is shown without the leading underscore required by the same help
+#   topic's system-nickname rules, so it is not safe to treat as canonical.
+_AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
+    # System Control Relays (CL109)
+    ("SC", 1): "_Always_ON",
+    ("SC", 2): "_1st_SCAN",
+    ("SC", 3): "_SCAN_Clock",
+    ("SC", 4): "_10ms_Clock",
+    ("SC", 5): "_100ms_Clock",
+    ("SC", 6): "_500ms_Clock",
+    ("SC", 7): "_1sec_Clock",
+    ("SC", 8): "_1min_Clock",
+    ("SC", 9): "_1hour_Clock",
+    ("SC", 10): "_Mode_Switch",
+    ("SC", 11): "_PLC_Mode",
+    ("SC", 19): "_PLC_Error",
+    ("SC", 20): "_I/O_BUS_Error",
+    ("SC", 21): "_System_Config_Error",
+    ("SC", 22): "_I/O_Module_Error",
+    ("SC", 23): "_Flash_Memory Error",
+    ("SC", 24): "_Project_File_Error",
+    ("SC", 25): "_Project_File_Ver_Error",
+    ("SC", 26): "_Watchdog_Timer_ Error",
+    ("SC", 27): "_Lost_SDRAM_Data",
+    ("SC", 28): "_Battery_Low_Voltage",
+    ("SC", 29): "_Battery_Replacement",
+    ("SC", 30): "_Run Edit Project Error",
+    ("SC", 31): "_Sub_CPU_FW_Ver_Error",
+    ("SC", 32): "_C2INT_FW_Ver_Error",
+    ("SC", 33): "_CPLD Version Error",
+    ("SC", 40): "_Division_Error",
+    ("SC", 43): "_Out_of_Range",
+    ("SC", 44): "_Address_Error",
+    ("SC", 46): "_Math_Operation_Error",
+    ("SC", 50): "_PLC_Mode_Change_to_STOP",
+    ("SC", 51): "_Watchdog_Timer_Reset",
+    ("SC", 53): "_RTC_Date_Change",
+    ("SC", 54): "_RTC_Date_Change_Error",
+    ("SC", 55): "_RTC_Time_Change",
+    ("SC", 56): "_RTC_Time_Change_Error",
+    ("SC", 60): "_BT_Disable_Pairing",
+    ("SC", 61): "_BT_Activate_Pairing",
+    ("SC", 62): "_BT_Paired_Devices",
+    ("SC", 63): "_BT_Pairing_SW_State",
+    ("SC", 64): "_RemotPLC_Enabled",
+    ("SC", 65): "_SD_Eject",
+    ("SC", 66): "_SD_Delete_All",
+    ("SC", 67): "_SD_Copy_System",
+    ("SC", 68): "_SD_Ready_To_Use",
+    ("SC", 69): "_SD_Write_Status",
+    ("SC", 70): "_SD_Error",
+    ("SC", 75): "_WLAN_Reset",
+    ("SC", 76): "_Sub_CPU_Reset",
+    ("SC", 80): "_WLAN_Ready_Flag",
+    ("SC", 81): "_WLAN_Error_Flag",
+    ("SC", 82): "_WLAN_Connection_Limit",
+    ("SC", 83): "_WLAN_IP_Resolved",
+    ("SC", 84): "_WLAN_Connected",
+    ("SC", 86): "_WLAN_DHCP_Enabled",
+    ("SC", 87): "_WLAN_DNS_Success",
+    ("SC", 88): "_WLAN_DNS_Error",
+    ("SC", 90): "_Port_1_Ready_Flag",
+    ("SC", 91): "_Port_1_Error_Flag",
+    ("SC", 92): "_Port_1_Connection_Limit",
+    ("SC", 93): "_Port_1_IP_Resolved",
+    ("SC", 94): "_Port_1_Link_Flag",
+    ("SC", 95): "_Port_1_100MBIT_Flag",
+    ("SC", 96): "_Port_1_DHCP_Enabled",
+    ("SC", 97): "_Port_1_DNS_Success",
+    ("SC", 98): "_Port_1_DNS_Error",
+    ("SC", 100): "_Port_2_Ready_Flag",
+    ("SC", 101): "_Port_2_Error_Flag",
+    ("SC", 102): "_Port_3_Ready_Flag",
+    ("SC", 103): "_Port_3_Error_Flag",
+    ("SC", 111): "_EIP_Con1_ConOnline",
+    ("SC", 112): "_EIP_Con1_Error",
+    ("SC", 113): "_EIP_Con1_Originator_Run",
+    ("SC", 114): "_EIP_Con2_ConOnline",
+    ("SC", 115): "_EIP_Con2_Error",
+    ("SC", 116): "_EIP_Con2_Originator_Run",
+    ("SC", 120): "_Network Time_Request",
+    ("SC", 121): "_Network Time_DST",
+    ("SC", 122): "_Network Time_Processing",
+    ("SC", 123): "_Network Time_Error",
+    ("SC", 131): "_Password_Failure_Detect",
+    ("SC", 132): "_Password_Locked_Out",
+    ("SC", 133): "_Port1_AL_Enabled",
+    ("SC", 134): "_Port1_AL_Denied_Flag",
+    ("SC", 135): "_WLAN_AL_Enabled",
+    ("SC", 136): "_WLAN_AL_Denied_Flag",
+    ("SC", 140): "_S0_P1_Ready_Flag",
+    ("SC", 141): "_S0_P1_Error_Flag",
+    ("SC", 142): "_S0_P2_Ready_Flag",
+    ("SC", 143): "_S0_P2_Error_Flag",
+    ("SC", 144): "_S1_P1_Ready_Flag",
+    ("SC", 145): "_S1_P1_Error_Flag",
+    ("SC", 146): "_S1_P2_Ready_Flag",
+    ("SC", 147): "_S1_P2_Error_Flag",
+    ("SC", 150): "_PTO_Axis1_Ready_Flag",
+    ("SC", 151): "_PTO_Axis2_Ready_Flag",
+    ("SC", 152): "_PTO_Axis3_Ready_Flag",
+    ("SC", 202): "_Fixed_Scan_Mode",
+    ("SC", 203): "_Battery_Installed",
+    ("SC", 301): "_S0INT_Ready_Flag",
+    ("SC", 302): "_S0INT_Error_Flag",
+    ("SC", 303): "_S0INT_Reset",
+    ("SC", 304): "_S0INT_SD_EJECT",
+    ("SC", 305): "_S0INT_SD_Delete_All",
+    ("SC", 306): "_S0INT_SD_Copy_System",
+    ("SC", 307): "_S0INT_SD_Ready_To_Use",
+    ("SC", 309): "_S0INT_IP_Resolved",
+    ("SC", 310): "_S0INT_Link_Flag",
+    ("SC", 311): "_S0INT_100M_Bit_Flag",
+    ("SC", 312): "_S0INT_DHCP_Enabled",
+    ("SC", 315): "_S0INT_Application_Flag",
+    ("SC", 321): "_S1INT_Ready_Flag",
+    ("SC", 322): "_S1INT_Error_Flag",
+    ("SC", 323): "_S1INT_Reset",
+    ("SC", 324): "_S1INT_SD_EJECT",
+    ("SC", 325): "_S1INT_SD_Delete_All",
+    ("SC", 326): "_S1INT_SD_Copy_System",
+    ("SC", 327): "_S1INT_SD_Ready_To_Use",
+    ("SC", 329): "_S1INT_IP_Resolved",
+    ("SC", 330): "_S1INT_Link_Flag",
+    ("SC", 331): "_S1INT_100M_Bit_Flag",
+    ("SC", 332): "_S1INT_DHCP_ Enabled",
+    ("SC", 335): "_S1INT_Application_Flag",
+    # System Data Registers (CL110)
+    ("SD", 1): "_PLC_Error_Code",
+    ("SD", 5): "_Firmware_Version_L",
+    ("SD", 6): "_Firmware_Version_H",
+    ("SD", 7): "_Sub_Firmware_Version_L",
+    ("SD", 8): "_Sub_Firmware_Version_H",
+    ("SD", 9): "_Scan_Counter",
+    ("SD", 10): "_Current_Scan_Time",
+    ("SD", 11): "_Minimum_Scan_Time",
+    ("SD", 12): "_Maximum_Scan_Time",
+    ("SD", 13): "_Fixed_Scan_Time_Setup",
+    ("SD", 14): "_Interrupt_Scan_Time",
+    ("SD", 19): "_RTC_Year (4 digits)",
+    ("SD", 20): "_RTC_Year (2 digits)",
+    ("SD", 21): "_RTC_Month (1-12)",
+    ("SD", 22): "_RTC_Day (1-31)",
+    ("SD", 23): "_RTC_Day_of_the_Week",
+    ("SD", 24): "_RTC_Hour (0-23)",
+    ("SD", 25): "_RTC_Minute (0-59)",
+    ("SD", 26): "_RTC_Second (0-59)",
+    ("SD", 29): "_RTC_New_Year(4 digits)",
+    ("SD", 31): "_RTC_New_Month",
+    ("SD", 32): "_RTC_New_Day",
+    ("SD", 34): "_RTC_New_Hour",
+    ("SD", 35): "_RTC_New_Minute",
+    ("SD", 36): "_RTC_New_Second",
+    ("SD", 40): "_Port1_Received_Data_Len",
+    ("SD", 41): "_Port1_No_Comm_Time",
+    ("SD", 42): "_Port1_Rcv_Pkt_High_Cnt",
+    ("SD", 50): "_Port2_Received_Data_Len",
+    ("SD", 51): "_Port2_No_Comm_Time",
+    ("SD", 60): "_Port3_Received_Data_Len",
+    ("SD", 61): "_Port3_No_Comm_Time",
+    ("SD", 62): "_BT_Paired_Device_Count",
+    ("SD", 63): "_SD_Total_Memory_L",
+    ("SD", 64): "_SD_Total_Memory_H",
+    ("SD", 65): "_SD_Free_Memory_L",
+    ("SD", 66): "_SD_Free_Memory_H",
+    ("SD", 67): "_SD_Used_Memory_L",
+    ("SD", 68): "_SD_Used_Memory_H",
+    ("SD", 69): "_SD_Error_Information",
+    ("SD", 70): "_SD_Log_File_Number",
+    ("SD", 71): "_CPU_AD_CH1_Value",
+    ("SD", 72): "_CPU_AD_CH2_Value",
+    ("SD", 75): "_CPU_DA_CH1_Value",
+    ("SD", 76): "_CPU_DA_CH2_Value",
+    ("SD", 80): "_Port1_IP_Address1",
+    ("SD", 81): "_Port1_IP_Address2",
+    ("SD", 82): "_Port1_IP_Address3",
+    ("SD", 83): "_Port1_IP_Address4",
+    ("SD", 84): "_Port1_Subnet_Mask1",
+    ("SD", 85): "_Port1_Subnet_Mask2",
+    ("SD", 86): "_Port1_Subnet_Mask3",
+    ("SD", 87): "_Port1_Subnet_Mask4",
+    ("SD", 88): "_Port1_Default_Gateway1",
+    ("SD", 89): "_Port1_Default_Gateway2",
+    ("SD", 90): "_Port1_Default_Gateway3",
+    ("SD", 91): "_Port1_Default_Gateway4",
+    ("SD", 101): "_EIP_ModuleStatus",
+    ("SD", 102): "_EIP_IdentityStatus",
+    ("SD", 103): "_EIP_Con1_NodeStatus",
+    ("SD", 104): "_EIP_Con1_GeneralStatus",
+    ("SD", 105): "_EIP_Con1_ExtendedStatus",
+    ("SD", 106): "_EIP_Con1_LostCount",
+    ("SD", 107): "_EIP_Con1_DisConCount",
+    ("SD", 108): "_EIP_Con1_No_Comm_Time",
+    ("SD", 109): "_EIP_Con2_NodeStatus",
+    ("SD", 110): "_EIP_Con2_GeneralStatus",
+    ("SD", 111): "_EIP_Con2_ExtendedStatus",
+    ("SD", 112): "_EIP_Con2_LostCount",
+    ("SD", 113): "_EIP_Con2_DisConCount",
+    ("SD", 114): "_EIP_Con2_No_Comm_Time",
+    ("SD", 131): "_Password_Failed_Count",
+    ("SD", 132): "_Port1_AL_Denied_No1_Cnt",
+    ("SD", 133): "_WLAN_AL_Denied_No1_Cnt",
+    ("SD", 134): "_Port1_AL_Denied_Count",
+    ("SD", 135): "_WLAN_AL_Denied_Count",
+    ("SD", 140): "_S0_P1_Received_Data_Len",
+    ("SD", 141): "_S0_P1_No_Comm_Time",
+    ("SD", 142): "_S0_P2_Received_Data_Len",
+    ("SD", 143): "_S0_P2_No_Comm_Time",
+    ("SD", 144): "_S1_P1_Received_Data_Len",
+    ("SD", 145): "_S1_P1_No_Comm_Time",
+    ("SD", 146): "_S1_P2_Received_Data_Len",
+    ("SD", 147): "_S1_P2_No_Comm_Time",
+    ("SD", 188): "_Port1_MAC_Address1",
+    ("SD", 189): "_Port1_MAC_Address2",
+    ("SD", 190): "_Port1_MAC_Address3",
+    ("SD", 191): "_Port1_MAC_Address4",
+    ("SD", 192): "_Port1_MAC_Address5",
+    ("SD", 193): "_Port1_MAC_Address6",
+    ("SD", 194): "_WLAN_ST_MAC_Address1",
+    ("SD", 195): "_WLAN_ST_MAC_Address2",
+    ("SD", 196): "_WLAN_ST_MAC_Address3",
+    ("SD", 197): "_WLAN_ST_MAC_Address4",
+    ("SD", 198): "_WLAN_ST_MAC_Address5",
+    ("SD", 199): "_WLAN_ST_MAC_Address6",
+    ("SD", 200): "_WLAN_IP_Address1",
+    ("SD", 201): "_WLAN_IP_Address2",
+    ("SD", 202): "_WLAN_IP_Address3",
+    ("SD", 203): "_WLAN_IP_Address4",
+    ("SD", 204): "_WLAN_Subnet_Mask1",
+    ("SD", 205): "_WLAN_Subnet_Mask2",
+    ("SD", 206): "_WLAN_Subnet_Mask3",
+    ("SD", 207): "_WLAN_Subnet_Mask4",
+    ("SD", 208): "_WLAN_Default_Gateway1",
+    ("SD", 209): "_WLAN_Default_Gateway2",
+    ("SD", 210): "_WLAN_Default_Gateway3",
+    ("SD", 211): "_WLAN_Default_Gateway4",
+    ("SD", 212): "_WLAN_Signal_Strength",
+    ("SD", 213): "_WLAN_Connection_Status",
+    ("SD", 214): "_WLAN_No_Com_Time",
+    ("SD", 215): "_WLAN_Rcv_Pkt_High_Cnt",
+    ("SD", 216): "_WLAN_Connected_Channel",
+    ("SD", 217): "_WLAN_Country_Code",
+    ("SD", 218): "_WLAN_No_Connect_Status",
+    ("SD", 301): "_S0_ModuleId",
+    ("SD", 302): "_S0_Major_Version",
+    ("SD", 303): "_S0_Minor_Version",
+    ("SD", 304): "_S0_Hotfix_Version",
+    ("SD", 305): "_S0_Release_Version",
+    ("SD", 306): "_S0_CPU_USAGE",
+    ("SD", 307): "_S0_MEM_USAGE",
+    ("SD", 308): "_S0_ERROR_CODE",
+    ("SD", 309): "_S0_SD_TOTAL_MEM_L",
+    ("SD", 310): "_S0_SD_TOTAL_MEM_H",
+    ("SD", 311): "_S0_SD_FREE_MEM_L",
+    ("SD", 312): "_S0_SD_FREE_MEM_H",
+    ("SD", 313): "_S0_SD_USED_MEM_L",
+    ("SD", 314): "_S0_SD_USED_MEM_H",
+    ("SD", 315): "_S0_ETH_IP_Address1",
+    ("SD", 316): "_S0_ETH_IP_Address2",
+    ("SD", 317): "_S0_ETH_IP_Address3",
+    ("SD", 318): "_S0_ETH_IP_Address4",
+    ("SD", 319): "_S0_ETH_Subnet_Mask1",
+    ("SD", 320): "_S0_ETH_Subnet_Mask2",
+    ("SD", 321): "_S0_ETH_Subnet_Mask3",
+    ("SD", 322): "_S0_ETH_Subnet_Mask4",
+    ("SD", 323): "_S0_ETH_Default_Gateway1",
+    ("SD", 324): "_S0_ETH_Default_Gateway2",
+    ("SD", 325): "_S0_ETH_Default_Gateway3",
+    ("SD", 326): "_S0_ETH_Default_Gateway4",
+    ("SD", 327): "_S0_ETH_MAC_Address1",
+    ("SD", 328): "_S0_ETH_MAC_Address2",
+    ("SD", 329): "_S0_ETH_MAC_Address3",
+    ("SD", 330): "_S0_ETH_MAC_Address4",
+    ("SD", 331): "_S0_ETH_MAC_Address5",
+    ("SD", 332): "_S0_ETH_MAC_Address6",
+    ("SD", 333): "_S0_USB_IP_Address1",
+    ("SD", 334): "_S0_USB_IP_Address2",
+    ("SD", 335): "_S0_USB_IP_Address3",
+    ("SD", 336): "_S0_USB_IP_Address4",
+    ("SD", 337): "_S0_USB_Subnet_Mask1",
+    ("SD", 338): "_S0_USB_Subnet_Mask2",
+    ("SD", 339): "_S0_USB_Subnet_Mask3",
+    ("SD", 340): "_S0_USB_Subnet_Mask4",
+    ("SD", 341): "_S0_USB_Default_Gateway1",
+    ("SD", 342): "_S0_USB_Default_Gateway2",
+    ("SD", 343): "_S0_USB_Default_Gateway3",
+    ("SD", 344): "_S0_USB_Default_Gateway4",
+    ("SD", 345): "_S0_USB_MAC_Address1",
+    ("SD", 346): "_S0_USB_MAC_Address2",
+    ("SD", 347): "_S0_USB_MAC_Address3",
+    ("SD", 348): "_S0_USB_MAC_Address4",
+    ("SD", 349): "_S0_USB_MAC_Address5",
+    ("SD", 350): "_S0_USB_MAC_Address6",
+    ("SD", 351): "_S0_Application_USAGE",
+    ("SD", 352): "_S0_Session_Cnt",
+    ("SD", 353): "_S0_DataUpdateCycleTime",
+    ("SD", 401): "_S1_ModuleId",
+    ("SD", 402): "_S1_Major_Version",
+    ("SD", 403): "_S1_Minor_Version",
+    ("SD", 404): "_S1_Hotfix_Version",
+    ("SD", 405): "_S1_Release_Version",
+    ("SD", 406): "_S1_CPU_USAGE",
+    ("SD", 407): "_S1_MEM_USAGE",
+    ("SD", 408): "_S1_ERROR_CODE",
+    ("SD", 409): "_S1_SD_TOTAL_MEM_L",
+    ("SD", 410): "_S1_SD_TOTAL_MEM_H",
+    ("SD", 411): "_S1_SD_FREE_MEM_L",
+    ("SD", 412): "_S1_SD_FREE_MEM_H",
+    ("SD", 413): "_S1_SD_USED_MEM_L",
+    ("SD", 414): "_S1_SD_USED_MEM_H",
+    ("SD", 415): "_S1_ETH_IP_Address1",
+    ("SD", 416): "_S1_ETH_IP_Address2",
+    ("SD", 417): "_S1_ETH_IP_Address3",
+    ("SD", 418): "_S1_ETH_IP_Address4",
+    ("SD", 419): "_S1_ETH_Subnet_Mask1",
+    ("SD", 420): "_S1_ETH_Subnet_Mask2",
+    ("SD", 421): "_S1_ETH_Subnet_Mask3",
+    ("SD", 422): "_S1_ETH_Subnet_Mask4",
+    ("SD", 423): "_S1_ETH_Default_Gateway1",
+    ("SD", 424): "_S1_ETH_Default_Gateway2",
+    ("SD", 425): "_S1_ETH_Default_Gateway3",
+    ("SD", 426): "_S1_ETH_Default_Gateway4",
+    ("SD", 427): "_S1_ETH_MAC_Address1",
+    ("SD", 428): "_S1_ETH_MAC_Address2",
+    ("SD", 429): "_S1_ETH_MAC_Address3",
+    ("SD", 430): "_S1_ETH_MAC_Address4",
+    ("SD", 431): "_S1_ETH_MAC_Address5",
+    ("SD", 432): "_S1_ETH_MAC_Address6",
+    ("SD", 433): "_S1_USB_IP_Address1",
+    ("SD", 434): "_S1_USB_IP_Address2",
+    ("SD", 435): "_S1_USB_IP_Address3",
+    ("SD", 436): "_S1_USB_IP_Address4",
+    ("SD", 437): "_S1_USB_Subnet_Mask1",
+    ("SD", 438): "_S1_USB_Subnet_Mask2",
+    ("SD", 439): "_S1_USB_Subnet_Mask3",
+    ("SD", 440): "_S1_USB_Subnet_Mask4",
+    ("SD", 441): "_S1_USB_Default_Gateway1",
+    ("SD", 442): "_S1_USB_Default_Gateway2",
+    ("SD", 443): "_S1_USB_Default_Gateway3",
+    ("SD", 444): "_S1_USB_Default_Gateway4",
+    ("SD", 445): "_S1_USB_MAC_Address1",
+    ("SD", 446): "_S1_USB_MAC_Address2",
+    ("SD", 447): "_S1_USB_MAC_Address3",
+    ("SD", 448): "_S1_USB_MAC_Address4",
+    ("SD", 449): "_S1_USB_MAC_Address5",
+    ("SD", 450): "_S1_USB_MAC_Address6",
+    ("SD", 451): "_S1_Application_USAGE",
+    ("SD", 452): "_S1_Session_Cnt",
+    ("SD", 453): "_S1_DataUpdateCycleTime",
+}
+
+_KNOWN_STALE_NICKNAMES: dict[tuple[str, int], frozenset[str]] = {
+    ("SD", 132): frozenset({"", "_Port1_AL_Denied_Count"}),
+    ("SD", 133): frozenset({"", "_WLAN_AL_Denied_Count"}),
+    ("SD", 134): frozenset({""}),
+    ("SD", 135): frozenset({""}),
+}
+_NO_AUTOMATIC_REPAIR = frozenset()
+
+
+def _source_for(memory_type: str) -> str:
+    if memory_type == "SC":
+        return AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE
+    return AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE
+
+
+AUTOMATIONDIRECT_SYSTEM_NICKNAMES: dict[tuple[str, int], SystemNicknameGuidance] = {
+    key: SystemNicknameGuidance(
+        nickname=nickname,
+        repair_from=_KNOWN_STALE_NICKNAMES.get(key, _NO_AUTOMATIC_REPAIR),
+        source=_source_for(key[0]),
+        reviewed_on=AUTOMATIONDIRECT_SYSTEM_NICKNAME_REVIEWED_ON,
+    )
+    for key, nickname in _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES.items()
+}
+
+
+def canonical_system_nickname(memory_type: str, address: int) -> str | None:
+    """Return the documented nickname for a maintained system address."""
+
+    guidance = AUTOMATIONDIRECT_SYSTEM_NICKNAMES.get((memory_type.upper(), address))
+    return guidance.nickname if guidance is not None else None
+
+
+def canonicalize_system_nickname(memory_type: str, address: int, nickname: str) -> str:
+    """Repair an explicitly known stale vendor nickname, preserving other data."""
+
+    guidance = AUTOMATIONDIRECT_SYSTEM_NICKNAMES.get((memory_type.upper(), address))
+    if guidance is None:
+        return nickname
+    if nickname == guidance.nickname or nickname in guidance.repair_from:
+        return guidance.nickname
+    return nickname
+
+
+def is_canonical_system_nickname(memory_type: str, address: int, nickname: str) -> bool:
+    """Return whether *nickname* is the maintained vendor value for the address."""
+
+    canonical = canonical_system_nickname(memory_type, address)
+    return canonical is not None and nickname == canonical
