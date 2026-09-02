@@ -1,7 +1,7 @@
 site_name: pyclickplc
 site_description: Documentation for pyclickplc
 repo_url: https://github.com/ssweber/pyclickplc
-site_url: https://ssweber.github.io/pyclickplc/
+site_url: https://pyrung.com/pyclickplc/
 docs_dir: docs_build
 
 theme:
