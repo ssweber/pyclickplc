@@ -2,11 +2,24 @@
 
 ## Unreleased
 
+## 0.3.4 - 2026-09-02
+
 ### Added
 
 - Maintained AutomationDirect guidance for 344 documented SC/SD system nicknames, including conservative canonicalization helpers and source metadata for downstream repair workflows.
+
+## 0.3.3 - 2026-08-25
+
+### Added
+
 - `compose_structured_block_name()` for building structured block name strings from components (inverse of `parse_structured_block_name()`).
 - `parse_structured_block_name()` now recognizes `Base.Field:udt` (with explicit `:udt` suffix) and `Base:block` (without start override) in addition to existing patterns.
+
+## 0.3.2 - 2026-04-15
+
+### Changed
+
+- Pinned pymodbus to the compatible 3.12 release series and updated client/server integration for its current API.
 
 ## 0.3.1 - 2026-03-29
 
