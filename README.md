@@ -1,10 +1,12 @@
 # pyclickplc
 
-**Talk to AutomationDirect CLICK PLCs from Python.** Async Modbus TCP client/server, address helpers, nickname CSV and DataView CDV file I/O.
+**Talk to AutomationDirect CLICK PLCs from Python.** Async Modbus TCP client and server, the CLICK address model, and nickname CSV and DataView CDV file I/O.
 
-- Documentation: https://ssweber.github.io/pyclickplc/
-- LLM docs index: https://ssweber.github.io/pyclickplc/llms.txt
-- LLM full context: https://ssweber.github.io/pyclickplc/llms-full.txt
+It's the wire under [pyrung](https://pyrung.com/pyrung/) and [ClickNick](https://pyrung.com/clicknick/), and it stands on its own as a Modbus client for any CLICK.
+
+- Documentation: https://pyrung.com/pyclickplc/
+- LLM docs index: https://pyrung.com/pyclickplc/llms.txt
+- LLM full context: https://pyrung.com/pyclickplc/llms-full.txt
 
 ## Install
 
@@ -33,28 +35,28 @@ async def main():
 asyncio.run(main())
 ```
 
-No PLC on hand? The [quickstart](https://ssweber.github.io/pyclickplc/getting-started/quickstart/) uses `ClickServer` to simulate one locally.
+The [quickstart](https://pyrung.com/pyclickplc/getting-started/quickstart/) uses `ClickServer` to simulate a PLC locally, so you don't need hardware to try it.
 
 ## What's included
 
-**[Modbus client](https://ssweber.github.io/pyclickplc/guides/client/)** — `ClickClient` reads and writes PLC values as native Python types (`bool`, `int`, `float`, `str`). Access by bank (`plc.ds`), by address string (`plc.addr`), or by tag name (`plc.tag`).
+**[Modbus client](https://pyrung.com/pyclickplc/guides/client/)** — `ClickClient` reads and writes PLC values as native Python types (`bool`, `int`, `float`, `str`). Access by bank (`plc.ds`), by address string (`plc.addr`), or by tag name (`plc.tag`).
 
-**[Modbus service](https://ssweber.github.io/pyclickplc/guides/modbus_service/)** — `ModbusService` wraps the async client for sync and UI applications with background polling and auto-reconnect.
+**[Modbus service](https://pyrung.com/pyclickplc/guides/modbus_service/)** — `ModbusService` wraps the async client for sync and UI applications with background polling and auto-reconnect.
 
-**[Modbus server](https://ssweber.github.io/pyclickplc/guides/server/)** — `ClickServer` simulates a CLICK PLC over Modbus TCP. Use it for development and testing without hardware.
+**[Modbus server](https://pyrung.com/pyclickplc/guides/server/)** — `ClickServer` simulates a CLICK PLC over Modbus TCP. Use it for development and testing without hardware.
 
-**[File I/O](https://ssweber.github.io/pyclickplc/guides/files/)** — Read and write CLICK nickname CSV and DataView CDV files. Compatible with CLICK programming software and [ClickNick](https://github.com/ssweber/clicknick).
+**[File I/O](https://pyrung.com/pyclickplc/guides/files/)** — Read and write CLICK nickname CSV and DataView CDV files. Compatible with CLICK programming software and [ClickNick](https://pyrung.com/clicknick/).
 
 ## Learn more
 
 | | |
 |---|---|
-| [Quickstart](https://ssweber.github.io/pyclickplc/getting-started/quickstart/) | Connect, read/write, simulate a traffic light |
-| [Client guide](https://ssweber.github.io/pyclickplc/guides/client/) | Bank accessors, address strings, tags |
-| [Types & values](https://ssweber.github.io/pyclickplc/guides/types/) | Native Python types per bank family |
-| [Addressing](https://ssweber.github.io/pyclickplc/guides/addressing/) | Normalization, sparse X/Y, XD/YD display indexing |
-| [File I/O](https://ssweber.github.io/pyclickplc/guides/files/) | Nickname CSV and DataView CDV |
-| [Examples](https://ssweber.github.io/pyclickplc/guides/examples/) | Runnable scripts |
+| [Quickstart](https://pyrung.com/pyclickplc/getting-started/quickstart/) | Connect, read/write, simulate a traffic light |
+| [Client guide](https://pyrung.com/pyclickplc/guides/client/) | Bank accessors, address strings, tags |
+| [Types & values](https://pyrung.com/pyclickplc/guides/types/) | Native Python types per bank family |
+| [Addressing](https://pyrung.com/pyclickplc/guides/addressing/) | Normalization, sparse X/Y, XD/YD display indexing |
+| [File I/O](https://pyrung.com/pyclickplc/guides/files/) | Nickname CSV and DataView CDV |
+| [Examples](https://pyrung.com/pyclickplc/guides/examples/) | Runnable scripts |
 
 ## Development
 
