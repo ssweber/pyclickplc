@@ -2,9 +2,11 @@
 
 Talk to AutomationDirect CLICK PLCs from Python. Read and write registers over Modbus TCP, simulate a PLC for local development, and manage CLICK nickname and DataView files.
 
+It's the wire under [pyrung](https://pyrung.com/pyrung/) and [ClickNick](https://pyrung.com/clicknick/), and it stands on its own as a Modbus client for any CLICK.
+
 ## Start here
 
-New to pyclickplc? The [quickstart](getting-started/quickstart.md) walks through connecting to a simulated PLC, reading and writing values, and generating project files — no hardware needed.
+The [quickstart](getting-started/quickstart.md) connects to a simulated PLC, reads and writes values, and generates project files. No hardware needed.
 
 ## Guides
 
@@ -22,7 +24,6 @@ New to pyclickplc? The [quickstart](getting-started/quickstart.md) walks through
 
 Auto-generated from source. See [API Reference overview](reference/index.md) for the full list.
 
-## v0.1 Stability
+## API stability
 
-- **Stable:** client, service, server, file I/O, address, and validation APIs.
-- **Evolving:** low-level Modbus mapping helpers and bank metadata (`ModbusMapping`, `plc_to_modbus`, `BANKS`).
+The public API is stable: client, service, server, file I/O, address, and validation. The low-level Modbus mapping helpers and bank metadata (`ModbusMapping`, `plc_to_modbus`, `BANKS`) may still change between minor versions.
