@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-09-09
+
+### Added
+
+- `read_modules()` returns an immutable CPU, slot, and expansion inventory with model IDs and discrete/analog I/O counts, sharing hardware parsing with `read_channel_parameters()`.
+
+- `read_channel_parameters()` reads analog input/output DF assignments from Project.ini for built-in CPU channels, both CLICK PLUS slots, and all eight expansion positions, using installed hardware to exclude outputs from inputs and ignore stale settings.
 
 ## 0.3.4 - 2026-09-02
 

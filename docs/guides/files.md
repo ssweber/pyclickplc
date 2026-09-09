@@ -137,3 +137,58 @@ See [Addressing](addressing.md) for normalization rules and edge cases.
 
 - [Quickstart](../getting-started/quickstart.md) — generate CSV and CDV files from scratch
 - [Client guide](client.md) — use tag names from a nickname CSV
+
+## Installed modules
+
+```python
+from pyclickplc.project import read_modules
+
+modules = read_modules("Project.ini")
+if modules.cpu is not None:
+    print(modules.cpu.model)
+
+for position, module in modules.expansions.items():
+    print(position, module.model, module.discrete_inputs, module.discrete_outputs)
+
+for slot, module in modules.slots.items():
+    print(slot, module.model, module.analog_inputs, module.analog_outputs)
+```
+
+`Modules` contains the CPU (or `None` if unspecified), CPU slots keyed by
+**0 and 1**, and expansions keyed by **1 through 8**. Empty positions are
+omitted. The result, its mappings, and its `Module` records are immutable.
+Power supplies are not included.
+
+Each `Module` has `module_id`, `model`, `discrete_inputs`, `discrete_outputs`,
+`analog_inputs`, and `analog_outputs`. These are hardware capacity counts;
+`read_channel_parameters()` returns the assigned DF addresses. Both readers
+share installed-module parsing and the same bundled hardware catalog.
+
+Zero means a known absence of that kind of I/O. Unknown module IDs raise
+`ValueError`; the reader does not guess their capabilities.
+
+`read_modules()` does not interpret channel settings, so it can read the
+hardware inventory even if a channel record is malformed. It ignores stale
+CPU slot entries that the installed CPU does not support. No CLICK
+installation is required.
+
+## Channel parameters
+
+```python
+from pyclickplc.project import read_channel_parameters
+
+channels = read_channel_parameters("Project.ini")
+print(channels.inputs)   # frozenset of DF addresses receiving analog input
+print(channels.outputs)  # frozenset of DF addresses driving analog output
+```
+
+Reads the assigned addresses for built-in CPU channels, CLICK PLUS CPU slots
+0 and 1, and expansion positions 1 through 8. The returned `ChannelParameters`
+is immutable. Scaling, electrical ranges, and discrete X/Y assignments are not
+included. CLICK does not need to be installed.
+
+The reader uses installed module IDs to distinguish input and output channels
+and ignores settings retained for removed or non-analog modules. It raises
+`ValueError` for unknown hardware or malformed channel data, and `OSError`
+for unreadable files. A project without assigned analog channels returns
+empty sets.
