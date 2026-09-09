@@ -37,6 +37,13 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
+    # Capped below 3.13: from 3.13.0 pymodbus routes the server through its
+    # SimData/SimDevice datastore and no longer calls ModbusDeviceContext
+    # getValues/setValues, so the _ClickDeviceContext overrides in server.py
+    # become dead code. Unit tests still pass but every request through a real
+    # client returns Modbus exception 2 (tests/test_integration.py catches it).
+    # Moving up means rewriting server.py on SimDevice.action; see
+    # https://pymodbus.readthedocs.io/en/dev/source/upgrade_40.html
     "pymodbus>=3.12,<3.13",
 ]
 
