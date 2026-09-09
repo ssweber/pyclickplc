@@ -164,8 +164,6 @@ Each `Module` has `module_id`, `model`, `discrete_inputs`, `discrete_outputs`,
 `read_channel_parameters()` returns the assigned DF addresses. Both readers
 share installed-module parsing and the same bundled hardware catalog.
 
-Discrete counts are `None` for legacy IDs 41, 44, and 244 because the recorded
-catalog identifies those models without supplying their discrete counts.
 Zero means a known absence of that kind of I/O. Unknown module IDs raise
 `ValueError`; the reader does not guess their capabilities.
 

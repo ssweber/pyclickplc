@@ -3,8 +3,9 @@
 Model IDs: SystemConfig.dll's module table (also SC_ModuleInformation.ini
 for expansions). Discrete counts: SC_ModuleInformation.ini Data1/Data2;
 analog counts: its channel lists and CPU descriptions. Recorded 2026-09-08.
-The legacy IDs 41, 44, and 244 have model names in the DLL but no matching
-INI entry; their unverified discrete counts remain None.
+IDs 41 (C0-08TD1-1) and 244 (C0-02DA-D) have model names in the DLL but no
+INI entry and no published product page or manual listing; their counts are
+inferred from the sibling models C0-08TD1 and C0-02DR-D.
 Reading a project does not require CLICK installed. No vendor descriptions
 or executable code are included here.
 """
@@ -16,15 +17,14 @@ from dataclasses import dataclass
 class Module:
     """Installed module identity and physical I/O counts.
 
-    Discrete counts are None when the recorded catalog does not establish
-    them. A count of zero means the module has no I/O of that kind. Counts
+    A count of zero means the module has no I/O of that kind. Counts
     describe hardware capacity, not currently assigned channel addresses.
     """
 
     module_id: int
     model: str
-    discrete_inputs: int | None
-    discrete_outputs: int | None
+    discrete_inputs: int
+    discrete_outputs: int
     analog_inputs: int
     analog_outputs: int
 
@@ -45,7 +45,7 @@ _MODULE_CATALOG = {
     241: Module(241, "C0-02DD1-D", 4, 4, 2, 2),
     242: Module(242, "C0-02DD2-D", 4, 4, 2, 2),
     243: Module(243, "C0-02DR-D", 4, 4, 2, 2),
-    244: Module(244, "C0-02DA-D", None, None, 2, 2),
+    244: Module(244, "C0-02DA-D", 4, 4, 2, 2),
     208: Module(208, "C0-10DD1E-D", 8, 6, 0, 0),
     209: Module(209, "C0-10DD2E-D", 8, 6, 0, 0),
     210: Module(210, "C0-10DRE-D", 8, 6, 0, 0),
@@ -82,9 +82,9 @@ _MODULE_CATALOG = {
     37: Module(37, "C0-04TRS", 0, 4, 0, 0),
     38: Module(38, "C0-04TRS-10", 0, 4, 0, 0),
     40: Module(40, "C0-08TD1", 0, 8, 0, 0),
-    41: Module(41, "C0-08TD1-1", None, None, 0, 0),
+    41: Module(41, "C0-08TD1-1", 0, 8, 0, 0),
     42: Module(42, "C0-08TD2", 0, 8, 0, 0),
-    44: Module(44, "C0-08TA", None, None, 0, 0),
+    44: Module(44, "C0-08TA", 0, 8, 0, 0),
     45: Module(45, "C0-08TR", 0, 8, 0, 0),
     46: Module(46, "C0-08TR-3", 0, 8, 0, 0),
     48: Module(48, "C0-16TD1", 0, 16, 0, 0),

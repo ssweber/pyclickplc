@@ -67,7 +67,13 @@ def test_single_slot_cpu_ignores_stale_slot_one(tmp_path, cpu_id):
 
 @pytest.mark.parametrize(
     "model,di,do,ai,ao",
-    [(225, 8, 6, 0, 0), (241, 4, 4, 2, 2), (216, 4, 4, 2, 2), (220, 4, 4, 4, 2)],
+    [
+        (225, 8, 6, 0, 0),
+        (241, 4, 4, 2, 2),
+        (244, 4, 4, 2, 2),
+        (216, 4, 4, 2, 2),
+        (220, 4, 4, 4, 2),
+    ],
 )
 def test_cpu_io_counts(tmp_path, model, di, do, ai, ao):
     module = read_modules(_project(tmp_path, f"[SystemConfig]\nItem1={model}")).cpu
@@ -83,6 +89,8 @@ def test_cpu_io_counts(tmp_path, model, di, do, ai, ao):
 @pytest.mark.parametrize(
     "model,di,do,ai,ao",
     [
+        (41, 0, 8, 0, 0),
+        (44, 0, 8, 0, 0),
         (66, 4, 4, 0, 0),
         (73, 8, 8, 0, 0),
         (163, 0, 0, 0, 4),
@@ -99,13 +107,6 @@ def test_module_io_counts(tmp_path, model, di, do, ai, ao):
         module.analog_inputs,
         module.analog_outputs,
     ) == (di, do, ai, ao)
-
-
-@pytest.mark.parametrize("model", [41, 44, 244])
-def test_unverified_legacy_counts_are_not_zero(tmp_path, model):
-    module = read_modules(_project(tmp_path, f"[SystemConfig]\nItem2={model}")).expansions[1]
-    assert module.discrete_inputs is None
-    assert module.discrete_outputs is None
 
 
 def test_result_is_deeply_immutable(tmp_path):
