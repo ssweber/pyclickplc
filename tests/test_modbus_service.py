@@ -7,13 +7,15 @@ import threading
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pymodbus.exceptions import ConnectionException
 
 from pyclickplc.addresses import format_address_display
 from pyclickplc.banks import BANKS, DataType
-from pyclickplc.client import ModbusResponse
+from pyclickplc.client import ClickClient, ModbusResponse
 from pyclickplc.modbus_service import ConnectionState, ModbusService, ReconnectConfig
 
 
@@ -441,6 +443,39 @@ class TestWriteBehavior:
         assert result[0]["ok"] is False
         assert result[1]["ok"] is False
         assert "write failed for DS" in cast(str, result[0]["error"])
+
+    def test_write_connection_drop_mid_write_fails_remaining_batches(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # Real ClickClient so pymodbus exceptions go through _call_modbus translation.
+        class _DroppingClickClient(ClickClient):
+            async def __aenter__(self) -> _DroppingClickClient:
+                ok = MagicMock()
+                ok.isError.return_value = False
+                transport = MagicMock(connected=True)
+                transport.write_register = AsyncMock(return_value=ok)
+                transport.write_registers = AsyncMock(
+                    side_effect=ConnectionException("Client cannot connect")
+                )
+                self._client = cast(Any, transport)
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                del args
+
+        monkeypatch.setattr("pyclickplc.modbus_service.ClickClient", _DroppingClickClient)
+        svc = ModbusService(poll_interval_s=0.03)
+        try:
+            svc.connect("localhost", 15020)
+            # DS1 -> write_register (succeeds); DF1 -> write_registers (connection drops)
+            result = svc.write([("DS1", 1), ("DF1", 2.0)])
+        finally:
+            svc.disconnect()
+
+        assert result[0] == {"address": "DS1", "ok": True, "error": None}
+        assert result[1]["address"] == "DF1"
+        assert result[1]["ok"] is False
+        assert "Client cannot connect" in cast(str, result[1]["error"])
 
 
 class TestBatchingHeuristics:

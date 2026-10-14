@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `ClickClient` now translates pymodbus exceptions into stdlib `OSError` subclasses (`ConnectionException` → `ConnectionError`, other `ModbusException`s → `OSError`, with the original chained as `__cause__`). A connection dropped mid-write previously escaped `ModbusService.write()` as a raw pymodbus exception; it now marks the affected batches `ok=False` and the remaining batches are still attempted. Code that caught `pymodbus.exceptions.ModbusException` from `ClickClient` should catch `OSError` instead.
+- Cancelling a task during a `ClickClient` request now raises `CancelledError` instead of pymodbus's `ModbusIOException("Request cancelled outside library.")`, so `ModbusService.disconnect()` can no longer hang when it cancels the poll loop mid-read.
+
 ## 0.4.0 - 2026-09-09
 
 ### Added
