@@ -5,10 +5,12 @@ Uses mocked transport (patching internal _read/_write methods).
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from pymodbus.exceptions import ConnectionException, ModbusIOException, ParameterException
 
 from pyclickplc.addresses import AddressRecord
 from pyclickplc.banks import DataType
@@ -209,6 +211,66 @@ class TestClickClient:
     async def test_tag_is_tag_interface(self):
         plc = _make_plc()
         assert isinstance(plc.tag, TagInterface)
+
+
+# ==============================================================================
+# ClickClient — pymodbus exception translation
+# ==============================================================================
+
+
+class TestCallModbusErrors:
+    @pytest.mark.asyncio
+    async def test_connection_exception_becomes_connection_error(self):
+        plc = ClickClient("localhost", 5020)
+        method = AsyncMock(side_effect=ConnectionException("Not connected"))
+        with pytest.raises(ConnectionError, match="Not connected") as exc_info:
+            await plc._call_modbus(method, address=0)
+        assert isinstance(exc_info.value.__cause__, ConnectionException)
+
+    @pytest.mark.asyncio
+    async def test_io_exception_becomes_os_error(self):
+        plc = ClickClient("localhost", 5020)
+        method = AsyncMock(side_effect=ModbusIOException("No response received"))
+        with pytest.raises(OSError, match="No response received") as exc_info:
+            await plc._call_modbus(method, address=0)
+        assert not isinstance(exc_info.value, ConnectionError)
+        assert isinstance(exc_info.value.__cause__, ModbusIOException)
+
+    @pytest.mark.asyncio
+    async def test_other_modbus_exception_becomes_os_error(self):
+        plc = ClickClient("localhost", 5020)
+        method = AsyncMock(side_effect=ParameterException("bad parameter"))
+        with pytest.raises(OSError, match="bad parameter"):
+            await plc._call_modbus(method, address=0)
+
+    @pytest.mark.asyncio
+    async def test_accessor_write_raises_connection_error_on_drop(self):
+        plc = ClickClient("localhost", 5020)
+        object.__setattr__(
+            plc._client, "write_register", AsyncMock(side_effect=ConnectionException("dropped"))
+        )
+        with pytest.raises(ConnectionError, match="dropped"):
+            await plc.ds.write(1, 42)
+
+    @pytest.mark.asyncio
+    async def test_cancellation_wrapped_by_pymodbus_stays_cancellation(self):
+        plc = ClickClient("localhost", 5020)
+        started = asyncio.Event()
+
+        async def pymodbus_like_request(**kwargs: Any) -> None:
+            # Mirrors pymodbus.transaction.TransactionManager.execute
+            started.set()
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError as exc:
+                raise ModbusIOException("Request cancelled outside library.") from exc
+
+        task = asyncio.create_task(plc._call_modbus(pymodbus_like_request, address=0))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert task.cancelled()
 
 
 # ==============================================================================

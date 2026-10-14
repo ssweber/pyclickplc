@@ -5,10 +5,12 @@ Provides ClickClient with bank accessors, address interface, and tag interface.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Coroutine, Iterator, Mapping
 from typing import Any, ClassVar, Generic, Literal, TypeAlias, TypeVar, cast, overload
 
 from pymodbus.client import AsyncModbusTcpClient
+from pymodbus.exceptions import ConnectionException, ModbusException, ModbusIOException
 
 from .addresses import (
     AddressNormalizerMixin,
@@ -757,8 +759,22 @@ class ClickClient:
             self.tags = _build_tags_from_records(tags)
 
     async def _call_modbus(self, method: Any, /, **kwargs: Any) -> Any:
-        """Call a pymodbus client method with device_id."""
-        return await method(device_id=self._device_id, **kwargs)
+        """Call a pymodbus client method with device_id.
+
+        pymodbus exceptions are translated to ``OSError`` subclasses so callers
+        never see pymodbus types. pymodbus wraps task cancellation in
+        ``ModbusIOException``; that is unwrapped back to ``CancelledError``.
+        """
+        try:
+            return await method(device_id=self._device_id, **kwargs)
+        except ConnectionException as exc:
+            raise ConnectionError(str(exc)) from exc
+        except ModbusIOException as exc:
+            if isinstance(exc.__cause__, asyncio.CancelledError):
+                raise asyncio.CancelledError from exc
+            raise OSError(str(exc)) from exc
+        except ModbusException as exc:
+            raise OSError(str(exc)) from exc
 
     @overload
     def _get_accessor(self, bank: BoolBankName) -> AddressAccessor[bool]: ...

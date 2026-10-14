@@ -10,7 +10,6 @@ import asyncio
 import math
 
 import pytest
-from pymodbus.exceptions import ConnectionException
 
 from pyclickplc.client import ClickClient
 from pyclickplc.server import ClickServer, MemoryDataProvider
@@ -252,7 +251,7 @@ class TestConnectionLifecycle:
                 await asyncio.sleep(0.2)
                 assert server.list_clients() == []
 
-                with pytest.raises(ConnectionException, match="Not connected"):
+                with pytest.raises(ConnectionError, match="Not connected"):
                     await plc.ds.read(1)
         finally:
             await server.stop()
