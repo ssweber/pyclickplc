@@ -464,6 +464,8 @@ class AddressAccessor(Generic[TValue_co]):
 
     def _validate_writable(self, index: int) -> None:
         """Validate that the address is writable."""
+        if self._bank == "X" and self._plc.allow_input_writes:
+            return
         mapping = self._mapping
         if mapping.writable is not None:
             # Bank has a specific writable subset (SC, SD)
@@ -713,6 +715,8 @@ class ClickClient:
         device_id: int = 1,
         reconnect_delay: float = 0.0,
         reconnect_delay_max: float = 0.0,
+        *,
+        allow_input_writes: bool = False,
     ) -> None:
         """Create a ClickClient.
 
@@ -724,6 +728,9 @@ class ClickClient:
             device_id: Modbus device/unit ID (0–247).
             reconnect_delay: Initial reconnect delay in seconds (0 = no reconnect).
             reconnect_delay_max: Maximum reconnect backoff in seconds.
+            allow_input_writes: Permit writes to X inputs. Only a simulator
+                started with ``ClickServer(allow_input_writes=True)`` accepts
+                them; a real CLICK rejects them.
         """
         # Backwards compatibility for legacy "host:port" first argument.
         if ":" in host and port == 502:
@@ -743,6 +750,7 @@ class ClickClient:
             reconnect_delay_max=reconnect_delay_max,
         )
         self._device_id = device_id
+        self.allow_input_writes = allow_input_writes
         self._accessors: dict[str, AddressAccessor[PlcValue]] = {}
         self._display_accessors: dict[str, DisplayAddressAccessor[int]] = {}
         self._upper_byte_accessors: dict[str, FixedAddressAccessor[int]] = {

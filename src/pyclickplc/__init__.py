@@ -34,7 +34,15 @@ from .modbus import (
 from .modbus_service import ConnectionState, ModbusService, ReconnectConfig, WriteResult
 from .nicknames import AddressRecordMap, read_csv, write_csv
 from .plcdata import read_plc_data, write_plc_data
-from .project import ChannelParameters, Module, Modules, read_channel_parameters, read_modules
+from .project import (
+    ChannelParameters,
+    Module,
+    ModuleIO,
+    Modules,
+    read_channel_parameters,
+    read_io_layout,
+    read_modules,
+)
 from .server import ClickServer, MemoryDataProvider, ServerClientInfo
 from .server_tui import run_server_tui
 from .system import (
@@ -60,6 +68,8 @@ __all__ = [
     "read_modules",
     "ChannelParameters",
     "read_channel_parameters",
+    "ModuleIO",
+    "read_io_layout",
     "BankConfig",
     "BANKS",
     "DataType",

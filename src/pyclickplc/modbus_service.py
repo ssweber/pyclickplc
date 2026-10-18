@@ -103,7 +103,9 @@ def _default_for_bank(bank: str) -> PlcValue:
     return 0
 
 
-def _is_writable(bank: str, index: int) -> bool:
+def _is_writable(bank: str, index: int, *, allow_input_writes: bool = False) -> bool:
+    if allow_input_writes and bank == "X":
+        return True
     mapping = MODBUS_MAPPINGS[bank]
     if mapping.writable is not None:
         return index in mapping.writable
@@ -238,6 +240,7 @@ class ModbusService:
         *,
         device_id: int = 1,
         timeout: int = 1,
+        allow_input_writes: bool = False,
     ) -> None:
         """Connect to a CLICK PLC endpoint.
 
@@ -246,12 +249,22 @@ class ModbusService:
             port: Modbus TCP port.
             device_id: Modbus unit/device ID.
             timeout: Client timeout in seconds.
+            allow_input_writes: Permit writes to X inputs, for a simulator
+                started with ``ClickServer(allow_input_writes=True)``.
 
         Raises:
             OSError: Connection attempt failed.
             ValueError: Invalid connection arguments.
         """
-        self._submit_wait(self._connect_async(host, port, device_id=device_id, timeout=timeout))
+        self._submit_wait(
+            self._connect_async(
+                host,
+                port,
+                device_id=device_id,
+                timeout=timeout,
+                allow_input_writes=allow_input_writes,
+            )
+        )
 
     def disconnect(self) -> None:
         """Disconnect from the PLC and stop the service loop thread."""
@@ -449,6 +462,7 @@ class ModbusService:
         *,
         device_id: int,
         timeout: int,
+        allow_input_writes: bool,
     ) -> None:
         if self._client is not None:
             await self._disconnect_async()
@@ -468,6 +482,7 @@ class ModbusService:
                 device_id=device_id,
                 reconnect_delay=reconnect_delay,
                 reconnect_delay_max=reconnect_delay_max,
+                allow_input_writes=allow_input_writes,
             )
             await candidate.__aenter__()
             if not candidate._client.connected:  # pyright: ignore[reportPrivateUsage]
@@ -580,6 +595,7 @@ class ModbusService:
             {"address": str(addr), "ok": False, "error": None} for addr, _ in items
         ]
 
+        allow_input_writes = self._client is not None and self._client.allow_input_writes
         validated: list[_WriteItem] = []
         for pos, (address, value) in enumerate(items):
             if not isinstance(address, str):
@@ -600,7 +616,7 @@ class ModbusService:
 
             bank, index = parse_address(normalized)
 
-            if not _is_writable(bank, index):
+            if not _is_writable(bank, index, allow_input_writes=allow_input_writes):
                 results[pos] = {
                     "address": normalized,
                     "ok": False,

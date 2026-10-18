@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `read_io_layout()` returns each installed module as a `ModuleIO` in physical order (CPU, CLICK PLUS slots, expansions) with its discrete X/Y addresses and per-channel analog DF assignments (`None` for unassigned channels). Slot 0 starts at X001/Y001 and slot 1 at X021/Y021. Analog parsing is shared with `read_channel_parameters()`.
+- `ClickServer(..., allow_input_writes=True)` accepts FC 5/15 writes to X inputs and forwards them to the provider, so a simulator can drive its inputs over Modbus. `ClickClient(..., allow_input_writes=True)` and `ModbusService.connect(..., allow_input_writes=True)` lift the matching client-side check. All default to `False`, keeping real-PLC behaviour.
+
 ## 0.4.1 - 2026-10-14
 
 ### Fixed

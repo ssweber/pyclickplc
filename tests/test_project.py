@@ -4,6 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from pyclickplc import Module, ModuleIO, read_io_layout
 from pyclickplc.project import ChannelParameters, read_channel_parameters
 
 
@@ -175,3 +176,169 @@ def test_missing_and_invalid_files(tmp_path):
 def test_result_is_immutable():
     with pytest.raises(FrozenInstanceError):
         ChannelParameters().inputs = frozenset({"DF1"})  # ty: ignore[invalid-assignment]
+
+
+# ==============================================================================
+# read_io_layout
+# ==============================================================================
+
+
+def _layout(tmp_path, text):
+    path = tmp_path / "Project.ini"
+    path.write_text(text, encoding="utf-8-sig")
+    return read_io_layout(path)
+
+
+def _points(bank, *ranges):
+    return tuple(f"{bank}{i:03d}" for lo, hi in ranges for i in range(lo, hi + 1))
+
+
+def test_layout_standard_cpu_and_sparse_expansions(tmp_path):
+    layout = _layout(
+        tmp_path,
+        "\n".join(
+            [
+                "[SystemConfig]",
+                "Item0=1024",
+                "Item1=192",
+                "Item2=16",
+                "Item3=166",
+                "Item4=73",
+                "Item9=45",
+                "[CPUBuild]",
+                "ID=192",
+                "AD1=DF1,10,0",
+                "AD2=",
+                "AD3=DF3,10,0",
+                "AD4=DF4,10,0",
+                "DA1=DF5,10,0",
+                "DA2=DF6,10,0",
+                "[SystemConfigData]",
+                "Item3=" + _channels("DF21", None, "DF23", "", "DF25", "DF26"),
+            ]
+        ),
+    )
+    assert layout == (
+        ModuleIO(
+            "cpu",
+            0,
+            Module(192, "C0-12DD1E-2-D", 4, 4, 4, 2),
+            _points("X", (1, 4)),
+            _points("Y", (1, 4)),
+            ("DF1", None, "DF3", "DF4"),
+            ("DF5", "DF6"),
+        ),
+        ModuleIO(
+            "expansion",
+            1,
+            Module(16, "C0-16ND3", 16, 0, 0, 0),
+            _points("X", (101, 116)),
+            (),
+            (),
+            (),
+        ),
+        ModuleIO(
+            "expansion",
+            2,
+            Module(166, "C0-4AD2DA-2", 0, 0, 4, 2),
+            (),
+            (),
+            ("DF21", None, "DF23", None),
+            ("DF25", "DF26"),
+        ),
+        ModuleIO(
+            "expansion",
+            3,
+            Module(73, "C0-16CDD2", 8, 8, 0, 0),
+            _points("X", (301, 308)),
+            _points("Y", (301, 308)),
+            (),
+            (),
+        ),
+        ModuleIO(
+            "expansion", 8, Module(45, "C0-08TR", 0, 8, 0, 0), (), _points("Y", (801, 808)), (), ()
+        ),
+    )
+
+
+def test_layout_plus_cpu_slots(tmp_path):
+    layout = _layout(
+        tmp_path,
+        "[SystemConfig]\nItem1=199\nItem2=11\nItem10=8193\nItem11=8217\n"
+        "[CPUBuild]\nID=199\nAD1=DF1,5,0\n"
+        "[SystemConfigData]\nItem11=" + _channels("DF41", "DF42", "DF43", "DF44", "DF45", ""),
+    )
+    assert [(io.location, io.position, io.module.model) for io in layout] == [
+        ("cpu", 0, "C2-01CPU-2"),
+        ("slot", 0, "C2-14D1"),
+        ("slot", 1, "C2-08D2-6V"),
+        ("expansion", 1, "C0-08NE3"),
+    ]
+    cpu, slot0, slot1, expansion = layout
+    assert (cpu.inputs, cpu.outputs, cpu.analog_inputs, cpu.analog_outputs) == ((), (), (), ())
+    assert slot0.inputs == _points("X", (1, 8))
+    assert slot0.outputs == _points("Y", (1, 6))
+    assert slot0.analog_inputs == slot0.analog_outputs == ()
+    assert slot1.inputs == _points("X", (21, 24))
+    assert slot1.outputs == _points("Y", (21, 24))
+    assert slot1.analog_inputs == ("DF41", "DF42", "DF43", "DF44")
+    assert slot1.analog_outputs == ("DF45", None)
+    assert expansion.inputs == _points("X", (101, 108))
+
+
+def test_layout_empty_slot_zero_keeps_slot_one_addresses(tmp_path):
+    (cpu, slot1) = _layout(tmp_path, "[SystemConfig]\nItem1=200\nItem10=0\nItem11=8195\n")
+    assert cpu.module.model == "C2-02CPU-2"
+    assert (slot1.location, slot1.position) == ("slot", 1)
+    assert slot1.inputs == _points("X", (21, 28))
+    assert slot1.outputs == _points("Y", (21, 26))
+
+
+def test_layout_analog_module_without_assignments(tmp_path):
+    (expansion,) = _layout(tmp_path, "[SystemConfig]\nItem2=173\n")
+    assert expansion.analog_inputs == (None,) * 16
+    assert expansion.analog_outputs == ()
+
+
+def test_layout_ignores_stale_slots_and_non_analog_channel_data(tmp_path):
+    layout = _layout(
+        tmp_path,
+        "[SystemConfig]\nItem1=209\nItem2=8\nItem10=8219\n"
+        "[SystemConfigData]\nItem2=leftover\nItem10=leftover\n",
+    )
+    assert [(io.location, io.module.model) for io in layout] == [
+        ("cpu", "C0-10DD2E-D"),
+        ("expansion", "C0-08ND3"),
+    ]
+
+
+def test_layout_agrees_with_channel_parameters(tmp_path):
+    text = (
+        "[SystemConfig]\nItem1=199\nItem2=165\nItem10=8219\n[CPUBuild]\nAD1=DF1,5,0\n"
+        "[SystemConfigData]\nItem2="
+        + _channels("DF11", "DF12", None, "DF14", "DF15", "DF16")
+        + "\nItem10="
+        + _channels("DF31", "DF32", "DF33", "DF34", "DF35", "DF36")
+    )
+    layout = _layout(tmp_path, text)
+    parameters = read_channel_parameters(tmp_path / "Project.ini")
+    assert parameters.inputs == {a for io in layout for a in io.analog_inputs if a}
+    assert parameters.outputs == {a for io in layout for a in io.analog_outputs if a}
+
+
+@pytest.mark.parametrize("text", ["", "[SystemConfig]\nItem1=0\nItem2=0"])
+def test_layout_without_modules(tmp_path, text):
+    assert _layout(tmp_path, text) == ()
+
+
+def test_layout_rejects_malformed_channel_data(tmp_path):
+    with pytest.raises(ValueError, match="Invalid channel count"):
+        _layout(tmp_path, "[SystemConfig]\nItem2=161\n[SystemConfigData]\nItem2=header\tshort")
+    with pytest.raises(ValueError, match="Invalid channel address at CPUBuild.AD1"):
+        _layout(tmp_path, "[SystemConfig]\nItem1=192\n[CPUBuild]\nAD1=DS1,10,0")
+
+
+def test_layout_is_immutable(tmp_path):
+    (cpu,) = _layout(tmp_path, "[SystemConfig]\nItem1=225\n")
+    with pytest.raises(FrozenInstanceError):
+        cpu.inputs = ()
