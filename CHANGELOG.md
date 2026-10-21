@@ -6,6 +6,10 @@
 
 - `read_io_layout()` returns each installed module as a `ModuleIO` in physical order (CPU, CLICK PLUS slots, expansions) with its discrete X/Y addresses and per-channel analog DF assignments (`None` for unassigned channels). Slot 0 starts at X001/Y001 and slot 1 at X021/Y021. Analog parsing is shared with `read_channel_parameters()`.
 
+### Fixed
+
+- `read_modules()`, `read_channel_parameters()` and `read_io_layout()` read CLICK 4's Project.ini, which stores the same hardware under placeholder section and key names; before, they found no hardware in it.
+
 ## 0.4.1 - 2026-10-14
 
 ### Fixed

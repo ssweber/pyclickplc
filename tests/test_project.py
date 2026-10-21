@@ -326,6 +326,50 @@ def test_layout_agrees_with_channel_parameters(tmp_path):
     assert parameters.outputs == {a for io in layout for a in io.analog_outputs if a}
 
 
+def test_layout_reads_click_4_placeholder_names(tmp_path):
+    # CLICK 4 renames the sections and keys; the values are the same module IDs.
+    text = "\n".join(
+        [
+            "[Sec21]",
+            "Key1=1",
+            "Key3_0=1024",
+            "Key3_1=199",
+            "Key3_2=42",
+            "Key3_10=8219",
+            "Key3_11=0",
+            "Key4=0",
+            "[Sec24]",
+            "Key1=199",
+            "[Sec23]",
+            "Key1=199",
+            "Key2=2",
+            "Key3_1=1",
+            "[Sec22]",
+            "Key1_2=",
+            "Key1_10=" + _channels("DF5", None, "DF7", "DF9", "DF10", "DF11"),
+        ]
+    )
+    cpu, slot, expansion = _layout(tmp_path, text)
+
+    assert (cpu.module.model, slot.module.model, expansion.module.model) == (
+        "C2-01CPU-2",
+        "C2-08AR-6V",
+        "C0-08TD2",
+    )
+    assert (slot.position, expansion.position) == (0, 1)
+    assert slot.analog_inputs == ("DF5", None, "DF7", "DF9")
+    assert slot.analog_outputs == ("DF10", "DF11")
+
+
+def test_click_4_cpu_analog_channels(tmp_path):
+    text = "[Sec21]\nKey3_1=241\n[Sec23]\nKey1=241\nKey9=DF1,5,0\nKey10=DF2,5,0\nKey11=DF3,5,0"
+
+    (cpu,) = _layout(tmp_path, text)
+
+    assert cpu.analog_inputs == ("DF1", "DF2")
+    assert cpu.analog_outputs == ("DF3", None)
+
+
 @pytest.mark.parametrize("text", ["", "[SystemConfig]\nItem1=0\nItem2=0"])
 def test_layout_without_modules(tmp_path, text):
     assert _layout(tmp_path, text) == ()

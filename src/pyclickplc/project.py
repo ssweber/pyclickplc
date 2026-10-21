@@ -78,11 +78,59 @@ def _module(module_id: int, location: str) -> Module | None:
         raise ValueError(f"Unsupported module ID {module_id} at {location}") from exc
 
 
+# CLICK 4 writes Project.ini with placeholder section and key names. The values are
+# unchanged; this table (from CLICK's SCFS.dll, the same in 3.92 and 4.00) maps back
+# the names read here. A key ending in "_" is a prefix for numbered keys (Key3_1 ->
+# Item1); every other key must match exactly.
+_PLACEHOLDER_NAMES = {
+    "Sec21": ("SystemConfig", {"Key3_": "Item"}),
+    "Sec22": ("SystemConfigData", {"Key1_": "Item"}),
+    "Sec23": (
+        "CPUBuild",
+        {
+            "Key1": "ID",
+            "Key9": "AD1",
+            "Key10": "AD2",
+            "Key15": "AD3",
+            "Key16": "AD4",
+            "Key11": "DA1",
+            "Key12": "DA2",
+        },
+    ),
+}
+
+
+def _placeholder_key(key: str, names: Mapping[str, str]) -> str | None:
+    for placeholder, name in names.items():
+        placeholder = placeholder.lower()
+        if not placeholder.endswith("_"):
+            if key == placeholder:
+                return name
+        elif key.startswith(placeholder) and key[len(placeholder) :].isdigit():
+            return name + key[len(placeholder) :]
+    return None
+
+
+def _restore_names(parser: ConfigParser) -> None:
+    """Rename a CLICK 4 file's placeholder sections and keys to the names read here."""
+    if parser.has_section("SystemConfig") or not parser.has_section("Sec21"):
+        return
+    for placeholder, (section, names) in _PLACEHOLDER_NAMES.items():
+        if not parser.has_section(placeholder):
+            continue
+        parser.add_section(section)
+        for key, value in parser.items(placeholder):
+            name = _placeholder_key(key, names)
+            if name is not None:
+                parser.set(section, name, value)
+
+
 def _read_project(path: str | Path) -> ConfigParser:
     parser = ConfigParser(interpolation=None)
     try:
         with Path(path).open(encoding="utf-8-sig") as stream:
             parser.read_file(stream)
+        _restore_names(parser)
     except (ConfigParserError, UnicodeError) as exc:
         raise ValueError(f"Invalid CLICK project configuration: {path}") from exc
     return parser
