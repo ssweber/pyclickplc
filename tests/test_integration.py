@@ -200,33 +200,6 @@ class TestWritability:
         with pytest.raises(ValueError, match="not writable"):
             await plc.x.write(1, True)
 
-    @pytest.mark.asyncio
-    async def test_real_plc_server_rejects_opted_in_x_write(self, plc_fixture):
-        plc, provider = plc_fixture
-        plc.allow_input_writes = True
-        with pytest.raises(OSError):
-            await plc.x.write(1, True)
-        assert provider.get("X001") is False
-
-    @pytest.mark.asyncio
-    async def test_simulator_accepts_x_writes(self):
-        provider = MemoryDataProvider()
-        async with ClickServer(provider, port=TEST_PORT + 2, allow_input_writes=True):
-            await asyncio.sleep(0.1)
-            async with ClickClient("localhost", TEST_PORT + 2, allow_input_writes=True) as plc:
-                await plc.x.write(1, True)
-                await plc.x.write(15, [True, True])
-                await plc.x.write(21, True)
-                await plc.addr.write("X101", True)
-                assert provider.get("X001") is True
-                assert provider.get("X021") is True
-                assert provider.get("X101") is True
-                assert await plc.x.read(15, 21) == {
-                    "X015": True,
-                    "X016": True,
-                    "X021": True,
-                }
-
 
 # ==============================================================================
 # Sparse coils

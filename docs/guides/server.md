@@ -34,22 +34,6 @@ Addresses are normalized automatically — `provider.set("ds1", 100)` and `provi
 
 For the full server + client workflow, see the [quickstart](../getting-started/quickstart.md).
 
-## Writable inputs
-
-A real CLICK rejects Modbus writes to `X` inputs. A simulator that drives its
-inputs over Modbus can opt in on both ends:
-
-```python
-server = ClickServer(provider, port=5020, allow_input_writes=True)
-
-async with ClickClient("localhost", 5020, allow_input_writes=True) as plc:
-    await plc.x.write(1, True)  # forwarded to provider.write("X001", True)
-```
-
-`ModbusService.connect(..., allow_input_writes=True)` does the same for the
-synchronous service. Only `X` coils (FC 5/15) are opened; `XD` and the
-read-only `SC`/`SD` addresses stay read-only. Both flags default to `False`.
-
 ## Interactive TUI
 
 `run_server_tui` adds a terminal interface for inspecting and controlling the server:

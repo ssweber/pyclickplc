@@ -108,10 +108,8 @@ class ServerClientInfo:
 # ==============================================================================
 
 
-def _is_address_writable(bank: str, index: int, *, allow_input_writes: bool = False) -> bool:
+def _is_address_writable(bank: str, index: int) -> bool:
     """Check if a PLC address is writable via Modbus."""
-    if allow_input_writes and bank == "X":
-        return True
     mapping = MODBUS_MAPPINGS[bank]
     if mapping.writable is not None:
         return index in mapping.writable
@@ -126,9 +124,8 @@ def _format_plc_address(bank: str, index: int) -> str:
 class _ClickDeviceContext(ModbusDeviceContext):
     """Custom pymodbus context routing Modbus requests to a DataProvider."""
 
-    def __init__(self, provider: DataProvider, *, allow_input_writes: bool = False) -> None:
+    def __init__(self, provider: DataProvider) -> None:
         self.provider = provider
-        self.allow_input_writes = allow_input_writes
         super().__init__()
 
     def reset(self) -> None:
@@ -185,7 +182,7 @@ class _ClickDeviceContext(ModbusDeviceContext):
                 continue  # FC 15: skip gaps silently
             bank, index = mapped
             # Check writability
-            if not _is_address_writable(bank, index, allow_input_writes=self.allow_input_writes):
+            if not _is_address_writable(bank, index):
                 return ExcCodes.ILLEGAL_ADDRESS
             plc_addr = _format_plc_address(bank, index)
             self.provider.write(plc_addr, bool(val))
@@ -364,8 +361,6 @@ class ClickServer:
         provider: DataProvider,
         host: str = "localhost",
         port: int = 502,
-        *,
-        allow_input_writes: bool = False,
     ) -> None:
         """Create a ClickServer.
 
@@ -373,14 +368,10 @@ class ClickServer:
             provider: Backend that stores and retrieves PLC values.
             host: Interface to bind (default ``"localhost"``).
             port: Modbus TCP port (default 502).
-            allow_input_writes: Accept FC 5/15 writes to X inputs and forward
-                them to the provider. A real CLICK rejects them; enable this
-                only for a simulator whose inputs are driven over Modbus.
         """
         self.provider = provider
         self.host = host
         self.port = port
-        self.allow_input_writes = allow_input_writes
         self._server: ModbusTcpServer | None = None
 
     @staticmethod
@@ -432,7 +423,7 @@ class ClickServer:
 
     async def start(self) -> None:
         """Start the Modbus TCP server."""
-        context = _ClickDeviceContext(self.provider, allow_input_writes=self.allow_input_writes)
+        context = _ClickDeviceContext(self.provider)
         server_context = ModbusServerContext(devices=context, single=True)
         self._server = ModbusTcpServer(
             context=server_context,
@@ -448,7 +439,7 @@ class ClickServer:
 
     async def serve_forever(self) -> None:
         """Start the server and block until stopped."""
-        context = _ClickDeviceContext(self.provider, allow_input_writes=self.allow_input_writes)
+        context = _ClickDeviceContext(self.provider)
         server_context = ModbusServerContext(devices=context, single=True)
         self._server = ModbusTcpServer(
             context=server_context,

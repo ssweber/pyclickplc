@@ -86,15 +86,12 @@ class _FakeClickClient:
         device_id: int = 1,
         reconnect_delay: float = 0.0,
         reconnect_delay_max: float = 0.0,
-        *,
-        allow_input_writes: bool = False,
     ) -> None:
         del tags
         del timeout
         del device_id
         self.host = host
         self.port = port
-        self.allow_input_writes = allow_input_writes
         self.reconnect_delay = reconnect_delay
         self.reconnect_delay_max = reconnect_delay_max
         self._client = _FakeConn()
@@ -429,19 +426,6 @@ class TestWriteBehavior:
         service.connect("localhost", 15020)
         result = service.write([("X1", True)])
         assert result == [{"address": "X001", "ok": False, "error": "X1 is not writable."}]
-
-    def test_input_writes_need_connection_opt_in(self, service: ModbusService):
-        service.connect("localhost", 15020, allow_input_writes=True)
-        assert _FakeClickClient.instances[-1].allow_input_writes is True
-        assert service.write([("X1", True), ("X2", True)]) == [
-            {"address": "X001", "ok": True, "error": None},
-            {"address": "X002", "ok": True, "error": None},
-        ]
-        assert _FakeClickClient.instances[-1].write_calls == [("X", 1, [True, True])]
-
-        service.connect("localhost", 15020)
-        assert _FakeClickClient.instances[-1].allow_input_writes is False
-        assert service.write([("X1", True)])[0]["ok"] is False
 
     def test_write_invalid_value_fails_and_service_continues(self, service: ModbusService):
         service.connect("localhost", 15020)

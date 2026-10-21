@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -405,50 +404,6 @@ class TestContextCoilWrites:
         from pymodbus.constants import ExcCodes
 
         assert result == ExcCodes.ILLEGAL_ADDRESS
-        assert p.get("X001") is False
-
-    def test_write_x_rejected_by_default_fc15(self):
-        p = MemoryDataProvider()
-        ctx = _ClickDeviceContext(p)
-        from pymodbus.constants import ExcCodes
-
-        assert ctx.setValues(15, 0, [True, True]) == ExcCodes.ILLEGAL_ADDRESS
-        assert p.get("X001") is False
-
-    def test_allow_input_writes_fc5(self):
-        p = MemoryDataProvider()
-        ctx = _ClickDeviceContext(p, allow_input_writes=True)
-        addr, _ = plc_to_modbus("X", 21)
-        assert ctx.setValues(5, addr, [True]) is None
-        assert p.get("X021") is True
-
-    def test_allow_input_writes_fc15_across_sparse_gap(self):
-        p = MemoryDataProvider()
-        ctx = _ClickDeviceContext(p, allow_input_writes=True)
-        # Coils 15..16 are X016 and X021; FC 15 spanning slots writes both.
-        assert ctx.setValues(15, 15, [True, True]) is None
-        assert p.get("X016") is True
-        assert p.get("X021") is True
-        addr, _ = plc_to_modbus("X", 816)
-        assert ctx.setValues(15, addr, [True]) is None
-        assert p.get("X816") is True
-
-    def test_allow_input_writes_reads_back(self):
-        p = MemoryDataProvider()
-        ctx = _ClickDeviceContext(p, allow_input_writes=True)
-        ctx.setValues(5, 1, [True])
-        assert ctx.getValues(2, 0, 2) == [False, True]
-
-    def test_allow_input_writes_keeps_other_rules(self):
-        """The option opens X coils only; SC and XD stay read-only."""
-        p = MemoryDataProvider()
-        ctx = _ClickDeviceContext(p, allow_input_writes=True)
-        from pymodbus.constants import ExcCodes
-
-        assert ctx.setValues(5, 61440, [True]) == ExcCodes.ILLEGAL_ADDRESS
-        addr, _ = plc_to_modbus("XD", 0)
-        assert ctx.setValues(6, addr, [0xFFFF]) == ExcCodes.ILLEGAL_ADDRESS
-        assert ctx.setValues(5, 10000, [True]) == ExcCodes.ILLEGAL_ADDRESS
 
 
 # ==============================================================================
@@ -559,25 +514,6 @@ class TestClickServerConstruction:
         assert s.host == "localhost"
         assert s.port == 502
         assert s.provider is p
-        assert s.allow_input_writes is False
-
-    def test_allow_input_writes_reaches_context(self, monkeypatch: pytest.MonkeyPatch):
-        contexts: list[_ClickDeviceContext] = []
-
-        class _CapturingServer:
-            def __init__(self, *, context, address) -> None:
-                del address
-                contexts.append(context[0])
-
-            async def serve_forever(self, *, background: bool) -> None:
-                del background
-
-        monkeypatch.setattr("pyclickplc.server.ModbusTcpServer", _CapturingServer)
-        server = ClickServer(MemoryDataProvider(), allow_input_writes=True)
-        assert server.allow_input_writes is True
-        asyncio.run(server.start())
-        asyncio.run(ClickServer(MemoryDataProvider()).start())
-        assert [ctx.allow_input_writes for ctx in contexts] == [True, False]
 
     def test_custom_host_port(self):
         p = MemoryDataProvider()
