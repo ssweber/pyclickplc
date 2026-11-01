@@ -68,6 +68,8 @@ PAGES: tuple[ReferencePage, ...] = (
             "read_modules",
             "ChannelParameters",
             "read_channel_parameters",
+            "ModuleIO",
+            "read_io_layout",
             "read_plc_data",
             "write_plc_data",
         ),
