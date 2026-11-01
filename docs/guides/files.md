@@ -192,3 +192,24 @@ and ignores settings retained for removed or non-analog modules. It raises
 `ValueError` for unknown hardware or malformed channel data, and `OSError`
 for unreadable files. A project without assigned analog channels returns
 empty sets.
+
+## I/O layout
+
+```python
+from pyclickplc.project import read_io_layout
+
+for io in read_io_layout("Project.ini"):
+    print(io.location, io.position, io.module.model)
+    print(io.inputs, io.outputs)                 # ("X101", ...), ("Y101", ...)
+    print(io.analog_inputs, io.analog_outputs)   # ("DF1", None, ...) per channel
+```
+
+Returns one immutable `ModuleIO` per installed module in physical order: the
+CPU, CLICK PLUS slots 0 and 1, then expansions 1 through 8. Empty positions and
+power supplies are omitted.
+
+Discrete addresses follow position: built-in CPU points and slot 0 start at
+`X001`/`Y001`, slot 1 at `X021`/`Y021`, and expansion *n* at `Xn01`/`Yn01`.
+Analog tuples list each channel's assigned DF address in channel order, with
+`None` for an unassigned channel; they come from the same parsing as
+`read_channel_parameters()` and raise the same errors.
