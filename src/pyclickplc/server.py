@@ -135,14 +135,16 @@ class _ClickDeviceContext(ModbusDeviceContext):
         """Accept all addresses; errors are handled in get/setValues."""
         return True
 
-    def getValues(self, func_code: int, address: int, count: int = 1) -> list[int] | list[bool]:
+    def getValues(
+        self, func_code: int, address: int, count: int = 1
+    ) -> list[int] | list[bool] | ExcCodes:
         """Read values from the DataProvider."""
         try:
             if func_code in (1, 2, 5, 15):
                 return self._get_coils(address, count)
             return self._get_registers(address, count)
         except Exception:
-            return []
+            return ExcCodes.DEVICE_FAILURE
 
     def setValues(
         self, func_code: int, address: int, values: list[int] | list[bool]

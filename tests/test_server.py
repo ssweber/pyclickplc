@@ -28,6 +28,21 @@ def _as_float(value: object) -> float:
 # ==============================================================================
 
 
+class _FailingProvider(MemoryDataProvider):
+    def read(self, address: str):
+        raise RuntimeError("provider down")
+
+
+class TestGetValuesFailure:
+    @pytest.mark.parametrize("func_code", [1, 2, 3, 4])
+    def test_provider_failure_is_device_failure(self, func_code):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(_FailingProvider())
+        address = 0 if func_code in (1, 2) else 28672
+        assert ctx.getValues(func_code, address, 1) == ExcCodes.DEVICE_FAILURE
+
+
 class TestMemoryDataProvider:
     """Tests for MemoryDataProvider defaults, set/get, and normalization."""
 

@@ -449,6 +449,21 @@ class TestWriteBehavior:
         assert result[1]["ok"] is False
         assert "write failed for DS" in cast(str, result[0]["error"])
 
+    def test_write_non_oserror_in_one_batch_keeps_other_results(
+        self, service: ModbusService, monkeypatch: pytest.MonkeyPatch
+    ):
+        service.connect("localhost", 15020)
+        fake = _FakeClickClient.instances[-1]
+
+        async def boom(*_args: object, **_kwargs: object) -> None:
+            raise IndexError("short reply")
+
+        monkeypatch.setattr(fake._get_accessor("TXT"), "write", boom)
+
+        result = service.write([("DS1", 1), ("TXT3", "A"), ("DS9", 2)])
+        assert [r["ok"] for r in result] == [True, False, True]
+        assert "short reply" in cast(str, result[1]["error"])
+
     def test_write_connection_drop_mid_write_fails_remaining_batches(
         self, monkeypatch: pytest.MonkeyPatch
     ):

@@ -862,7 +862,10 @@ class ClickClient:
             result = await self._call_modbus(self._client.read_coils, address=address, count=count)
         if result.isError():
             raise OSError(f"Modbus read error at coil {address}: {result}")
-        return list(result.bits[:count])
+        bits = list(result.bits)
+        if len(bits) < count:
+            raise OSError(f"Modbus read at coil {address} returned {len(bits)} of {count} coils")
+        return bits[:count]
 
     async def _write_coils(self, address: int, values: list[bool]) -> None:
         """Write coils."""
@@ -890,7 +893,12 @@ class ClickClient:
             )
         if result.isError():
             raise OSError(f"Modbus read error at register {address}: {result}")
-        return list(result.registers[:count])
+        registers = list(result.registers)
+        if len(registers) != count:
+            raise OSError(
+                f"Modbus read at register {address} returned {len(registers)} of {count} registers"
+            )
+        return registers
 
     async def _write_registers(self, address: int, values: list[int]) -> None:
         """Write registers."""

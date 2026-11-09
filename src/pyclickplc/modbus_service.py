@@ -649,7 +649,7 @@ class ModbusService:
 
                 for item in batch.items:
                     results[item.pos] = {"address": item.normalized, "ok": True, "error": None}
-            except (OSError, ValueError) as exc:
+            except Exception as exc:
                 for item in batch.items:
                     results[item.pos] = {"address": item.normalized, "ok": False, "error": str(exc)}
 

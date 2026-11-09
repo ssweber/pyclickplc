@@ -10,6 +10,7 @@
   - DataView new values still refuse +inf, -inf and NaN.
 - A DF nickname initial value or DataView new value of "nan" is refused (it was accepted).
 - A Text value accepts any character with code 0..255 in a client write, a server write and a DataView (it refused 128..255 and turned a stored 200 into blank). A character above 255 still raises.
+- A server read that fails answers Modbus exception 04, and a client read whose reply has too few registers or coils raises `OSError` (the server sent an empty reply, and the client raised `IndexError` or `struct.error`). `ModbusService.write` keeps its per-item results when one batch fails with any error.
 
 ## 0.5.0 - 2026-11-01
 

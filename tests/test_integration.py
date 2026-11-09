@@ -270,3 +270,20 @@ class TestConnectionLifecycle:
                     await plc.ds.read(1)
         finally:
             await server.stop()
+
+
+class _FailingReadProvider(MemoryDataProvider):
+    def read(self, address: str):
+        raise RuntimeError("provider down")
+
+
+class TestFailedRead:
+    @pytest.mark.asyncio
+    async def test_failed_server_read_raises_oserror_on_client(self):
+        async with ClickServer(_FailingReadProvider(), port=TEST_PORT + 2):
+            await asyncio.sleep(0.1)
+            async with ClickClient("localhost", TEST_PORT + 2) as plc:
+                with pytest.raises(OSError):
+                    await plc.df.read(1)
+                with pytest.raises(OSError):
+                    await plc.c.read(1)

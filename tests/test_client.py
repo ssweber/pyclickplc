@@ -1109,3 +1109,27 @@ class TestAddressAccessorGetitem:
         plc = _make_plc()
         with pytest.raises(ValueError):
             await plc.xd[9]
+
+
+class _ShortReply:
+    registers: list[int] = [1]
+    bits: list[bool] = []
+
+    def isError(self) -> bool:
+        return False
+
+
+class TestShortReply:
+    @pytest.mark.asyncio
+    async def test_short_register_reply_raises_oserror(self):
+        plc = ClickClient("localhost", 5020)
+        object.__setattr__(plc, "_call_modbus", AsyncMock(return_value=_ShortReply()))
+        with pytest.raises(OSError):
+            await plc.df.read(1)
+
+    @pytest.mark.asyncio
+    async def test_short_coil_reply_raises_oserror(self):
+        plc = ClickClient("localhost", 5020)
+        object.__setattr__(plc, "_call_modbus", AsyncMock(return_value=_ShortReply()))
+        with pytest.raises(OSError):
+            await plc.c.read(1)
