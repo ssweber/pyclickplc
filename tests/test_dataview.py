@@ -754,3 +754,8 @@ class TestCheckCdv:
         issues = check_cdv_file(cdv)
         assert len(issues) == 1
         assert "not writable" in issues[0]
+
+
+def test_validate_new_value_rejects_nan():
+    ok, _msg = validate_new_value("nan", DataType.FLOAT)
+    assert ok is False

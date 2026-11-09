@@ -560,16 +560,25 @@ class TestAddressAccessorWrite:
             await plc.ds.write(1, True)
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
-    async def test_write_non_finite_float_sends(self, value):
+    @pytest.mark.parametrize(
+        ("value", "registers"),
+        [
+            (float("nan"), [0xFFFF, 0xFFFF]),
+            (float("inf"), [0x0000, 0x7F80]),
+            (float("-inf"), [0x0000, 0xFF80]),
+        ],
+    )
+    async def test_write_non_finite_float_sends(self, value, registers):
         plc = _make_plc()
         await plc.df.write(1, value)
-        _get_write_registers_mock(plc).assert_called_once()
+        mock = _get_write_registers_mock(plc)
+        mock.assert_called_once()
+        assert mock.call_args.args[1] == registers
 
     @pytest.mark.asyncio
     async def test_write_overflow_float_raises(self):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="DF1 value must be a float32"):
+        with pytest.raises(ValueError, match="DF1 value must fit in a float32"):
             await plc.df.write(1, 1e100)
 
     @pytest.mark.asyncio

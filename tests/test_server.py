@@ -144,7 +144,7 @@ class TestMemoryDataProvider:
 
     def test_set_rejects_overflow_float(self):
         p = MemoryDataProvider()
-        with pytest.raises(ValueError, match="DF1 value must be a float32"):
+        with pytest.raises(ValueError, match="DF1 value must fit in a float32"):
             p.set("DF1", 1e100)
 
     def test_set_rejects_invalid_txt(self):

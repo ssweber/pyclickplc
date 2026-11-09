@@ -422,6 +422,11 @@ class TestWriteBehavior:
         assert [r["ok"] for r in result_iter] == [True, True]
         assert [r["address"] for r in result_iter] == ["DS3", "DS4"]
 
+    def test_write_non_finite_float_is_ok(self, service: ModbusService):
+        service.connect("localhost", 15020)
+        result = service.write([("DF1", float("nan")), ("DF2", float("inf"))])
+        assert [r["ok"] for r in result] == [True, True]
+
     def test_write_non_writable_address_fails_per_item(self, service: ModbusService):
         service.connect("localhost", 15020)
         result = service.write([("X1", True)])
