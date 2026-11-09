@@ -493,6 +493,13 @@ def validate_new_value(display_str: str, data_type: DataType) -> tuple[bool, str
     """Validate a user-entered display string for the New Value column."""
     if not display_str:
         return True, ""
+    if data_type == DataType.TXT:
+        # A CLICK holds a Text byte above 127 as is, so a DataView takes 0..255.
+        if len(display_str) != 1:
+            return False, "Must be single char"
+        if ord(display_str) > 0xFF:
+            return False, "Must be a character with code 0..255"
+        return True, ""
     return validate_initial_value(display_str, data_type)
 
 

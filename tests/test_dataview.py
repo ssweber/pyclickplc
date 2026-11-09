@@ -785,3 +785,15 @@ class TestTxtBytesAbove127:
 
         assert not _validate_cdv_new_value("200", DataType.TXT, "TXT1", "x.cdv", 1)
         assert _validate_cdv_new_value("256", DataType.TXT, "TXT1", "x.cdv", 1)
+
+
+def test_validate_new_value_accepts_text_byte_above_127():
+    assert validate_new_value(chr(200), DataType.TXT) == (True, "")
+    ok, _msg = validate_new_value(chr(256), DataType.TXT)
+    assert ok is False
+
+
+def test_set_row_new_value_from_display_takes_chr_200():
+    row = DataViewRecord.from_address("txt1")
+    DataViewFile.set_row_new_value_from_display(row, chr(200))
+    assert row.new_value == chr(200)

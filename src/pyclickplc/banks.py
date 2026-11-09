@@ -22,7 +22,7 @@ class DataType(IntEnum):
     INT2 = 2  # CTD, DD - 32-bit signed: -2147483648 to 2147483647
     FLOAT = 3  # DF - float: -3.4028235E+38 to 3.4028235E+38
     HEX = 4  # DH, XD, YD - hex string: "0000" to "FFFF"
-    TXT = 6  # TXT - single ASCII character
+    TXT = 6  # TXT - single character (initial value ASCII, DataView new value 0..255)
 
 
 # Display names for DataType values
@@ -42,7 +42,7 @@ DATA_TYPE_HINTS: dict[int, str] = {
     DataType.INT2: "Range: `-2147483648` to `2147483647`",
     DataType.FLOAT: "Range: `-3.4028235E+38` to `3.4028235E+38`",
     DataType.HEX: "Range: '0000' to 'FFFF'",
-    DataType.TXT: "Single ASCII char: eg 'A'",
+    DataType.TXT: "Single ASCII char: eg 'A' (DataView new value: code 0..255)",
 }
 
 
