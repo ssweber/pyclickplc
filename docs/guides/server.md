@@ -30,6 +30,8 @@ provider.get("DS1")       # 100
 provider.bulk_set({"DS1": 42, "C1": True, "TXT1": "H", "TXT2": "I"})
 ```
 
+A server write reads every target address before it stores anything, so a refused request leaves the provider unchanged. A provider whose `read` raises for an address in the request fails that request.
+
 Addresses are normalized automatically — `provider.set("ds1", 100)` and `provider.set("DS1", 100)` are equivalent.
 
 For the full server + client workflow, see the [quickstart](../getting-started/quickstart.md).

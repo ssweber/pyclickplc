@@ -10,11 +10,19 @@
   - DataView new values still refuse +inf, -inf and NaN.
 - A DF nickname initial value or DataView new value of "nan" is refused (it was accepted).
 - A Text value accepts any character with code 0..255 in a client write, a server write and a DataView (it refused 128..255 and turned a stored 200 into blank). A character above 255 still raises.
-- A server read that fails answers Modbus exception 04, and a client read whose reply has too few registers or coils raises `OSError` (the server sent an empty reply, and the client raised `IndexError` or `struct.error`). `ModbusService.write` keeps its per-item results when one batch fails with any error.
-- A client range read or write splits at the Modbus limits (125 registers or 2000 coils a read, 123 registers or 1968 coils a write), and a DD or DF value never splits across two requests (a long read raised `ValueError` and a long write got exception 03).
+- A server read that fails answers Modbus exception 04 (it sent an empty reply).
+- A client read whose reply is short raises `OSError` (it raised `IndexError` or `struct.error`).
+- `ModbusService.write` keeps its per-item results when one batch fails with any error.
+- A client range read or write splits at the Modbus limits (a long read raised `ValueError` and a long write got exception 03).
+  - A read takes at most 125 registers or 2000 coils.
+  - A write takes at most 123 registers or 1968 coils.
+  - A DD or DF value never splits across two requests.
 - A server Modbus write (FC05, FC06, FC15 or FC16) that is refused leaves memory unchanged (a write that ran past the last address stored the earlier values before it answered the exception).
-- A server answers Modbus exception 03 for a read count of 0 or over 125 registers or 2000 coils, a write over 123 registers or 1968 coils, and an FC05 value other than 0x0000 or 0xFF00 (it timed out, served the read or took any value as ON).
-- A DF register pack of a finite value past the float32 range gives +inf or -inf by its sign, as a CLICK holds it (it raised `OverflowError` and failed a server read). A client write of such a value still raises `ValueError`.
+- A server answers Modbus exception 03 for a request outside the Modbus limits (it timed out, served the read or took any value as ON).
+  - A read count of 0, or over 125 registers or 2000 coils.
+  - A write over 123 registers or 1968 coils.
+  - An FC05 value other than 0x0000 or 0xFF00.
+- A DF register pack of a finite value past the float32 range gives +inf or -inf by its sign (it raised `OverflowError` and failed a server read). A client write of such a value still raises `ValueError`.
 
 ## 0.5.0 - 2026-11-01
 

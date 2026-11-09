@@ -181,7 +181,9 @@ class _ClickDeviceContext(ModbusDeviceContext):
     ) -> ExcCodes | None:
         """Write values to the DataProvider.
 
-        A refused request leaves the provider unchanged: every target is checked first.
+        A refused request leaves the provider unchanged. Every target is checked and read
+        first, so the provider can put the old values back. A provider whose ``read`` raises
+        for an address in the request fails the whole request with exception 04.
         """
         try:
             if func_code in (5, 15):

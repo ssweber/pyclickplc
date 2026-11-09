@@ -377,7 +377,7 @@ def modbus_to_plc_register(address: int) -> tuple[str, int, int] | None:
     return None
 
 
-# Per-request limits from the Modbus specification, as CLICK enforces them.
+# Per-request limits from the Modbus specification.
 MAX_READ_COILS = 2000
 MAX_READ_REGISTERS = 125
 MAX_WRITE_COILS = 1968
@@ -414,7 +414,7 @@ def pack_value(value: bool | int | float | str, data_type: DataType) -> list[int
 
     fmt = STRUCT_FORMATS[data_type]
     if data_type == DataType.FLOAT:
-        # A finite value past the float32 range is held as +inf or -inf, as a CLICK does.
+        # A finite value past the float32 range is held as +inf or -inf.
         number = cast(int | float, value)
         try:
             raw = struct.pack("<f", float(number))
