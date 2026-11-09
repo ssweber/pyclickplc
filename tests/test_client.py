@@ -1133,3 +1133,46 @@ class TestShortReply:
         object.__setattr__(plc, "_call_modbus", AsyncMock(return_value=_ShortReply()))
         with pytest.raises(OSError):
             await plc.c.read(1)
+
+
+class TestRequestSizes:
+    @staticmethod
+    def _recording_plc(sizes: list[int]) -> ClickClient:
+        plc = ClickClient("localhost", 5020)
+
+        class _Reply:
+            registers: list[int]
+            bits: list[bool]
+
+            def __init__(self, n: int) -> None:
+                self.registers = [0] * n
+                self.bits = [False] * n
+
+            def isError(self) -> bool:
+                return False
+
+        async def call(fn, **kwargs):
+            n = kwargs.get("count") or len(kwargs.get("values") or [0])
+            sizes.append(n)
+            return _Reply(n)
+
+        object.__setattr__(plc, "_call_modbus", call)
+        return plc
+
+    @pytest.mark.asyncio
+    async def test_reads_split_at_the_limits(self):
+        sizes: list[int] = []
+        plc = self._recording_plc(sizes)
+        await plc.ds.read(1, 300)
+        await plc.dd.read(1, 100)
+        await plc.c.read(1, 2000)
+        assert sizes == [125, 125, 50, 124, 76, 2000]
+
+    @pytest.mark.asyncio
+    async def test_writes_split_at_the_limits(self):
+        sizes: list[int] = []
+        plc = self._recording_plc(sizes)
+        await plc.ds.write(1, [0] * 124)
+        await plc.dd.write(1, [0] * 100)
+        await plc.c.write(1, [True] * 2000)
+        assert sizes == [123, 1, 122, 78, 1968, 32]

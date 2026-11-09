@@ -22,6 +22,10 @@ from .addresses import (
 )
 from .banks import BANKS
 from .modbus import (
+    MAX_READ_COILS,
+    MAX_READ_REGISTERS,
+    MAX_WRITE_COILS,
+    MAX_WRITE_REGISTERS,
     MODBUS_MAPPINGS,
     pack_value,
     plc_to_modbus,
@@ -393,7 +397,11 @@ class AddressAccessor(Generic[TValue_co]):
             all_regs: list[int] = []
             for v in values:
                 all_regs.extend(pack_value(v, data_type))
-            await self._plc._write_registers(addr, all_regs)
+            # A request holds whole values, so a width-2 bank gets 122 registers a request.
+            width = self._mapping.width
+            step = MAX_WRITE_REGISTERS - MAX_WRITE_REGISTERS % width
+            for offset in range(0, len(all_regs), step):
+                await self._plc._write_registers(addr + offset, all_regs[offset : offset + step])
 
     async def _write_sparse_coils(self, start: int, values: list) -> None:
         """Write coils over a sparse (X/Y) range, padding gaps with False."""
@@ -852,7 +860,14 @@ class ClickClient:
     # --- Internal Modbus wrappers ---
 
     async def _read_coils(self, address: int, count: int, bank: str) -> list[bool]:
-        """Read coils using appropriate function code."""
+        """Read coils, one request per MAX_READ_COILS."""
+        bits: list[bool] = []
+        for offset in range(0, count, MAX_READ_COILS):
+            n = min(MAX_READ_COILS, count - offset)
+            bits.extend(await self._read_coils_once(address + offset, n, bank))
+        return bits
+
+    async def _read_coils_once(self, address: int, count: int, bank: str) -> list[bool]:
         mapping = MODBUS_MAPPINGS[bank]
         if 2 in mapping.function_codes:
             result = await self._call_modbus(
@@ -868,7 +883,13 @@ class ClickClient:
         return bits[:count]
 
     async def _write_coils(self, address: int, values: list[bool]) -> None:
-        """Write coils."""
+        """Write coils, one request per MAX_WRITE_COILS."""
+        for offset in range(0, len(values), MAX_WRITE_COILS):
+            await self._write_coils_once(
+                address + offset, values[offset : offset + MAX_WRITE_COILS]
+            )
+
+    async def _write_coils_once(self, address: int, values: list[bool]) -> None:
         if len(values) == 1:
             result = await self._call_modbus(
                 self._client.write_coil, address=address, value=values[0]
@@ -881,7 +902,19 @@ class ClickClient:
             raise OSError(f"Modbus write error at coil {address}: {result}")
 
     async def _read_registers(self, address: int, count: int, bank: str) -> list[int]:
-        """Read registers using appropriate function code."""
+        """Read registers, one request per MAX_READ_REGISTERS.
+
+        A request holds whole values, so a width-2 bank gets 124 registers a request.
+        """
+        width = MODBUS_MAPPINGS[bank].width
+        step = MAX_READ_REGISTERS - MAX_READ_REGISTERS % width
+        registers: list[int] = []
+        for offset in range(0, count, step):
+            n = min(step, count - offset)
+            registers.extend(await self._read_registers_once(address + offset, n, bank))
+        return registers
+
+    async def _read_registers_once(self, address: int, count: int, bank: str) -> list[int]:
         mapping = MODBUS_MAPPINGS[bank]
         if 4 in mapping.function_codes:
             result = await self._call_modbus(

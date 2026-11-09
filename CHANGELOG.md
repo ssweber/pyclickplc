@@ -11,6 +11,7 @@
 - A DF nickname initial value or DataView new value of "nan" is refused (it was accepted).
 - A Text value accepts any character with code 0..255 in a client write, a server write and a DataView (it refused 128..255 and turned a stored 200 into blank). A character above 255 still raises.
 - A server read that fails answers Modbus exception 04, and a client read whose reply has too few registers or coils raises `OSError` (the server sent an empty reply, and the client raised `IndexError` or `struct.error`). `ModbusService.write` keeps its per-item results when one batch fails with any error.
+- A client range read or write splits at the Modbus limits (125 registers or 2000 coils a read, 123 registers or 1968 coils a write), and a DD or DF value never splits across two requests (a long read raised `ValueError` and a long write got exception 03).
 
 ## 0.5.0 - 2026-11-01
 

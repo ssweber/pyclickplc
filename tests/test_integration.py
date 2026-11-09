@@ -287,3 +287,59 @@ class TestFailedRead:
                     await plc.df.read(1)
                 with pytest.raises(OSError):
                     await plc.c.read(1)
+
+
+class TestRangeSplitting:
+    @pytest.mark.asyncio
+    async def test_long_register_reads_split(self, plc_fixture):
+        plc, provider = plc_fixture
+        provider.set("DS1", 7)
+        provider.set("DS200", 9)
+        result = await plc.ds.read(1, 200)
+        assert len(result) == 200
+        assert result["DS1"] == 7
+        assert result["DS200"] == 9
+
+    @pytest.mark.asyncio
+    async def test_width_two_read_never_splits_a_value(self, plc_fixture):
+        plc, provider = plc_fixture
+        for i in range(1, 101):
+            provider.set(f"DD{i}", 100000 + i)
+            provider.set(f"DF{i}", i + 0.5)
+        dd = await plc.dd.read(1, 100)
+        df = await plc.df.read(1, 100)
+        assert [dd[f"DD{i}"] for i in range(1, 101)] == [100000 + i for i in range(1, 101)]
+        assert [df[f"DF{i}"] for i in range(1, 101)] == [i + 0.5 for i in range(1, 101)]
+
+    @pytest.mark.asyncio
+    async def test_long_txt_read_splits(self, plc_fixture):
+        plc, provider = plc_fixture
+        provider.set("TXT300", "Z")
+        result = await plc.txt.read(1, 300)
+        assert len(result) == 300
+        assert result["TXT300"] == "Z"
+
+    @pytest.mark.asyncio
+    async def test_long_register_write_splits(self, plc_fixture):
+        plc, provider = plc_fixture
+        await plc.ds.write(1, list(range(1, 201)))
+        assert provider.get("DS1") == 1
+        assert provider.get("DS124") == 124
+        assert provider.get("DS200") == 200
+
+    @pytest.mark.asyncio
+    async def test_width_two_write_never_splits_a_value(self, plc_fixture):
+        plc, provider = plc_fixture
+        await plc.dd.write(1, [100000 + i for i in range(1, 101)])
+        assert [provider.get(f"DD{i}") for i in range(1, 101)] == [
+            100000 + i for i in range(1, 101)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_long_coil_read_and_write_split(self, plc_fixture):
+        plc, provider = plc_fixture
+        await plc.c.write(1, [True] * 2000)
+        assert provider.get("C1") is True
+        assert provider.get("C2000") is True
+        result = await plc.c.read(1, 2000)
+        assert len(result) == 2000

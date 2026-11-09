@@ -376,6 +376,13 @@ def modbus_to_plc_register(address: int) -> tuple[str, int, int] | None:
     return None
 
 
+# Per-request limits from the Modbus specification, as CLICK enforces them.
+MAX_READ_COILS = 2000
+MAX_READ_REGISTERS = 125
+MAX_WRITE_COILS = 1968
+MAX_WRITE_REGISTERS = 123
+
+
 # ==============================================================================
 # Pack / Unpack
 # ==============================================================================
