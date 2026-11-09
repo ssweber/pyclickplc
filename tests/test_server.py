@@ -644,3 +644,38 @@ class TestClickServerRuntimeControls:
         assert count == 2
         c1.close.assert_called_once_with()
         c2.close.assert_called_once_with()
+
+
+class TestAtomicWrites:
+    def test_fc16_past_the_last_register_stores_nothing(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("DS", 4500)
+        assert ctx.setValues(16, addr, [7, 8]) == ExcCodes.ILLEGAL_ADDRESS
+        assert p.get("DS4500") == 0
+
+    def test_fc15_into_a_read_only_coil_stores_nothing(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("SC", 53)
+        assert ctx.setValues(15, addr, [True, True]) == ExcCodes.ILLEGAL_ADDRESS
+        assert p.get("SC53") is False
+
+    def test_provider_failure_midway_restores_earlier_stores(self):
+        from pymodbus.constants import ExcCodes
+
+        class Flaky(MemoryDataProvider):
+            def write(self, address: str, value):
+                if address == "DS2":
+                    raise RuntimeError("down")
+                super().write(address, value)
+
+        p = Flaky()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("DS", 1)
+        assert ctx.setValues(16, addr, [5, 6]) == ExcCodes.DEVICE_FAILURE
+        assert p.get("DS1") == 0
