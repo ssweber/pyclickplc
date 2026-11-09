@@ -27,7 +27,7 @@ Connect to it with `ClickClient` or any Modbus TCP tool — it behaves like a re
 provider = MemoryDataProvider()
 provider.set("DS1", 100)
 provider.get("DS1")       # 100
-provider.bulk_set({"DS1": 42, "C1": True, "TXT1": "HELLO"})
+provider.bulk_set({"DS1": 42, "C1": True, "TXT1": "H", "TXT2": "I"})
 ```
 
 Addresses are normalized automatically — `provider.set("ds1", 100)` and `provider.set("DS1", 100)` are equivalent.

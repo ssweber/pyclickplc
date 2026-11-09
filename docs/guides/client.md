@@ -23,7 +23,8 @@ Every PLC bank has a typed accessor on the client:
 await plc.ds.write(1, 100)       # int
 await plc.df.write(1, 3.14)      # float
 await plc.y.write(1, True)       # bool
-await plc.txt.write(1, "HELLO")  # str
+await plc.txt.write(1, "H")      # str, one character
+await plc.txt.write(1, list("HELLO"))  # TXT1..TXT5
 
 ds1 = await plc.ds[1]            # single value
 values = await plc.ds.read(1, 5) # range → ModbusResponse
