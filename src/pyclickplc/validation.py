@@ -184,7 +184,9 @@ def validate_initial_value(
     elif data_type == DataType.FLOAT:
         try:
             val = float(initial_value)
-            if not math.isfinite(val) or val < FLOAT_MIN or val > FLOAT_MAX:
+            if not math.isfinite(val):
+                return False, "Must be a finite number"
+            if val < FLOAT_MIN or val > FLOAT_MAX:
                 return False, "Out of float range"
             return True, ""
         except ValueError:

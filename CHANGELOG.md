@@ -8,7 +8,7 @@
   - Every NaN goes out as 0xFFFF:0xFFFF, as a CLICK serves it.
   - A finite value outside the float32 range still raises.
   - DataView new values still refuse +inf, -inf and NaN.
-  - A nickname initial value or DataView row typed "nan" is refused.
+- A DF nickname initial value or DataView new value of "nan" is refused (it was accepted).
 
 ## 0.5.0 - 2026-11-01
 

@@ -759,3 +759,11 @@ class TestCheckCdv:
 def test_validate_new_value_rejects_nan():
     ok, _msg = validate_new_value("nan", DataType.FLOAT)
     assert ok is False
+
+
+@pytest.mark.parametrize("token", ["2143289344", "4294967295"])
+def test_cdv_nan_storage_token_gets_an_issue(token):
+    from pyclickplc.dataview import _validate_cdv_new_value
+
+    issues = _validate_cdv_new_value(token, DataType.FLOAT, "DF1", "x.cdv", 1)
+    assert issues

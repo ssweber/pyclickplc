@@ -7,6 +7,7 @@ UI display strings, and CDV verification helpers.
 
 from __future__ import annotations
 
+import math
 import struct
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -918,7 +919,7 @@ def _validate_cdv_new_value(
             if not isinstance(converted, float):
                 issues.append(f"{prefix} new_value '{new_value}' failed to convert to FLOAT")
                 return issues
-            if converted < FLOAT_MIN or converted > FLOAT_MAX:
+            if not math.isfinite(converted) or converted < FLOAT_MIN or converted > FLOAT_MAX:
                 issues.append(f"{prefix} new_value converts to {converted}, outside FLOAT range")
             return issues
 

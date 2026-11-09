@@ -231,8 +231,10 @@ class TestValidateInitialValue:
 class TestValidateInitialValueNonFinite:
     @pytest.mark.parametrize("text", ["nan", "NaN", "inf", "-inf"])
     def test_float_rejects_non_finite(self, text):
-        ok, _msg = validate_initial_value(text, DataType.FLOAT)
-        assert ok is False
+        assert validate_initial_value(text, DataType.FLOAT) == (False, "Must be a finite number")
+
+    def test_float_overflow_keeps_range_message(self):
+        assert validate_initial_value("1e39", DataType.FLOAT) == (False, "Out of float range")
 
 
 class TestAssertRuntimeValue:
