@@ -6,17 +6,22 @@ routed to a user-supplied DataProvider.
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from pymodbus.constants import ExcCodes
 from pymodbus.datastore import ModbusDeviceContext, ModbusServerContext
+from pymodbus.pdu import ExceptionResponse, ModbusPDU
+from pymodbus.pdu.bit_message import WriteSingleCoilRequest
 from pymodbus.server import ModbusTcpServer
 
 from .addresses import AddressNormalizerMixin, format_address_display, parse_address
 from .banks import BANKS, DataType
 from .modbus import (
+    MAX_READ_COILS,
+    MAX_READ_REGISTERS,
     MAX_WRITE_COILS,
     MAX_WRITE_REGISTERS,
     MODBUS_MAPPINGS,
@@ -123,6 +128,24 @@ def _format_plc_address(bank: str, index: int) -> str:
     return format_address_display(bank, index)
 
 
+class _StrictWriteCoilRequest(WriteSingleCoilRequest):
+    """FC 05 that refuses a value other than 0x0000 or 0xFF00.
+
+    pymodbus turns any non-zero value into True before the datastore sees it.
+    """
+
+    raw_value = 0
+
+    def decode(self, data: bytes) -> None:
+        super().decode(data)
+        self.raw_value = struct.unpack(">H", data[2:4])[0]
+
+    async def datastore_update(self, context: ModbusServerContext, device_id: int) -> ModbusPDU:
+        if self.raw_value not in (0x0000, 0xFF00):
+            return ExceptionResponse(self.function_code, ExcCodes.ILLEGAL_VALUE)
+        return await super().datastore_update(context, device_id)
+
+
 class _ClickDeviceContext(ModbusDeviceContext):
     """Custom pymodbus context routing Modbus requests to a DataProvider."""
 
@@ -141,6 +164,11 @@ class _ClickDeviceContext(ModbusDeviceContext):
         self, func_code: int, address: int, count: int = 1
     ) -> list[int] | list[bool] | ExcCodes:
         """Read values from the DataProvider."""
+        # pymodbus 3.12 never calls validate(), so each request is checked here.
+        if func_code in (1, 2) and not 1 <= count <= MAX_READ_COILS:
+            return ExcCodes.ILLEGAL_VALUE
+        if func_code in (3, 4) and not 1 <= count <= MAX_READ_REGISTERS:
+            return ExcCodes.ILLEGAL_VALUE
         try:
             if func_code in (1, 2, 5, 15):
                 return self._get_coils(address, count)
@@ -420,6 +448,7 @@ class ClickServer:
         self._server = ModbusTcpServer(
             context=server_context,
             address=(self.host, self.port),
+            custom_pdu=[_StrictWriteCoilRequest],
         )
         await self._server.serve_forever(background=True)
 
@@ -436,6 +465,7 @@ class ClickServer:
         self._server = ModbusTcpServer(
             context=server_context,
             address=(self.host, self.port),
+            custom_pdu=[_StrictWriteCoilRequest],
         )
         await self._server.serve_forever(background=False)
 

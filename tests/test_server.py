@@ -679,3 +679,36 @@ class TestAtomicWrites:
         addr, _ = plc_to_modbus("DS", 1)
         assert ctx.setValues(16, addr, [5, 6]) == ExcCodes.DEVICE_FAILURE
         assert p.get("DS1") == 0
+
+
+class TestRequestLimits:
+    @pytest.mark.parametrize(
+        ("func_code", "count"), [(1, 0), (1, 2001), (2, 2001), (3, 0), (3, 126), (4, 200)]
+    )
+    def test_read_count_out_of_range_is_illegal_value(self, func_code, count):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert ctx.getValues(func_code, 0, count) == ExcCodes.ILLEGAL_VALUE
+
+    def test_read_counts_at_the_limits_are_served(self):
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert len(cast(list, ctx.getValues(3, 0, 125))) == 125
+        assert len(cast(list, ctx.getValues(1, 0, 2000))) == 2000
+
+    def test_fc15_over_1968_coils_is_illegal_value(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(15, 0, [True] * 1969) == ExcCodes.ILLEGAL_VALUE
+        assert p.get("C1") is False
+
+    def test_fc16_over_123_registers_is_illegal_value(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("DS", 1)
+        assert ctx.setValues(16, addr, [1] * 124) == ExcCodes.ILLEGAL_VALUE
+        assert p.get("DS1") == 0

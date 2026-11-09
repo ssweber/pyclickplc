@@ -13,6 +13,7 @@ import struct
 import pytest
 
 from pyclickplc.client import ClickClient
+from pyclickplc.modbus import plc_to_modbus
 from pyclickplc.server import ClickServer, MemoryDataProvider
 
 # Port for integration tests (avoid 502 which needs root)
@@ -343,3 +344,45 @@ class TestRangeSplitting:
         assert provider.get("C2000") is True
         result = await plc.c.read(1, 2000)
         assert len(result) == 2000
+
+
+C1 = plc_to_modbus("C", 1)[0]
+
+
+class TestRawRequestLimits:
+    @staticmethod
+    async def _raw(port: int, pdu: bytes) -> bytes:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        frame = struct.pack(">HHHB", 1, 0, len(pdu) + 1, 1) + pdu
+        writer.write(frame)
+        await writer.drain()
+        data = await asyncio.wait_for(reader.read(512), 2)
+        writer.close()
+        return data[7:]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "pdu",
+        [
+            struct.pack(">BHH", 3, 28672, 200),
+            struct.pack(">BHH", 3, 28672, 0),
+            struct.pack(">BHH", 1, 0, 2001),
+        ],
+    )
+    async def test_out_of_range_read_gets_exception_03(self, pdu):
+        provider = MemoryDataProvider()
+        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+            await asyncio.sleep(0.1)
+            reply = await self._raw(TEST_PORT + 3, pdu)
+        assert reply == bytes([pdu[0] | 0x80, 3])
+
+    @pytest.mark.asyncio
+    async def test_fc05_value_other_than_00_or_ff00_gets_exception_03(self):
+        provider = MemoryDataProvider()
+        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 4):
+            await asyncio.sleep(0.1)
+            bad = await self._raw(TEST_PORT + 4, struct.pack(">BHH", 5, C1, 0x1234))
+            good = await self._raw(TEST_PORT + 4, struct.pack(">BHH", 5, C1, 0xFF00))
+        assert bad == bytes([0x85, 3])
+        assert provider.get("C1") is True
+        assert good[0] == 5
