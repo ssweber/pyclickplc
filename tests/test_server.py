@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -129,18 +130,22 @@ class TestMemoryDataProvider:
 
     def test_set_rejects_non_numeric_float(self):
         p = MemoryDataProvider()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
             p.set("DF1", "abc")
 
-    def test_set_rejects_nan_float(self):
+    def test_set_accepts_non_finite_float(self):
         p = MemoryDataProvider()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            p.set("DF1", float("nan"))
+        p.set("DF1", float("inf"))
+        p.set("DF2", float("-inf"))
+        p.set("DF3", float("nan"))
+        assert p.get("DF1") == float("inf")
+        assert p.get("DF2") == float("-inf")
+        assert math.isnan(cast(float, p.get("DF3")))
 
-    def test_set_rejects_inf_float(self):
+    def test_set_rejects_overflow_float(self):
         p = MemoryDataProvider()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            p.set("DF1", float("inf"))
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
+            p.set("DF1", 1e100)
 
     def test_set_rejects_invalid_txt(self):
         p = MemoryDataProvider()

@@ -526,7 +526,7 @@ class TestAddressAccessorWrite:
     @pytest.mark.asyncio
     async def test_write_wrong_type_raises(self):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
             await plc.df.write(1, "string")
 
     @pytest.mark.asyncio
@@ -560,16 +560,17 @@ class TestAddressAccessorWrite:
             await plc.ds.write(1, True)
 
     @pytest.mark.asyncio
-    async def test_write_nan_float_raises(self):
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    async def test_write_non_finite_float_sends(self, value):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            await plc.df.write(1, float("nan"))
+        await plc.df.write(1, value)
+        _get_write_registers_mock(plc).assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_write_inf_float_raises(self):
+    async def test_write_overflow_float_raises(self):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            await plc.df.write(1, float("inf"))
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
+            await plc.df.write(1, 1e100)
 
     @pytest.mark.asyncio
     async def test_write_txt_too_long_raises(self):

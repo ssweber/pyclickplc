@@ -233,12 +233,22 @@ class TestAssertRuntimeValue:
         with pytest.raises(ValueError, match="DS1 value must be int"):
             assert_runtime_value(DataType.INT, True, bank="DS", index=1)
 
-    def test_reject_non_finite_float(self):
+    @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+    def test_allow_non_finite_float(self, value):
+        assert_runtime_value(DataType.FLOAT, value, bank="DF", index=1)
+
+    def test_reject_non_finite_float_when_strict(self):
         with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            assert_runtime_value(DataType.FLOAT, math.nan, bank="DF", index=1)
+            assert_runtime_value(
+                DataType.FLOAT, math.nan, bank="DF", index=1, allow_non_finite=False
+            )
+
+    def test_reject_bool_for_float(self):
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
+            assert_runtime_value(DataType.FLOAT, True, bank="DF", index=1)
 
     def test_reject_overflow_float32(self):
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
             assert_runtime_value(DataType.FLOAT, 1e100, bank="DF", index=1)
 
     def test_reject_invalid_txt(self):

@@ -6,6 +6,7 @@ and packs/unpacks Python values into Modbus registers.
 
 from __future__ import annotations
 
+import math
 import struct
 from dataclasses import dataclass
 
@@ -398,6 +399,10 @@ def pack_value(value: bool | int | float | str, data_type: DataType) -> list[int
 
     if data_type == DataType.TXT:
         return [ord(str(value)) & 0xFFFF]
+
+    if data_type == DataType.FLOAT and isinstance(value, float) and math.isnan(value):
+        # A CLICK serves every NaN as 0xFFFF:0xFFFF, whatever its sign or payload.
+        return [0xFFFF, 0xFFFF]
 
     fmt = STRUCT_FORMATS[data_type]
     raw = struct.pack(f"<{fmt}", value)

@@ -218,10 +218,12 @@ def assert_runtime_value(
     *,
     bank: str,
     index: int,
+    allow_non_finite: bool = True,
 ) -> None:
     """Assert runtime write value validity for a specific PLC address.
 
     Raises ValueError with a deterministic, actionable message on invalid values.
+    A DF takes +inf, -inf and NaN unless ``allow_non_finite`` is False.
     """
     target = f"{bank}{index}"
 
@@ -247,14 +249,16 @@ def assert_runtime_value(
 
     if data_type == DataType.FLOAT:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(f"{target} value must be a finite float32.")
+            raise ValueError(f"{target} value must be a float32.")
         numeric_value = float(value)
         if not math.isfinite(numeric_value):
+            if allow_non_finite:
+                return
             raise ValueError(f"{target} value must be a finite float32.")
         try:
             struct.pack("<f", numeric_value)
         except (OverflowError, struct.error) as exc:
-            raise ValueError(f"{target} value must be a finite float32.") from exc
+            raise ValueError(f"{target} value must be a float32.") from exc
         return
 
     if data_type == DataType.TXT:

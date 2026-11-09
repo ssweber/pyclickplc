@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import struct
 
 import pytest
 
@@ -42,6 +43,20 @@ class TestRoundTrips:
         result = await plc.df.read(1)
         assert math.isclose(result["DF1"], 3.14, rel_tol=1e-6)
         assert math.isclose(provider.get("DF1"), 3.14, rel_tol=1e-6)
+
+    @pytest.mark.asyncio
+    async def test_non_finite_float_writes_arrive_as_registers(self, plc_fixture):
+        plc, provider = plc_fixture
+        await plc.df.write(1, float("inf"))
+        await plc.df.write(2, float("-inf"))
+        await plc.df.write(3, float("nan"))
+        await plc.df.write(4, struct.unpack("<f", struct.pack("<I", 0xFFA12345))[0])
+        assert provider.get("DF1") == math.inf
+        assert provider.get("DF2") == -math.inf
+        assert math.isnan(provider.get("DF3"))
+        assert math.isnan(provider.get("DF4"))
+        raw = (await plc._client.read_holding_registers(28672, count=8)).registers
+        assert raw == [0x0000, 0x7F80, 0x0000, 0xFF80, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF]
 
     @pytest.mark.asyncio
     async def test_int32_round_trip(self, plc_fixture):

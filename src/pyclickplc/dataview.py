@@ -182,7 +182,9 @@ class DataViewRecord:
             if data_type is None:
                 raise ValueError(f"Cannot infer data type for address: {normalized}")
             bank, index = parse_address(normalized)
-            assert_runtime_value(data_type, new_value, bank=bank, index=index)
+            assert_runtime_value(
+                data_type, new_value, bank=bank, index=index, allow_non_finite=False
+            )
 
         return cls(
             address=normalized,

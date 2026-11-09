@@ -186,6 +186,11 @@ class TestDataViewRecord:
         assert row.data_type == DataType.INT
         assert row.new_value is None
 
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_from_address_rejects_non_finite_new_value(self, value):
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            DataViewRecord.from_address("df1", new_value=value)
+
     def test_from_address_with_typed_new_value(self):
         row = DataViewRecord.from_address("df1", new_value=3.14)
         assert row.address == "DF1"

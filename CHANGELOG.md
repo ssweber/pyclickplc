@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A DF write accepts +inf, -inf and NaN (it raised `ValueError`), and every NaN goes out as 0xFFFF:0xFFFF as a CLICK serves it. A finite value outside the float32 range still raises, and DataView new values still refuse non-finite floats.
+
 ## 0.5.0 - 2026-11-01
 
 ### Added
