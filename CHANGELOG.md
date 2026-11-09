@@ -9,6 +9,7 @@
   - A finite value outside the float32 range still raises.
   - DataView new values still refuse +inf, -inf and NaN.
 - A DF nickname initial value or DataView new value of "nan" is refused (it was accepted).
+- A Text value accepts any character with code 0..255 in a client write, a server write and a DataView (it refused 128..255 and turned a stored 200 into blank). A character above 255 still raises.
 
 ## 0.5.0 - 2026-11-01
 

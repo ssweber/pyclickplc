@@ -267,9 +267,13 @@ def assert_runtime_value(
 
     if data_type == DataType.TXT:
         if type(value) is not str:
-            raise ValueError(f"{target} TXT value must be blank or a single ASCII character.")
+            raise ValueError(
+                f"{target} TXT value must be blank or a single character with code 0..255."
+            )
         if value == "":
             return
-        if len(value) != 1 or ord(value) > 127:
-            raise ValueError(f"{target} TXT value must be blank or a single ASCII character.")
+        if len(value) != 1 or ord(value) > 0xFF:
+            raise ValueError(
+                f"{target} TXT value must be blank or a single character with code 0..255."
+            )
         return

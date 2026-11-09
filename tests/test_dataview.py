@@ -767,3 +767,21 @@ def test_cdv_nan_storage_token_gets_an_issue(token):
 
     issues = _validate_cdv_new_value(token, DataType.FLOAT, "DF1", "x.cdv", 1)
     assert issues
+
+
+class TestTxtBytesAbove127:
+    def test_storage_to_datatype_keeps_200(self):
+        assert storage_to_datatype("200", DataType.TXT) == chr(200)
+
+    def test_display_to_datatype_keeps_200(self):
+        assert display_to_datatype("200", DataType.TXT) == chr(200)
+
+    def test_from_address_accepts_new_value_200(self):
+        row = DataViewRecord.from_address("txt1", new_value=chr(200))
+        assert row.new_value == chr(200)
+
+    def test_cdv_new_value_200_is_valid_and_256_is_not(self):
+        from pyclickplc.dataview import _validate_cdv_new_value
+
+        assert not _validate_cdv_new_value("200", DataType.TXT, "TXT1", "x.cdv", 1)
+        assert _validate_cdv_new_value("256", DataType.TXT, "TXT1", "x.cdv", 1)

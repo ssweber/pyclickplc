@@ -150,7 +150,7 @@ class TestMemoryDataProvider:
     def test_set_rejects_invalid_txt(self):
         p = MemoryDataProvider()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
         ):
             p.set("TXT1", "AB")
 
@@ -496,6 +496,16 @@ class TestContextRegisterWrites:
         assert result is None
         assert p.get("TXT1") == "H"
         assert p.get("TXT2") == "i"
+
+    def test_fc06_write_txt_byte_above_127_in_either_half(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(6, 36864, [0xC841]) is None
+        assert p.get("TXT1") == "A"
+        assert p.get("TXT2") == chr(0xC8)
+        assert ctx.setValues(6, 36864, [0x41C8]) is None
+        assert p.get("TXT1") == chr(0xC8)
+        assert p.get("TXT2") == "A"
 
     def test_fc16_write_txt_high_index(self):
         p = MemoryDataProvider()

@@ -585,17 +585,24 @@ class TestAddressAccessorWrite:
     async def test_write_txt_too_long_raises(self):
         plc = _make_plc()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
         ):
             await plc.txt.write(1, "AB")
 
     @pytest.mark.asyncio
-    async def test_write_txt_non_ascii_raises(self):
+    async def test_write_txt_above_ff_raises(self):
         plc = _make_plc()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
         ):
-            await plc.txt.write(1, "\u00e9")
+            await plc.txt.write(1, "\u0100")
+
+    @pytest.mark.asyncio
+    async def test_write_txt_byte_above_127_sends_that_byte(self):
+        plc = _make_plc()
+        await plc.txt.write(1, chr(200))
+        mock = _get_write_registers_mock(plc)
+        assert mock.call_args.args[1] == [200]
 
     @pytest.mark.asyncio
     async def test_write_not_writable_x(self):

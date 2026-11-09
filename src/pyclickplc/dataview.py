@@ -345,7 +345,7 @@ def storage_to_datatype(value: str, data_type: DataType) -> int | float | bool |
 
         if data_type == DataType.TXT:
             code = int(value)
-            return chr(code) if 0 < code < 128 else ""
+            return chr(code) if 0 < code < 256 else ""
 
         return None
 
@@ -481,7 +481,7 @@ def display_to_datatype(value: str, data_type: DataType) -> int | float | bool |
             if len(value) == 1:
                 return value
             code = int(value)
-            return chr(code) if 0 < code < 128 else ""
+            return chr(code) if 0 < code < 256 else ""
 
         return None
 
@@ -555,7 +555,7 @@ def _coerce_for_compare(value: DataViewValue, data_type: DataType) -> DataViewVa
     if data_type == DataType.TXT:
         if isinstance(value, str):
             return value
-        if isinstance(value, int) and 0 <= value <= 127:
+        if isinstance(value, int) and 0 <= value <= 255:
             return chr(value)
         return None
 
@@ -925,10 +925,8 @@ def _validate_cdv_new_value(
 
         if data_type == DataType.TXT:
             raw = int(new_value)
-            if raw < 0 or raw > 127:
-                issues.append(
-                    f"{prefix} new_value '{new_value}' out of range for TXT (0-127 ASCII)"
-                )
+            if raw < 0 or raw > 255:
+                issues.append(f"{prefix} new_value '{new_value}' out of range for TXT (0-255)")
             return issues
 
     except ValueError:

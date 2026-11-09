@@ -269,8 +269,18 @@ class TestAssertRuntimeValue:
             assert_runtime_value(DataType.FLOAT, 1e100, bank="DF", index=1)
 
     def test_reject_invalid_txt(self):
-        with pytest.raises(ValueError, match="TXT1 TXT value must be blank or a single ASCII"):
+        with pytest.raises(
+            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
+        ):
             assert_runtime_value(DataType.TXT, "AB", bank="TXT", index=1)
+
+    @pytest.mark.parametrize("char", ["", chr(200), "ÿ"])
+    def test_allow_txt_byte_above_127(self, char):
+        assert_runtime_value(DataType.TXT, char, bank="TXT", index=1)
+
+    def test_reject_txt_above_ff(self):
+        with pytest.raises(ValueError, match="TXT1 TXT value must be blank"):
+            assert_runtime_value(DataType.TXT, "Ā", bank="TXT", index=1)
 
     def test_allow_blank_txt(self):
         assert_runtime_value(DataType.TXT, "", bank="TXT", index=1)
