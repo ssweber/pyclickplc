@@ -617,6 +617,13 @@ class TestPackFloatNonFinite:
         denormal = self._nan(0x00000001)
         assert pack_value(denormal, DataType.FLOAT) == [0x0001, 0x0000]
 
+    @pytest.mark.parametrize(
+        ("value", "registers"),
+        [(1e100, [0x0000, 0x7F80]), (-1e100, [0x0000, 0xFF80]), (10**400, [0x0000, 0x7F80])],
+    )
+    def test_finite_overflow_packs_as_infinity_by_sign(self, value, registers):
+        assert pack_value(value, DataType.FLOAT) == registers
+
     def test_ffff_ffff_unpacks_to_nan(self):
         assert math.isnan(cast(float, unpack_value([0xFFFF, 0xFFFF], DataType.FLOAT)))
 

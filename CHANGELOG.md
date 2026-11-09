@@ -14,6 +14,7 @@
 - A client range read or write splits at the Modbus limits (125 registers or 2000 coils a read, 123 registers or 1968 coils a write), and a DD or DF value never splits across two requests (a long read raised `ValueError` and a long write got exception 03).
 - A server Modbus write (FC05, FC06, FC15 or FC16) that is refused leaves memory unchanged (a write that ran past the last address stored the earlier values before it answered the exception).
 - A server answers Modbus exception 03 for a read count of 0 or over 125 registers or 2000 coils, a write over 123 registers or 1968 coils, and an FC05 value other than 0x0000 or 0xFF00 (it timed out, served the read or took any value as ON).
+- A DF register pack of a finite value past the float32 range gives +inf or -inf by its sign, as a CLICK holds it (it raised `OverflowError` and failed a server read). A client write of such a value still raises `ValueError`.
 
 ## 0.5.0 - 2026-11-01
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import struct
 from dataclasses import dataclass
+from typing import cast
 
 from .banks import BANKS, DataType
 
@@ -412,7 +413,15 @@ def pack_value(value: bool | int | float | str, data_type: DataType) -> list[int
         return [0xFFFF, 0xFFFF]
 
     fmt = STRUCT_FORMATS[data_type]
-    raw = struct.pack(f"<{fmt}", value)
+    if data_type == DataType.FLOAT:
+        # A finite value past the float32 range is held as +inf or -inf, as a CLICK does.
+        number = cast(int | float, value)
+        try:
+            raw = struct.pack("<f", float(number))
+        except OverflowError:
+            raw = struct.pack("<f", -math.inf if number < 0 else math.inf)
+    else:
+        raw = struct.pack(f"<{fmt}", value)
 
     if len(raw) == 2:
         return [struct.unpack("<H", raw)[0]]
