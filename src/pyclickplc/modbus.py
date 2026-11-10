@@ -205,15 +205,15 @@ def _sparse_coil_to_plc(bank: str, base: int, coil: int) -> tuple[str, int] | No
     return bank, index
 
 
-# Total coil address space for sparse banks
-# Last valid slot is 8xx (hundred=8), max offset = 8*32 + 15 = 271
-_SPARSE_COIL_SPAN = 8 * 32 + 16  # 272
+# Total coil address space for sparse banks. The CPU (*001..*036) and each slot 1..8 take 32
+# coils. A slot names units 1..16 and reserves 17..32, so slot 8 ends at offset 8*32 + 31 = 287.
+_SPARSE_COIL_SPAN = 9 * 32  # 288
 
 
 def _in_sparse_coil_span(address: int) -> bool:
-    """True if a coil address falls in the X or Y span, gaps between slots included.
+    """True if a coil address falls in the X or Y span, the reserved units of each slot included.
 
-    A CLICK reads a gap between slots as OFF and refuses an address outside every bank.
+    A CLICK reads a reserved coil as OFF and refuses an address outside every bank.
     """
     return any(
         MODBUS_MAPPINGS[bank].base <= address < MODBUS_MAPPINGS[bank].base + _SPARSE_COIL_SPAN

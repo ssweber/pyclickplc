@@ -811,3 +811,32 @@ class TestAnswersAsAClick:
         assert ctx.setValues(func_code, 0, [5]) == ExcCodes.ILLEGAL_FUNCTION
         assert ctx.getValues(func_code, 0, 1) == ExcCodes.ILLEGAL_FUNCTION
         assert p.get("DS1") == 0
+
+    @pytest.mark.parametrize(("func_code", "base"), [(2, 0), (1, 8192)])
+    def test_slot_8_reserved_coils_read_off(self, func_code, base):
+        p = MemoryDataProvider()
+        p.set("X816" if base == 0 else "Y816", True)
+        ctx = _ClickDeviceContext(p)
+        # X816 or Y816, then units 17..32 of slot 8 (offsets 272..287).
+        assert ctx.getValues(func_code, base + 271, 17) == [True] + [False] * 16
+
+    def test_coil_past_slot_8_is_illegal_address(self):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert ctx.getValues(1, 8192 + 288, 1) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.getValues(1, 8192 + 287, 2) == ExcCodes.ILLEGAL_ADDRESS
+
+    @pytest.mark.parametrize("offset", [48, 272])
+    def test_fc05_to_a_reserved_y_coil_is_illegal_address(self, offset):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert ctx.setValues(5, 8192 + offset, [True]) == ExcCodes.ILLEGAL_ADDRESS
+
+    def test_fc15_over_slot_8_reserved_coils_skips_them(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("Y", 816)
+        assert ctx.setValues(15, addr, [True] * 17) is None
+        assert p.get("Y816") is True
