@@ -410,3 +410,20 @@ class TestRawAnswers:
                         response = await plc._client.read_holding_registers(yd_base + 2, count=2)
                         assert response.registers == [0, 0x8000]
         assert provider.get("YD1") == 0
+
+    async def test_fc23_answers_exception_01_and_stores_nothing(self, plc_fixture):
+        plc, provider = plc_fixture
+        response = await plc._client.readwrite_registers(
+            read_address=4499, read_count=2, write_address=0, values=[5]
+        )
+        assert response.isError()
+        assert response.exception_code == 1
+        assert provider.get("DS1") == 0
+
+    async def test_fc22_answers_exception_01_and_stores_nothing(self, plc_fixture):
+        plc, provider = plc_fixture
+        provider.set("DS1", 0x00FF)
+        response = await plc._client.mask_write_register(address=0, and_mask=0x0F, or_mask=0)
+        assert response.isError()
+        assert response.exception_code == 1
+        assert provider.get("DS1") == 0x00FF

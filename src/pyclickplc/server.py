@@ -138,6 +138,10 @@ def _is_unnamed_word(bank: str, index: int) -> bool:
     return bank in ("XD", "YD") and index >= 3 and index % 2 == 1
 
 
+# pymodbus also serves FC22 and FC23 through the datastore, which a CLICK refuses.
+# FC23 writes before it reads, so it could store and then answer an exception.
+_CLICK_FUNCTION_CODES = frozenset({1, 2, 3, 4, 5, 6, 15, 16})
+
 # A store is a provider address and its value, or a spare word's Modbus address and its value.
 _Store = tuple[str | int, PlcValue]
 
@@ -181,6 +185,8 @@ class _ClickDeviceContext(ModbusDeviceContext):
     ) -> list[int] | list[bool] | ExcCodes:
         """Read values from the DataProvider."""
         # pymodbus 3.12 never calls validate(), so each request is checked here.
+        if func_code not in _CLICK_FUNCTION_CODES:
+            return ExcCodes.ILLEGAL_FUNCTION
         if func_code in (1, 2) and not 1 <= count <= MAX_READ_COILS:
             return ExcCodes.ILLEGAL_VALUE
         if func_code in (3, 4) and not 1 <= count <= MAX_READ_REGISTERS:
@@ -201,6 +207,8 @@ class _ClickDeviceContext(ModbusDeviceContext):
         first, so the provider can put the old values back. A provider whose ``read`` raises
         for an address in the request fails the whole request with exception 04.
         """
+        if func_code not in _CLICK_FUNCTION_CODES:
+            return ExcCodes.ILLEGAL_FUNCTION
         try:
             if func_code in (5, 15):
                 plan = self._plan_coils(address, values)

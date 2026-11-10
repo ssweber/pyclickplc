@@ -213,7 +213,7 @@ _SPARSE_COIL_SPAN = 8 * 32 + 16  # 272
 def _in_sparse_coil_span(address: int) -> bool:
     """True if a coil address falls in the X or Y span, gaps between slots included.
 
-    A CLICK reads a gap between slots as OFF but refuses an address past every bank.
+    A CLICK reads a gap between slots as OFF and refuses an address outside every bank.
     """
     return any(
         MODBUS_MAPPINGS[bank].base <= address < MODBUS_MAPPINGS[bank].base + _SPARSE_COIL_SPAN

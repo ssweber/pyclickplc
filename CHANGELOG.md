@@ -23,12 +23,14 @@
   - A write over 123 registers or 1968 coils.
   - An FC05 value other than 0x0000 or 0xFF00.
 - A DF register pack of a finite value past the float32 range gives +inf or -inf by its sign (it raised `OverflowError` and failed a server read). A client write of such a value still raises `ValueError`.
-- A server read past the end of a bank answers Modbus exception 02, as a CLICK does (it served 0). A read in a gap between X or Y slots still serves OFF.
+- A server read past the end of a bank answers Modbus exception 02 (it served 0).
 - A server FC15 write that runs past the end of a bank answers exception 02 and stores nothing (it stored the coils before the end).
-- A server keeps each XD or YD register without an address name as a spare word, as a CLICK does (a write to one stored the named register before it).
+- A server keeps each XD or YD register without an address name as a spare word of its own (a read served the named register before it and a write stored there).
   - These are the odd registers above XD0u and YD0u.
   - A YD spare word reads 0 until a client writes it, then keeps that value.
   - An XD spare word reads 0 and refuses a write.
+  - The server holds the spare words itself, so a DataProvider never sees them.
+- A server answers Modbus exception 01 to FC22 and FC23 (it served them).
 
 ## 0.5.0 - 2026-11-01
 

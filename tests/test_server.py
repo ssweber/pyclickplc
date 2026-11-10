@@ -785,3 +785,29 @@ class TestAnswersAsAClick:
         xd_base, _ = plc_to_modbus("XD", 0)
         assert ctx.getValues(4, xd_base + 2, 2) == [0x1234, 0]
         assert ctx.setValues(6, xd_base + 3, [5]) == ExcCodes.ILLEGAL_ADDRESS
+
+    def test_provider_failure_midway_keeps_the_spare_words(self):
+        from pymodbus.constants import ExcCodes
+
+        class Flaky(MemoryDataProvider):
+            def write(self, address: str, value):
+                if address == "YD2":
+                    raise RuntimeError("down")
+                super().write(address, value)
+
+        p = Flaky()
+        ctx = _ClickDeviceContext(p)
+        yd_base, _ = plc_to_modbus("YD", 0)
+        assert ctx.setValues(16, yd_base + 2, [1, 2, 3]) == ExcCodes.DEVICE_FAILURE
+        assert p.get("YD1") == 0
+        assert ctx.spare_words == {}
+
+    @pytest.mark.parametrize("func_code", [22, 23])
+    def test_fc22_and_fc23_are_illegal_function(self, func_code):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(func_code, 0, [5]) == ExcCodes.ILLEGAL_FUNCTION
+        assert ctx.getValues(func_code, 0, 1) == ExcCodes.ILLEGAL_FUNCTION
+        assert p.get("DS1") == 0
