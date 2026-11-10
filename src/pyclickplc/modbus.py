@@ -6,8 +6,10 @@ and packs/unpacks Python values into Modbus registers.
 
 from __future__ import annotations
 
+import math
 import struct
 from dataclasses import dataclass
+from typing import cast
 
 from .banks import BANKS, DataType
 
@@ -203,9 +205,21 @@ def _sparse_coil_to_plc(bank: str, base: int, coil: int) -> tuple[str, int] | No
     return bank, index
 
 
-# Total coil address space for sparse banks
-# Last valid slot is 8xx (hundred=8), max offset = 8*32 + 15 = 271
-_SPARSE_COIL_SPAN = 8 * 32 + 16  # 272
+# Total coil address space for sparse banks. The CPU (*001..*036) and each slot 1..8 take 32
+# coils. A slot names units 1..16 and reserves 17..32, so slot 8 ends at offset 8*32 + 31 = 287.
+_SPARSE_COIL_SPAN = 9 * 32  # 288
+
+
+def _in_sparse_coil_span(address: int) -> bool:
+    """True if a coil address falls in the X or Y span, the reserved units of each slot included.
+
+    A CLICK reads a reserved coil as OFF and refuses an address outside every bank.
+    """
+    return any(
+        MODBUS_MAPPINGS[bank].base <= address < MODBUS_MAPPINGS[bank].base + _SPARSE_COIL_SPAN
+        for bank in ("X", "Y")
+    )
+
 
 # Coil spans for non-sparse banks
 _COIL_SPANS: dict[str, int] = {
@@ -375,6 +389,13 @@ def modbus_to_plc_register(address: int) -> tuple[str, int, int] | None:
     return None
 
 
+# Per-request limits from the Modbus specification.
+MAX_READ_COILS = 2000
+MAX_READ_REGISTERS = 125
+MAX_WRITE_COILS = 1968
+MAX_WRITE_REGISTERS = 123
+
+
 # ==============================================================================
 # Pack / Unpack
 # ==============================================================================
@@ -399,8 +420,20 @@ def pack_value(value: bool | int | float | str, data_type: DataType) -> list[int
     if data_type == DataType.TXT:
         return [ord(str(value)) & 0xFFFF]
 
+    if data_type == DataType.FLOAT and isinstance(value, float) and math.isnan(value):
+        # A CLICK serves every NaN as 0xFFFF:0xFFFF, whatever its sign or payload.
+        return [0xFFFF, 0xFFFF]
+
     fmt = STRUCT_FORMATS[data_type]
-    raw = struct.pack(f"<{fmt}", value)
+    if data_type == DataType.FLOAT:
+        # A finite value past the float32 range is held as +inf or -inf.
+        number = cast(int | float, value)
+        try:
+            raw = struct.pack("<f", float(number))
+        except OverflowError:
+            raw = struct.pack("<f", -math.inf if number < 0 else math.inf)
+    else:
+        raw = struct.pack(f"<{fmt}", value)
 
     if len(raw) == 2:
         return [struct.unpack("<H", raw)[0]]

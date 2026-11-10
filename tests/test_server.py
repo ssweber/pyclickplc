@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -25,6 +26,21 @@ def _as_float(value: object) -> float:
 # ==============================================================================
 # MemoryDataProvider
 # ==============================================================================
+
+
+class _FailingProvider(MemoryDataProvider):
+    def read(self, address: str):
+        raise RuntimeError("provider down")
+
+
+class TestGetValuesFailure:
+    @pytest.mark.parametrize("func_code", [1, 2, 3, 4])
+    def test_provider_failure_is_device_failure(self, func_code):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(_FailingProvider())
+        address = 0 if func_code in (1, 2) else 28672
+        assert ctx.getValues(func_code, address, 1) == ExcCodes.DEVICE_FAILURE
 
 
 class TestMemoryDataProvider:
@@ -129,23 +145,27 @@ class TestMemoryDataProvider:
 
     def test_set_rejects_non_numeric_float(self):
         p = MemoryDataProvider()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
             p.set("DF1", "abc")
 
-    def test_set_rejects_nan_float(self):
+    def test_set_accepts_non_finite_float(self):
         p = MemoryDataProvider()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            p.set("DF1", float("nan"))
+        p.set("DF1", float("inf"))
+        p.set("DF2", float("-inf"))
+        p.set("DF3", float("nan"))
+        assert p.get("DF1") == float("inf")
+        assert p.get("DF2") == float("-inf")
+        assert math.isnan(cast(float, p.get("DF3")))
 
-    def test_set_rejects_inf_float(self):
+    def test_set_rejects_overflow_float(self):
         p = MemoryDataProvider()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            p.set("DF1", float("inf"))
+        with pytest.raises(ValueError, match="DF1 value must fit in a float32"):
+            p.set("DF1", 1e100)
 
     def test_set_rejects_invalid_txt(self):
         p = MemoryDataProvider()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
         ):
             p.set("TXT1", "AB")
 
@@ -259,10 +279,12 @@ class TestContextCoilReads:
         assert result == [True]
 
     def test_read_unmapped_coil(self):
+        from pymodbus.constants import ExcCodes
+
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.getValues(1, 10000, 1)
-        assert result == [False]
+        assert result == ExcCodes.ILLEGAL_ADDRESS
 
     def test_read_sparse_gap(self):
         """Coil 48 is a sparse gap -> False."""
@@ -316,10 +338,12 @@ class TestContextRegisterReads:
         assert result == [0xABCD]
 
     def test_read_unmapped_register(self):
+        from pymodbus.constants import ExcCodes
+
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.getValues(3, 5000, 1)
-        assert result == [0]
+        assert result == ExcCodes.ILLEGAL_ADDRESS
 
     def test_read_ds_negative(self):
         p = MemoryDataProvider()
@@ -492,6 +516,16 @@ class TestContextRegisterWrites:
         assert p.get("TXT1") == "H"
         assert p.get("TXT2") == "i"
 
+    def test_fc06_write_txt_byte_above_127_in_either_half(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(6, 36864, [0xC841]) is None
+        assert p.get("TXT1") == "A"
+        assert p.get("TXT2") == chr(0xC8)
+        assert ctx.setValues(6, 36864, [0x41C8]) is None
+        assert p.get("TXT1") == chr(0xC8)
+        assert p.get("TXT2") == "A"
+
     def test_fc16_write_txt_high_index(self):
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
@@ -614,3 +648,195 @@ class TestClickServerRuntimeControls:
         assert count == 2
         c1.close.assert_called_once_with()
         c2.close.assert_called_once_with()
+
+
+class TestAtomicWrites:
+    def test_fc16_past_the_last_register_stores_nothing(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("DS", 4500)
+        assert ctx.setValues(16, addr, [7, 8]) == ExcCodes.ILLEGAL_ADDRESS
+        assert p.get("DS4500") == 0
+
+    def test_fc15_into_a_read_only_coil_stores_nothing(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("SC", 53)
+        assert ctx.setValues(15, addr, [True, True]) == ExcCodes.ILLEGAL_ADDRESS
+        assert p.get("SC53") is False
+
+    def test_provider_failure_midway_restores_earlier_stores(self):
+        from pymodbus.constants import ExcCodes
+
+        class Flaky(MemoryDataProvider):
+            def write(self, address: str, value):
+                if address == "DS2":
+                    raise RuntimeError("down")
+                super().write(address, value)
+
+        p = Flaky()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("DS", 1)
+        assert ctx.setValues(16, addr, [5, 6]) == ExcCodes.DEVICE_FAILURE
+        assert p.get("DS1") == 0
+
+
+class TestRequestLimits:
+    @pytest.mark.parametrize(
+        ("func_code", "count"), [(1, 0), (1, 2001), (2, 2001), (3, 0), (3, 126), (4, 200)]
+    )
+    def test_read_count_out_of_range_is_illegal_value(self, func_code, count):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert ctx.getValues(func_code, 0, count) == ExcCodes.ILLEGAL_VALUE
+
+    def test_read_counts_at_the_limits_are_served(self):
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert len(cast(list, ctx.getValues(3, 0, 125))) == 125
+        assert len(cast(list, ctx.getValues(1, 16384, 2000))) == 2000
+
+    def test_fc15_over_1968_coils_is_illegal_value(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(15, 0, [True] * 1969) == ExcCodes.ILLEGAL_VALUE
+        assert p.get("C1") is False
+
+    def test_fc16_over_123_registers_is_illegal_value(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("DS", 1)
+        assert ctx.setValues(16, addr, [1] * 124) == ExcCodes.ILLEGAL_VALUE
+        assert p.get("DS1") == 0
+
+
+class TestAnswersAsAClick:
+    """What a CLICK answered to raw requests on 2026-11-10 (pyrung's modbus_raw part)."""
+
+    @pytest.mark.parametrize(
+        ("func_code", "address", "count"),
+        [
+            (3, 4500, 1),  # the register past DS4500
+            (3, 4499, 2),  # DS4500 and the register past it
+            (1, 18384, 1),  # C2001
+            (3, 18384, 2),  # DD1001
+        ],
+    )
+    def test_read_past_a_bank_is_illegal_address(self, func_code, address, count):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert ctx.getValues(func_code, address, count) == ExcCodes.ILLEGAL_ADDRESS
+
+    def test_read_in_the_y_gap_is_off(self):
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        # Between Y116 and Y201.
+        assert ctx.getValues(1, 8192 + 48, 1) == [False]
+
+    def test_fc15_across_the_c_end_stores_nothing(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("C", 1999)
+        assert ctx.setValues(15, addr, [True] * 4) == ExcCodes.ILLEGAL_ADDRESS
+        assert p.get("C1999") is False
+        assert p.get("C2000") is False
+
+    def test_fc15_over_the_y_gap_skips_it(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("Y", 116)
+        assert ctx.setValues(15, addr, [True] * 18) is None
+        assert p.get("Y116") is True
+        assert p.get("Y201") is True
+
+    def test_unnamed_yd_register_keeps_its_own_word(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        yd_base, _ = plc_to_modbus("YD", 0)
+        assert ctx.setValues(6, yd_base + 3, [0x8000]) is None
+        assert p.get("YD1") == 0
+        assert ctx.getValues(3, yd_base + 2, 2) == [0, 0x8000]
+
+    def test_unnamed_yd_registers_in_a_range_write(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        yd_base, _ = plc_to_modbus("YD", 0)
+        assert ctx.setValues(16, yd_base + 2, [1, 2, 3]) is None
+        assert p.get("YD1") == 1
+        assert p.get("YD2") == 3
+        assert ctx.getValues(3, yd_base + 2, 3) == [1, 2, 3]
+
+    def test_unnamed_xd_register_reads_0_and_refuses_a_write(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        p.set("XD1", 0x1234)
+        ctx = _ClickDeviceContext(p)
+        xd_base, _ = plc_to_modbus("XD", 0)
+        assert ctx.getValues(4, xd_base + 2, 2) == [0x1234, 0]
+        assert ctx.setValues(6, xd_base + 3, [5]) == ExcCodes.ILLEGAL_ADDRESS
+
+    def test_provider_failure_midway_keeps_the_spare_words(self):
+        from pymodbus.constants import ExcCodes
+
+        class Flaky(MemoryDataProvider):
+            def write(self, address: str, value):
+                if address == "YD2":
+                    raise RuntimeError("down")
+                super().write(address, value)
+
+        p = Flaky()
+        ctx = _ClickDeviceContext(p)
+        yd_base, _ = plc_to_modbus("YD", 0)
+        assert ctx.setValues(16, yd_base + 2, [1, 2, 3]) == ExcCodes.DEVICE_FAILURE
+        assert p.get("YD1") == 0
+        assert ctx.spare_words == {}
+
+    @pytest.mark.parametrize("func_code", [22, 23])
+    def test_fc22_and_fc23_are_illegal_function(self, func_code):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(func_code, 0, [5]) == ExcCodes.ILLEGAL_FUNCTION
+        assert ctx.getValues(func_code, 0, 1) == ExcCodes.ILLEGAL_FUNCTION
+        assert p.get("DS1") == 0
+
+    @pytest.mark.parametrize(("func_code", "base"), [(2, 0), (1, 8192)])
+    def test_slot_8_reserved_coils_read_off(self, func_code, base):
+        p = MemoryDataProvider()
+        p.set("X816" if base == 0 else "Y816", True)
+        ctx = _ClickDeviceContext(p)
+        # X816 or Y816, then units 17..32 of slot 8 (offsets 272..287).
+        assert ctx.getValues(func_code, base + 271, 17) == [True] + [False] * 16
+
+    def test_coil_past_slot_8_is_illegal_address(self):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert ctx.getValues(1, 8192 + 288, 1) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.getValues(1, 8192 + 287, 2) == ExcCodes.ILLEGAL_ADDRESS
+
+    @pytest.mark.parametrize("offset", [48, 272])
+    def test_fc05_to_a_reserved_y_coil_is_illegal_address(self, offset):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert ctx.setValues(5, 8192 + offset, [True]) == ExcCodes.ILLEGAL_ADDRESS
+
+    def test_fc15_over_slot_8_reserved_coils_skips_them(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("Y", 816)
+        assert ctx.setValues(15, addr, [True] * 17) is None
+        assert p.get("Y816") is True

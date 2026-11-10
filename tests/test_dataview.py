@@ -186,6 +186,11 @@ class TestDataViewRecord:
         assert row.data_type == DataType.INT
         assert row.new_value is None
 
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_from_address_rejects_non_finite_new_value(self, value):
+        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+            DataViewRecord.from_address("df1", new_value=value)
+
     def test_from_address_with_typed_new_value(self):
         row = DataViewRecord.from_address("df1", new_value=3.14)
         assert row.address == "DF1"
@@ -749,3 +754,46 @@ class TestCheckCdv:
         issues = check_cdv_file(cdv)
         assert len(issues) == 1
         assert "not writable" in issues[0]
+
+
+def test_validate_new_value_rejects_nan():
+    ok, _msg = validate_new_value("nan", DataType.FLOAT)
+    assert ok is False
+
+
+@pytest.mark.parametrize("token", ["2143289344", "4294967295"])
+def test_cdv_nan_storage_token_gets_an_issue(token):
+    from pyclickplc.dataview import _validate_cdv_new_value
+
+    issues = _validate_cdv_new_value(token, DataType.FLOAT, "DF1", "x.cdv", 1)
+    assert issues
+
+
+class TestTxtBytesAbove127:
+    def test_storage_to_datatype_keeps_200(self):
+        assert storage_to_datatype("200", DataType.TXT) == chr(200)
+
+    def test_display_to_datatype_keeps_200(self):
+        assert display_to_datatype("200", DataType.TXT) == chr(200)
+
+    def test_from_address_accepts_new_value_200(self):
+        row = DataViewRecord.from_address("txt1", new_value=chr(200))
+        assert row.new_value == chr(200)
+
+    def test_cdv_new_value_200_is_valid_and_256_is_not(self):
+        from pyclickplc.dataview import _validate_cdv_new_value
+
+        assert not _validate_cdv_new_value("200", DataType.TXT, "TXT1", "x.cdv", 1)
+        assert _validate_cdv_new_value("256", DataType.TXT, "TXT1", "x.cdv", 1)
+
+
+def test_validate_new_value_accepts_text_byte_above_127():
+    assert validate_new_value(chr(200), DataType.TXT) == (True, "")
+    ok, _msg = validate_new_value(chr(256), DataType.TXT)
+    assert ok is False
+
+
+def test_set_row_new_value_from_display_takes_chr_200():
+    row = DataViewRecord.from_address("txt1")
+    DataViewFile.set_row_new_value_from_display(row, chr(200))
+    assert row.new_value == chr(200)

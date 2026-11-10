@@ -6,18 +6,26 @@ routed to a user-supplied DataProvider.
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from pymodbus.constants import ExcCodes
 from pymodbus.datastore import ModbusDeviceContext, ModbusServerContext
+from pymodbus.pdu import ExceptionResponse, ModbusPDU
+from pymodbus.pdu.bit_message import WriteSingleCoilRequest
 from pymodbus.server import ModbusTcpServer
 
 from .addresses import AddressNormalizerMixin, format_address_display, parse_address
 from .banks import BANKS, DataType
 from .modbus import (
+    MAX_READ_COILS,
+    MAX_READ_REGISTERS,
+    MAX_WRITE_COILS,
+    MAX_WRITE_REGISTERS,
     MODBUS_MAPPINGS,
+    _in_sparse_coil_span,
     modbus_to_plc,
     modbus_to_plc_register,
     pack_value,
@@ -121,50 +129,130 @@ def _format_plc_address(bank: str, index: int) -> str:
     return format_address_display(bank, index)
 
 
+def _is_unnamed_word(bank: str, index: int) -> bool:
+    """True for an XD or YD register that no address names (MDB 3, 5, ..., 15).
+
+    XDn sits at MDB 2n, so the odd registers above XD0u have no name. A CLICK keeps each one
+    as a spare word that drives no X or Y. Formatting one gives the register before it.
+    """
+    return bank in ("XD", "YD") and index >= 3 and index % 2 == 1
+
+
+# pymodbus also serves FC22 and FC23 through the datastore, which a CLICK refuses.
+# FC23 writes before it reads, so it could store and then answer an exception.
+_CLICK_FUNCTION_CODES = frozenset({1, 2, 3, 4, 5, 6, 15, 16})
+
+# A store is a provider address and its value, or a spare word's Modbus address and its value.
+_Store = tuple[str | int, PlcValue]
+
+
+class _StrictWriteCoilRequest(WriteSingleCoilRequest):
+    """FC 05 that refuses a value other than 0x0000 or 0xFF00.
+
+    pymodbus turns any non-zero value into True before the datastore sees it.
+    """
+
+    raw_value = 0
+
+    def decode(self, data: bytes) -> None:
+        super().decode(data)
+        self.raw_value = struct.unpack(">H", data[2:4])[0]
+
+    async def datastore_update(self, context: ModbusServerContext, device_id: int) -> ModbusPDU:
+        if self.raw_value not in (0x0000, 0xFF00):
+            return ExceptionResponse(self.function_code, ExcCodes.ILLEGAL_VALUE)
+        return await super().datastore_update(context, device_id)
+
+
 class _ClickDeviceContext(ModbusDeviceContext):
     """Custom pymodbus context routing Modbus requests to a DataProvider."""
 
-    def __init__(self, provider: DataProvider) -> None:
+    def __init__(self, provider: DataProvider, spare_words: dict[int, int] | None = None) -> None:
         self.provider = provider
+        # The unnamed YD registers keep what a client writes to them, by Modbus address.
+        self.spare_words: dict[int, int] = {} if spare_words is None else spare_words
         super().__init__()
 
     def reset(self) -> None:
         """Required by base class."""
 
     def validate(self, func_code: int, address: int, count: int = 1) -> bool:  # noqa: ARG002
-        """Accept all addresses; errors are handled in get/setValues."""
+        """Accept all addresses; get/setValues answer the exceptions."""
         return True
 
-    def getValues(self, func_code: int, address: int, count: int = 1) -> list[int] | list[bool]:
+    def getValues(
+        self, func_code: int, address: int, count: int = 1
+    ) -> list[int] | list[bool] | ExcCodes:
         """Read values from the DataProvider."""
+        # pymodbus 3.12 never calls validate(), so each request is checked here.
+        if func_code not in _CLICK_FUNCTION_CODES:
+            return ExcCodes.ILLEGAL_FUNCTION
+        if func_code in (1, 2) and not 1 <= count <= MAX_READ_COILS:
+            return ExcCodes.ILLEGAL_VALUE
+        if func_code in (3, 4) and not 1 <= count <= MAX_READ_REGISTERS:
+            return ExcCodes.ILLEGAL_VALUE
         try:
             if func_code in (1, 2, 5, 15):
                 return self._get_coils(address, count)
             return self._get_registers(address, count)
         except Exception:
-            return []
+            return ExcCodes.DEVICE_FAILURE
 
     def setValues(
         self, func_code: int, address: int, values: list[int] | list[bool]
     ) -> ExcCodes | None:
-        """Write values to the DataProvider."""
+        """Write values to the DataProvider.
+
+        A refused request leaves the provider unchanged. Every target is checked and read
+        first, so the provider can put the old values back. A provider whose ``read`` raises
+        for an address in the request fails the whole request with exception 04.
+        """
+        if func_code not in _CLICK_FUNCTION_CODES:
+            return ExcCodes.ILLEGAL_FUNCTION
         try:
             if func_code in (5, 15):
-                return self._set_coils(address, values)
-            if func_code == 6:
-                return self._set_single_register(address, values[0])
-            # FC 16
-            return self._set_registers(address, values)
+                plan = self._plan_coils(address, values)
+            elif func_code == 6:
+                plan = self._plan_registers(address, [values[0]])
+            else:
+                plan = self._plan_registers(address, values)
+            if isinstance(plan, ExcCodes):
+                return plan
+            return self._commit(plan)
         except Exception:
             return ExcCodes.DEVICE_FAILURE
 
+    def _commit(self, plan: list[_Store]) -> ExcCodes | None:
+        """Store a checked plan, putting the old values back if the provider fails midway."""
+        stores = [(plc_addr, value) for plc_addr, value in plan if isinstance(plc_addr, str)]
+        old = [self.provider.read(plc_addr) for plc_addr, _ in stores]
+        done = 0
+        try:
+            for plc_addr, value in stores:
+                self.provider.write(plc_addr, value)
+                done += 1
+        except Exception:
+            for (plc_addr, _), previous in zip(stores[:done], old[:done], strict=True):
+                try:
+                    self.provider.write(plc_addr, previous)
+                except Exception:
+                    pass
+            return ExcCodes.DEVICE_FAILURE
+        for reg_addr, value in plan:
+            if isinstance(reg_addr, int):
+                self.spare_words[reg_addr] = int(value)
+        return None
+
     # --- Coil helpers ---
 
-    def _get_coils(self, address: int, count: int) -> list[bool]:
+    def _get_coils(self, address: int, count: int) -> list[bool] | ExcCodes:
         result: list[bool] = []
         for i in range(count):
             mapped = modbus_to_plc(address + i, is_coil=True)
             if mapped is None:
+                # A CLICK reads a gap between X or Y slots as OFF and refuses the rest.
+                if not _in_sparse_coil_span(address + i):
+                    return ExcCodes.ILLEGAL_ADDRESS
                 result.append(False)
             else:
                 bank, index = mapped
@@ -173,35 +261,38 @@ class _ClickDeviceContext(ModbusDeviceContext):
                 result.append(bool(val))
         return result
 
-    def _set_coils(self, address: int, values: list[int] | list[bool]) -> ExcCodes | None:
+    def _plan_coils(self, address: int, values: list[int] | list[bool]) -> list[_Store] | ExcCodes:
+        if not 1 <= len(values) <= MAX_WRITE_COILS:
+            return ExcCodes.ILLEGAL_VALUE
+        plan: list[_Store] = []
         for i, val in enumerate(values):
             mapped = modbus_to_plc(address + i, is_coil=True)
             if mapped is None:
-                if len(values) == 1:
+                if len(values) == 1 or not _in_sparse_coil_span(address + i):
                     return ExcCodes.ILLEGAL_ADDRESS
-                continue  # FC 15: skip gaps silently
+                continue  # FC 15 skips a gap between X or Y slots.
             bank, index = mapped
-            # Check writability
             if not _is_address_writable(bank, index):
                 return ExcCodes.ILLEGAL_ADDRESS
-            plc_addr = _format_plc_address(bank, index)
-            self.provider.write(plc_addr, bool(val))
-        return None
+            plan.append((_format_plc_address(bank, index), bool(val)))
+        return plan
 
     # --- Register helpers ---
 
-    def _get_registers(self, address: int, count: int) -> list[int]:
+    def _get_registers(self, address: int, count: int) -> list[int] | ExcCodes:
         result: list[int] = []
         i = 0
         while i < count:
             reg_addr = address + i
             mapped = modbus_to_plc_register(reg_addr)
             if mapped is None:
-                result.append(0)
-                i += 1
-                continue
+                return ExcCodes.ILLEGAL_ADDRESS
 
             bank, index, reg_position = mapped
+            if _is_unnamed_word(bank, index):
+                result.append(self.spare_words.get(reg_addr, 0))
+                i += 1
+                continue
             mapping = MODBUS_MAPPINGS[bank]
             plc_addr = _format_plc_address(bank, index)
 
@@ -254,98 +345,67 @@ class _ClickDeviceContext(ModbusDeviceContext):
                     i += 1
         return result
 
-    def _set_single_register(self, address: int, value: int) -> ExcCodes | None:
-        """Handle FC 06: write single register."""
-        mapped = modbus_to_plc_register(address)
-        if mapped is None:
-            return ExcCodes.ILLEGAL_ADDRESS
-
-        bank, index, reg_position = mapped
-        mapping = MODBUS_MAPPINGS[bank]
-
-        # Check writability
-        if not _is_address_writable(bank, index):
-            return ExcCodes.ILLEGAL_ADDRESS
-
-        plc_addr = _format_plc_address(bank, index)
-        data_type = BANKS[bank].data_type
-
-        # Handle TXT
-        if bank == "TXT":
-            low_byte = value & 0xFF
-            high_byte = (value >> 8) & 0xFF
-            txt_base_index = (index - 1) // 2 * 2 + 1
-            low_addr = _format_plc_address("TXT", txt_base_index)
-            high_addr = _format_plc_address("TXT", txt_base_index + 1)
-            self.provider.write(low_addr, chr(low_byte))
-            self.provider.write(high_addr, chr(high_byte))
-            return None
-
-        if mapping.width == 1:
-            unpacked = unpack_value([value], data_type)
-            self.provider.write(plc_addr, unpacked)
-        else:
-            # Width-2: read-modify-write
-            current = self.provider.read(plc_addr)
-            current_regs = pack_value(current, data_type)
-            current_regs[reg_position] = value
-            unpacked = unpack_value(current_regs, data_type)
-            self.provider.write(plc_addr, unpacked)
-        return None
-
-    def _set_registers(self, address: int, values: list[int] | list[bool]) -> ExcCodes | None:
-        """Handle FC 16: write multiple registers."""
+    def _plan_registers(
+        self, address: int, values: list[int] | list[bool]
+    ) -> list[_Store] | ExcCodes:
+        """Resolve a register write into (address, value) stores without storing any."""
+        if not 1 <= len(values) <= MAX_WRITE_REGISTERS:
+            return ExcCodes.ILLEGAL_VALUE
+        plan: list[_Store] = []
         i = 0
         while i < len(values):
-            reg_addr = address + i
-            mapped = modbus_to_plc_register(reg_addr)
+            mapped = modbus_to_plc_register(address + i)
             if mapped is None:
                 return ExcCodes.ILLEGAL_ADDRESS
 
             bank, index, reg_position = mapped
             mapping = MODBUS_MAPPINGS[bank]
-
-            # Check writability
             if not _is_address_writable(bank, index):
                 return ExcCodes.ILLEGAL_ADDRESS
 
             plc_addr = _format_plc_address(bank, index)
             data_type = BANKS[bank].data_type
+            reg_val = int(values[i])
+            if not 0 <= reg_val <= 0xFFFF:
+                return ExcCodes.ILLEGAL_VALUE
 
-            # Handle TXT
+            if _is_unnamed_word(bank, index):
+                plan.append((address + i, reg_val))
+                i += 1
+                continue
+
             if bank == "TXT":
-                reg_val = int(values[i])
-                low_byte = reg_val & 0xFF
-                high_byte = (reg_val >> 8) & 0xFF
                 txt_base_index = (index - 1) // 2 * 2 + 1
-                low_addr = _format_plc_address("TXT", txt_base_index)
-                high_addr = _format_plc_address("TXT", txt_base_index + 1)
-                self.provider.write(low_addr, chr(low_byte))
-                self.provider.write(high_addr, chr(high_byte))
+                plan.append((_format_plc_address("TXT", txt_base_index), chr(reg_val & 0xFF)))
+                plan.append((_format_plc_address("TXT", txt_base_index + 1), chr(reg_val >> 8)))
                 i += 1
                 continue
 
             if mapping.width == 1:
-                unpacked = unpack_value([int(values[i])], data_type)
-                self.provider.write(plc_addr, unpacked)
+                plan.append((plc_addr, unpack_value([reg_val], data_type)))
                 i += 1
+            elif reg_position == 0 and i + 1 < len(values):
+                regs = [reg_val, int(values[i + 1])]
+                if not 0 <= regs[1] <= 0xFFFF:
+                    return ExcCodes.ILLEGAL_VALUE
+                plan.append((plc_addr, unpack_value(regs, data_type)))
+                i += 2
             else:
-                # Width-2
-                if reg_position == 0 and i + 1 < len(values):
-                    # Complete pair
-                    regs = [int(values[i]), int(values[i + 1])]
-                    unpacked = unpack_value(regs, data_type)
-                    self.provider.write(plc_addr, unpacked)
-                    i += 2
-                else:
-                    # Partial: read-modify-write
-                    current = self.provider.read(plc_addr)
-                    current_regs = pack_value(current, data_type)
-                    current_regs[reg_position] = int(values[i])
-                    unpacked = unpack_value(current_regs, data_type)
-                    self.provider.write(plc_addr, unpacked)
-                    i += 1
-        return None
+                # Half a value: keep the other register as stored.
+                current_regs = pack_value(self.provider.read(plc_addr), data_type)
+                current_regs[reg_position] = reg_val
+                plan.append((plc_addr, unpack_value(current_regs, data_type)))
+                i += 1
+
+        for plc_addr, value in plan:
+            if not isinstance(plc_addr, str):
+                continue
+            bank, index = parse_address(plc_addr)
+            try:
+                assert_runtime_value(BANKS[bank].data_type, value, bank=bank, index=index)
+            except ValueError:
+                return ExcCodes.ILLEGAL_VALUE
+        return plan
 
 
 # ==============================================================================
@@ -373,6 +433,7 @@ class ClickServer:
         self.host = host
         self.port = port
         self._server: ModbusTcpServer | None = None
+        self._spare_words: dict[int, int] = {}
 
     @staticmethod
     def _format_peer(connection: Any) -> str:
@@ -423,11 +484,12 @@ class ClickServer:
 
     async def start(self) -> None:
         """Start the Modbus TCP server."""
-        context = _ClickDeviceContext(self.provider)
+        context = _ClickDeviceContext(self.provider, self._spare_words)
         server_context = ModbusServerContext(devices=context, single=True)
         self._server = ModbusTcpServer(
             context=server_context,
             address=(self.host, self.port),
+            custom_pdu=[_StrictWriteCoilRequest],
         )
         await self._server.serve_forever(background=True)
 
@@ -439,11 +501,12 @@ class ClickServer:
 
     async def serve_forever(self) -> None:
         """Start the server and block until stopped."""
-        context = _ClickDeviceContext(self.provider)
+        context = _ClickDeviceContext(self.provider, self._spare_words)
         server_context = ModbusServerContext(devices=context, single=True)
         self._server = ModbusTcpServer(
             context=server_context,
             address=(self.host, self.port),
+            custom_pdu=[_StrictWriteCoilRequest],
         )
         await self._server.serve_forever(background=False)
 

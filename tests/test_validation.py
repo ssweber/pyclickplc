@@ -228,22 +228,59 @@ class TestValidateInitialValue:
 # ==============================================================================
 
 
+class TestValidateInitialValueNonFinite:
+    @pytest.mark.parametrize("text", ["nan", "NaN", "inf", "-inf"])
+    def test_float_rejects_non_finite(self, text):
+        assert validate_initial_value(text, DataType.FLOAT) == (False, "Must be a finite number")
+
+    def test_float_overflow_keeps_range_message(self):
+        assert validate_initial_value("1e39", DataType.FLOAT) == (False, "Out of float range")
+
+
 class TestAssertRuntimeValue:
     def test_reject_bool_for_int(self):
         with pytest.raises(ValueError, match="DS1 value must be int"):
             assert_runtime_value(DataType.INT, True, bank="DS", index=1)
 
-    def test_reject_non_finite_float(self):
+    @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+    def test_allow_non_finite_float(self, value):
+        assert_runtime_value(DataType.FLOAT, value, bank="DF", index=1)
+
+    def test_reject_non_finite_float_when_strict(self):
         with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            assert_runtime_value(DataType.FLOAT, math.nan, bank="DF", index=1)
+            assert_runtime_value(
+                DataType.FLOAT, math.nan, bank="DF", index=1, allow_non_finite=False
+            )
+
+    def test_overflow_message_gives_range(self):
+        with pytest.raises(ValueError, match=r"DF1 value must fit in a float32 \(-3\.4028235E\+38"):
+            assert_runtime_value(DataType.FLOAT, 1e100, bank="DF", index=1)
+
+    def test_huge_int_raises_value_error(self):
+        with pytest.raises(ValueError, match="DF1 value must fit in a float32"):
+            assert_runtime_value(DataType.FLOAT, 10**400, bank="DF", index=1)
+
+    def test_reject_bool_for_float(self):
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
+            assert_runtime_value(DataType.FLOAT, True, bank="DF", index=1)
 
     def test_reject_overflow_float32(self):
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+        with pytest.raises(ValueError, match="DF1 value must fit in a float32"):
             assert_runtime_value(DataType.FLOAT, 1e100, bank="DF", index=1)
 
     def test_reject_invalid_txt(self):
-        with pytest.raises(ValueError, match="TXT1 TXT value must be blank or a single ASCII"):
+        with pytest.raises(
+            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
+        ):
             assert_runtime_value(DataType.TXT, "AB", bank="TXT", index=1)
+
+    @pytest.mark.parametrize("char", ["", chr(200), "ÿ"])
+    def test_allow_txt_byte_above_127(self, char):
+        assert_runtime_value(DataType.TXT, char, bank="TXT", index=1)
+
+    def test_reject_txt_above_ff(self):
+        with pytest.raises(ValueError, match="TXT1 TXT value must be blank"):
+            assert_runtime_value(DataType.TXT, "Ā", bank="TXT", index=1)
 
     def test_allow_blank_txt(self):
         assert_runtime_value(DataType.TXT, "", bank="TXT", index=1)

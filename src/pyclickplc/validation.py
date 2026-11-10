@@ -184,6 +184,8 @@ def validate_initial_value(
     elif data_type == DataType.FLOAT:
         try:
             val = float(initial_value)
+            if not math.isfinite(val):
+                return False, "Must be a finite number"
             if val < FLOAT_MIN or val > FLOAT_MAX:
                 return False, "Out of float range"
             return True, ""
@@ -218,10 +220,12 @@ def assert_runtime_value(
     *,
     bank: str,
     index: int,
+    allow_non_finite: bool = True,
 ) -> None:
     """Assert runtime write value validity for a specific PLC address.
 
     Raises ValueError with a deterministic, actionable message on invalid values.
+    A DF takes +inf, -inf and NaN unless ``allow_non_finite`` is False.
     """
     target = f"{bank}{index}"
 
@@ -247,21 +251,29 @@ def assert_runtime_value(
 
     if data_type == DataType.FLOAT:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(f"{target} value must be a finite float32.")
-        numeric_value = float(value)
-        if not math.isfinite(numeric_value):
-            raise ValueError(f"{target} value must be a finite float32.")
+            raise ValueError(f"{target} value must be a float32.")
         try:
+            numeric_value = float(value)
+            if not math.isfinite(numeric_value):
+                if allow_non_finite:
+                    return
+                raise ValueError(f"{target} value must be a finite float32.")
             struct.pack("<f", numeric_value)
         except (OverflowError, struct.error) as exc:
-            raise ValueError(f"{target} value must be a finite float32.") from exc
+            raise ValueError(
+                f"{target} value must fit in a float32 ({FLOAT_MIN:.7E}..{FLOAT_MAX:.7E})."
+            ) from exc
         return
 
     if data_type == DataType.TXT:
         if type(value) is not str:
-            raise ValueError(f"{target} TXT value must be blank or a single ASCII character.")
+            raise ValueError(
+                f"{target} TXT value must be blank or a single character with code 0..255."
+            )
         if value == "":
             return
-        if len(value) != 1 or ord(value) > 127:
-            raise ValueError(f"{target} TXT value must be blank or a single ASCII character.")
+        if len(value) != 1 or ord(value) > 0xFF:
+            raise ValueError(
+                f"{target} TXT value must be blank or a single character with code 0..255."
+            )
         return

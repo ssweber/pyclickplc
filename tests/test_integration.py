@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import math
+import struct
 
 import pytest
 
 from pyclickplc.client import ClickClient
+from pyclickplc.modbus import plc_to_modbus
 from pyclickplc.server import ClickServer, MemoryDataProvider
 
 # Port for integration tests (avoid 502 which needs root)
@@ -42,6 +44,20 @@ class TestRoundTrips:
         result = await plc.df.read(1)
         assert math.isclose(result["DF1"], 3.14, rel_tol=1e-6)
         assert math.isclose(provider.get("DF1"), 3.14, rel_tol=1e-6)
+
+    @pytest.mark.asyncio
+    async def test_non_finite_float_writes_arrive_as_registers(self, plc_fixture):
+        plc, provider = plc_fixture
+        await plc.df.write(1, float("inf"))
+        await plc.df.write(2, float("-inf"))
+        await plc.df.write(3, float("nan"))
+        await plc.df.write(4, struct.unpack("<f", struct.pack("<I", 0xFFA12345))[0])
+        assert provider.get("DF1") == math.inf
+        assert provider.get("DF2") == -math.inf
+        assert math.isnan(provider.get("DF3"))
+        assert math.isnan(provider.get("DF4"))
+        raw = (await plc._client.read_holding_registers(28672, count=8)).registers
+        assert raw == [0x0000, 0x7F80, 0x0000, 0xFF80, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF]
 
     @pytest.mark.asyncio
     async def test_int32_round_trip(self, plc_fixture):
@@ -255,3 +271,159 @@ class TestConnectionLifecycle:
                     await plc.ds.read(1)
         finally:
             await server.stop()
+
+
+class _FailingReadProvider(MemoryDataProvider):
+    def read(self, address: str):
+        raise RuntimeError("provider down")
+
+
+class TestFailedRead:
+    @pytest.mark.asyncio
+    async def test_failed_server_read_raises_oserror_on_client(self):
+        async with ClickServer(_FailingReadProvider(), port=TEST_PORT + 2):
+            await asyncio.sleep(0.1)
+            async with ClickClient("localhost", TEST_PORT + 2) as plc:
+                with pytest.raises(OSError):
+                    await plc.df.read(1)
+                with pytest.raises(OSError):
+                    await plc.c.read(1)
+
+
+class TestRangeSplitting:
+    @pytest.mark.asyncio
+    async def test_long_register_reads_split(self, plc_fixture):
+        plc, provider = plc_fixture
+        provider.set("DS1", 7)
+        provider.set("DS200", 9)
+        result = await plc.ds.read(1, 200)
+        assert len(result) == 200
+        assert result["DS1"] == 7
+        assert result["DS200"] == 9
+
+    @pytest.mark.asyncio
+    async def test_width_two_read_never_splits_a_value(self, plc_fixture):
+        plc, provider = plc_fixture
+        for i in range(1, 101):
+            provider.set(f"DD{i}", 100000 + i)
+            provider.set(f"DF{i}", i + 0.5)
+        dd = await plc.dd.read(1, 100)
+        df = await plc.df.read(1, 100)
+        assert [dd[f"DD{i}"] for i in range(1, 101)] == [100000 + i for i in range(1, 101)]
+        assert [df[f"DF{i}"] for i in range(1, 101)] == [i + 0.5 for i in range(1, 101)]
+
+    @pytest.mark.asyncio
+    async def test_long_txt_read_splits(self, plc_fixture):
+        plc, provider = plc_fixture
+        provider.set("TXT300", "Z")
+        result = await plc.txt.read(1, 300)
+        assert len(result) == 300
+        assert result["TXT300"] == "Z"
+
+    @pytest.mark.asyncio
+    async def test_long_register_write_splits(self, plc_fixture):
+        plc, provider = plc_fixture
+        await plc.ds.write(1, list(range(1, 201)))
+        assert provider.get("DS1") == 1
+        assert provider.get("DS124") == 124
+        assert provider.get("DS200") == 200
+
+    @pytest.mark.asyncio
+    async def test_width_two_write_never_splits_a_value(self, plc_fixture):
+        plc, provider = plc_fixture
+        await plc.dd.write(1, [100000 + i for i in range(1, 101)])
+        assert [provider.get(f"DD{i}") for i in range(1, 101)] == [
+            100000 + i for i in range(1, 101)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_long_coil_read_and_write_split(self, plc_fixture):
+        plc, provider = plc_fixture
+        await plc.c.write(1, [True] * 2000)
+        assert provider.get("C1") is True
+        assert provider.get("C2000") is True
+        result = await plc.c.read(1, 2000)
+        assert len(result) == 2000
+
+
+C1 = plc_to_modbus("C", 1)[0]
+
+
+class TestRawRequestLimits:
+    @staticmethod
+    async def _raw(port: int, pdu: bytes) -> bytes:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        frame = struct.pack(">HHHB", 1, 0, len(pdu) + 1, 1) + pdu
+        writer.write(frame)
+        await writer.drain()
+        data = await asyncio.wait_for(reader.read(512), 2)
+        writer.close()
+        return data[7:]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "pdu",
+        [
+            struct.pack(">BHH", 3, 28672, 200),
+            struct.pack(">BHH", 3, 28672, 0),
+            struct.pack(">BHH", 1, 0, 2001),
+        ],
+    )
+    async def test_out_of_range_read_gets_exception_03(self, pdu):
+        provider = MemoryDataProvider()
+        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+            await asyncio.sleep(0.1)
+            reply = await self._raw(TEST_PORT + 3, pdu)
+        assert reply == bytes([pdu[0] | 0x80, 3])
+
+    @pytest.mark.asyncio
+    async def test_fc05_value_other_than_00_or_ff00_gets_exception_03(self):
+        provider = MemoryDataProvider()
+        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 4):
+            await asyncio.sleep(0.1)
+            bad = await self._raw(TEST_PORT + 4, struct.pack(">BHH", 5, C1, 0x1234))
+            good = await self._raw(TEST_PORT + 4, struct.pack(">BHH", 5, C1, 0xFF00))
+        assert bad == bytes([0x85, 3])
+        assert provider.get("C1") is True
+        assert good[0] == 5
+
+
+class TestRawAnswers:
+    async def test_read_past_ds_answers_exception_02(self, plc_fixture):
+        plc, _provider = plc_fixture
+        response = await plc._client.read_holding_registers(4499, count=2)
+        assert response.isError()
+        assert response.exception_code == 2
+
+    async def test_unnamed_yd_word_survives_a_server_restart(self):
+        provider = MemoryDataProvider()
+        server = ClickServer(provider, port=TEST_PORT)
+        yd_base, _ = plc_to_modbus("YD", 0)
+        for step in ("write", "read"):
+            async with server:
+                await asyncio.sleep(0.1)
+                async with ClickClient("localhost", TEST_PORT) as plc:
+                    if step == "write":
+                        response = await plc._client.write_register(yd_base + 3, 0x8000)
+                        assert not response.isError()
+                    else:
+                        response = await plc._client.read_holding_registers(yd_base + 2, count=2)
+                        assert response.registers == [0, 0x8000]
+        assert provider.get("YD1") == 0
+
+    async def test_fc23_answers_exception_01_and_stores_nothing(self, plc_fixture):
+        plc, provider = plc_fixture
+        response = await plc._client.readwrite_registers(
+            read_address=4499, read_count=2, write_address=0, values=[5]
+        )
+        assert response.isError()
+        assert response.exception_code == 1
+        assert provider.get("DS1") == 0
+
+    async def test_fc22_answers_exception_01_and_stores_nothing(self, plc_fixture):
+        plc, provider = plc_fixture
+        provider.set("DS1", 0x00FF)
+        response = await plc._client.mask_write_register(address=0, and_mask=0x0F, or_mask=0)
+        assert response.isError()
+        assert response.exception_code == 1
+        assert provider.get("DS1") == 0x00FF

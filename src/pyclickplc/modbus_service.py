@@ -18,15 +18,17 @@ from typing import Any, TypedDict, TypeVar, cast
 from .addresses import normalize_address, parse_address
 from .banks import BANKS, DataType
 from .client import ClickClient, ModbusResponse
-from .modbus import MODBUS_MAPPINGS
+from .modbus import (
+    MAX_READ_COILS,
+    MAX_READ_REGISTERS,
+    MAX_WRITE_COILS,
+    MAX_WRITE_REGISTERS,
+    MODBUS_MAPPINGS,
+)
 from .validation import assert_runtime_value
 
 PlcValue = bool | int | float | str
 
-MAX_READ_COILS = 2000
-MAX_READ_REGISTERS = 125
-MAX_WRITE_COILS = 1968
-MAX_WRITE_REGISTERS = 123
 T = TypeVar("T")
 
 
@@ -649,7 +651,7 @@ class ModbusService:
 
                 for item in batch.items:
                     results[item.pos] = {"address": item.normalized, "ok": True, "error": None}
-            except (OSError, ValueError) as exc:
+            except Exception as exc:
                 for item in batch.items:
                     results[item.pos] = {"address": item.normalized, "ok": False, "error": str(exc)}
 

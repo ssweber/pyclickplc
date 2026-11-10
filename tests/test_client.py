@@ -526,7 +526,7 @@ class TestAddressAccessorWrite:
     @pytest.mark.asyncio
     async def test_write_wrong_type_raises(self):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
+        with pytest.raises(ValueError, match="DF1 value must be a float32"):
             await plc.df.write(1, "string")
 
     @pytest.mark.asyncio
@@ -560,32 +560,49 @@ class TestAddressAccessorWrite:
             await plc.ds.write(1, True)
 
     @pytest.mark.asyncio
-    async def test_write_nan_float_raises(self):
+    @pytest.mark.parametrize(
+        ("value", "registers"),
+        [
+            (float("nan"), [0xFFFF, 0xFFFF]),
+            (float("inf"), [0x0000, 0x7F80]),
+            (float("-inf"), [0x0000, 0xFF80]),
+        ],
+    )
+    async def test_write_non_finite_float_sends(self, value, registers):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            await plc.df.write(1, float("nan"))
+        await plc.df.write(1, value)
+        mock = _get_write_registers_mock(plc)
+        mock.assert_called_once()
+        assert mock.call_args.args[1] == registers
 
     @pytest.mark.asyncio
-    async def test_write_inf_float_raises(self):
+    async def test_write_overflow_float_raises(self):
         plc = _make_plc()
-        with pytest.raises(ValueError, match="DF1 value must be a finite float32"):
-            await plc.df.write(1, float("inf"))
+        with pytest.raises(ValueError, match="DF1 value must fit in a float32"):
+            await plc.df.write(1, 1e100)
 
     @pytest.mark.asyncio
     async def test_write_txt_too_long_raises(self):
         plc = _make_plc()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
         ):
             await plc.txt.write(1, "AB")
 
     @pytest.mark.asyncio
-    async def test_write_txt_non_ascii_raises(self):
+    async def test_write_txt_above_ff_raises(self):
         plc = _make_plc()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single ASCII character"
+            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
         ):
-            await plc.txt.write(1, "\u00e9")
+            await plc.txt.write(1, "\u0100")
+
+    @pytest.mark.asyncio
+    async def test_write_txt_byte_above_127_sends_that_byte(self):
+        plc = _make_plc()
+        await plc.txt.write(1, chr(200))
+        mock = _get_write_registers_mock(plc)
+        assert mock.call_args.args[1] == [200]
 
     @pytest.mark.asyncio
     async def test_write_not_writable_x(self):
@@ -1092,3 +1109,70 @@ class TestAddressAccessorGetitem:
         plc = _make_plc()
         with pytest.raises(ValueError):
             await plc.xd[9]
+
+
+class _ShortReply:
+    registers: list[int] = [1]
+    bits: list[bool] = []
+
+    def isError(self) -> bool:
+        return False
+
+
+class TestShortReply:
+    @pytest.mark.asyncio
+    async def test_short_register_reply_raises_oserror(self):
+        plc = ClickClient("localhost", 5020)
+        object.__setattr__(plc, "_call_modbus", AsyncMock(return_value=_ShortReply()))
+        with pytest.raises(OSError):
+            await plc.df.read(1)
+
+    @pytest.mark.asyncio
+    async def test_short_coil_reply_raises_oserror(self):
+        plc = ClickClient("localhost", 5020)
+        object.__setattr__(plc, "_call_modbus", AsyncMock(return_value=_ShortReply()))
+        with pytest.raises(OSError):
+            await plc.c.read(1)
+
+
+class TestRequestSizes:
+    @staticmethod
+    def _recording_plc(sizes: list[int]) -> ClickClient:
+        plc = ClickClient("localhost", 5020)
+
+        class _Reply:
+            registers: list[int]
+            bits: list[bool]
+
+            def __init__(self, n: int) -> None:
+                self.registers = [0] * n
+                self.bits = [False] * n
+
+            def isError(self) -> bool:
+                return False
+
+        async def call(fn, **kwargs):
+            n = kwargs.get("count") or len(kwargs.get("values") or [0])
+            sizes.append(n)
+            return _Reply(n)
+
+        object.__setattr__(plc, "_call_modbus", call)
+        return plc
+
+    @pytest.mark.asyncio
+    async def test_reads_split_at_the_limits(self):
+        sizes: list[int] = []
+        plc = self._recording_plc(sizes)
+        await plc.ds.read(1, 300)
+        await plc.dd.read(1, 100)
+        await plc.c.read(1, 2000)
+        assert sizes == [125, 125, 50, 124, 76, 2000]
+
+    @pytest.mark.asyncio
+    async def test_writes_split_at_the_limits(self):
+        sizes: list[int] = []
+        plc = self._recording_plc(sizes)
+        await plc.ds.write(1, [0] * 124)
+        await plc.dd.write(1, [0] * 100)
+        await plc.c.write(1, [True] * 2000)
+        assert sizes == [123, 1, 122, 78, 1968, 32]

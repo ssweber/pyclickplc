@@ -597,6 +597,37 @@ class TestPackValue:
             pack_value(True, DataType.BIT)
 
 
+class TestPackFloatNonFinite:
+    @staticmethod
+    def _nan(bits: int) -> float:
+        return struct.unpack("<f", struct.pack("<I", bits))[0]
+
+    @pytest.mark.parametrize("bits", [0x7FC00000, 0xFFC00000, 0x7F800001, 0xFFA12345])
+    def test_every_nan_packs_as_ffff_ffff(self, bits):
+        nan = self._nan(bits)
+        assert math.isnan(nan)
+        assert pack_value(nan, DataType.FLOAT) == [0xFFFF, 0xFFFF]
+
+    def test_infinities_pack_as_their_own_bits(self):
+        assert pack_value(math.inf, DataType.FLOAT) == [0x0000, 0x7F80]
+        assert pack_value(-math.inf, DataType.FLOAT) == [0x0000, 0xFF80]
+
+    def test_negative_zero_and_denormal_unchanged(self):
+        assert pack_value(-0.0, DataType.FLOAT) == [0x0000, 0x8000]
+        denormal = self._nan(0x00000001)
+        assert pack_value(denormal, DataType.FLOAT) == [0x0001, 0x0000]
+
+    @pytest.mark.parametrize(
+        ("value", "registers"),
+        [(1e100, [0x0000, 0x7F80]), (-1e100, [0x0000, 0xFF80]), (10**400, [0x0000, 0x7F80])],
+    )
+    def test_finite_overflow_packs_as_infinity_by_sign(self, value, registers):
+        assert pack_value(value, DataType.FLOAT) == registers
+
+    def test_ffff_ffff_unpacks_to_nan(self):
+        assert math.isnan(cast(float, unpack_value([0xFFFF, 0xFFFF], DataType.FLOAT)))
+
+
 class TestUnpackValue:
     """Tests for unpack_value."""
 

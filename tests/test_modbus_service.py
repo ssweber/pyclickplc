@@ -422,6 +422,11 @@ class TestWriteBehavior:
         assert [r["ok"] for r in result_iter] == [True, True]
         assert [r["address"] for r in result_iter] == ["DS3", "DS4"]
 
+    def test_write_non_finite_float_is_ok(self, service: ModbusService):
+        service.connect("localhost", 15020)
+        result = service.write([("DF1", float("nan")), ("DF2", float("inf"))])
+        assert [r["ok"] for r in result] == [True, True]
+
     def test_write_non_writable_address_fails_per_item(self, service: ModbusService):
         service.connect("localhost", 15020)
         result = service.write([("X1", True)])
@@ -443,6 +448,21 @@ class TestWriteBehavior:
         assert result[0]["ok"] is False
         assert result[1]["ok"] is False
         assert "write failed for DS" in cast(str, result[0]["error"])
+
+    def test_write_non_oserror_in_one_batch_keeps_other_results(
+        self, service: ModbusService, monkeypatch: pytest.MonkeyPatch
+    ):
+        service.connect("localhost", 15020)
+        fake = _FakeClickClient.instances[-1]
+
+        async def boom(*_args: object, **_kwargs: object) -> None:
+            raise IndexError("short reply")
+
+        monkeypatch.setattr(fake._get_accessor("TXT"), "write", boom)
+
+        result = service.write([("DS1", 1), ("TXT3", "A"), ("DS9", 2)])
+        assert [r["ok"] for r in result] == [True, False, True]
+        assert "short reply" in cast(str, result[1]["error"])
 
     def test_write_connection_drop_mid_write_fails_remaining_batches(
         self, monkeypatch: pytest.MonkeyPatch
