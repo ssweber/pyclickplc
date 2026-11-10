@@ -25,6 +25,7 @@ from .modbus import (
     MAX_WRITE_COILS,
     MAX_WRITE_REGISTERS,
     MODBUS_MAPPINGS,
+    _in_sparse_coil_span,
     modbus_to_plc,
     modbus_to_plc_register,
     pack_value,
@@ -128,6 +129,19 @@ def _format_plc_address(bank: str, index: int) -> str:
     return format_address_display(bank, index)
 
 
+def _is_unnamed_word(bank: str, index: int) -> bool:
+    """True for an XD or YD register that no address names (MDB 3, 5, ..., 15).
+
+    XDn sits at MDB 2n, so the odd registers above XD0u have no name. A CLICK keeps each one
+    as a spare word that drives no X or Y. Formatting one gives the register before it.
+    """
+    return bank in ("XD", "YD") and index >= 3 and index % 2 == 1
+
+
+# A store is a provider address and its value, or a spare word's Modbus address and its value.
+_Store = tuple[str | int, PlcValue]
+
+
 class _StrictWriteCoilRequest(WriteSingleCoilRequest):
     """FC 05 that refuses a value other than 0x0000 or 0xFF00.
 
@@ -149,8 +163,10 @@ class _StrictWriteCoilRequest(WriteSingleCoilRequest):
 class _ClickDeviceContext(ModbusDeviceContext):
     """Custom pymodbus context routing Modbus requests to a DataProvider."""
 
-    def __init__(self, provider: DataProvider) -> None:
+    def __init__(self, provider: DataProvider, spare_words: dict[int, int] | None = None) -> None:
         self.provider = provider
+        # The unnamed YD registers keep what a client writes to them, by Modbus address.
+        self.spare_words: dict[int, int] = {} if spare_words is None else spare_words
         super().__init__()
 
     def reset(self) -> None:
@@ -198,30 +214,37 @@ class _ClickDeviceContext(ModbusDeviceContext):
         except Exception:
             return ExcCodes.DEVICE_FAILURE
 
-    def _commit(self, plan: list[tuple[str, PlcValue]]) -> ExcCodes | None:
+    def _commit(self, plan: list[_Store]) -> ExcCodes | None:
         """Store a checked plan, putting the old values back if the provider fails midway."""
-        old = [self.provider.read(plc_addr) for plc_addr, _ in plan]
+        stores = [(plc_addr, value) for plc_addr, value in plan if isinstance(plc_addr, str)]
+        old = [self.provider.read(plc_addr) for plc_addr, _ in stores]
         done = 0
         try:
-            for plc_addr, value in plan:
+            for plc_addr, value in stores:
                 self.provider.write(plc_addr, value)
                 done += 1
         except Exception:
-            for (plc_addr, _), previous in zip(plan[:done], old[:done], strict=True):
+            for (plc_addr, _), previous in zip(stores[:done], old[:done], strict=True):
                 try:
                     self.provider.write(plc_addr, previous)
                 except Exception:
                     pass
             return ExcCodes.DEVICE_FAILURE
+        for reg_addr, value in plan:
+            if isinstance(reg_addr, int):
+                self.spare_words[reg_addr] = int(value)
         return None
 
     # --- Coil helpers ---
 
-    def _get_coils(self, address: int, count: int) -> list[bool]:
+    def _get_coils(self, address: int, count: int) -> list[bool] | ExcCodes:
         result: list[bool] = []
         for i in range(count):
             mapped = modbus_to_plc(address + i, is_coil=True)
             if mapped is None:
+                # A CLICK reads a gap between X or Y slots as OFF and refuses the rest.
+                if not _in_sparse_coil_span(address + i):
+                    return ExcCodes.ILLEGAL_ADDRESS
                 result.append(False)
             else:
                 bank, index = mapped
@@ -230,18 +253,16 @@ class _ClickDeviceContext(ModbusDeviceContext):
                 result.append(bool(val))
         return result
 
-    def _plan_coils(
-        self, address: int, values: list[int] | list[bool]
-    ) -> list[tuple[str, PlcValue]] | ExcCodes:
+    def _plan_coils(self, address: int, values: list[int] | list[bool]) -> list[_Store] | ExcCodes:
         if not 1 <= len(values) <= MAX_WRITE_COILS:
             return ExcCodes.ILLEGAL_VALUE
-        plan: list[tuple[str, PlcValue]] = []
+        plan: list[_Store] = []
         for i, val in enumerate(values):
             mapped = modbus_to_plc(address + i, is_coil=True)
             if mapped is None:
-                if len(values) == 1:
+                if len(values) == 1 or not _in_sparse_coil_span(address + i):
                     return ExcCodes.ILLEGAL_ADDRESS
-                continue  # FC 15: skip gaps silently
+                continue  # FC 15 skips a gap between X or Y slots.
             bank, index = mapped
             if not _is_address_writable(bank, index):
                 return ExcCodes.ILLEGAL_ADDRESS
@@ -250,18 +271,20 @@ class _ClickDeviceContext(ModbusDeviceContext):
 
     # --- Register helpers ---
 
-    def _get_registers(self, address: int, count: int) -> list[int]:
+    def _get_registers(self, address: int, count: int) -> list[int] | ExcCodes:
         result: list[int] = []
         i = 0
         while i < count:
             reg_addr = address + i
             mapped = modbus_to_plc_register(reg_addr)
             if mapped is None:
-                result.append(0)
-                i += 1
-                continue
+                return ExcCodes.ILLEGAL_ADDRESS
 
             bank, index, reg_position = mapped
+            if _is_unnamed_word(bank, index):
+                result.append(self.spare_words.get(reg_addr, 0))
+                i += 1
+                continue
             mapping = MODBUS_MAPPINGS[bank]
             plc_addr = _format_plc_address(bank, index)
 
@@ -316,11 +339,11 @@ class _ClickDeviceContext(ModbusDeviceContext):
 
     def _plan_registers(
         self, address: int, values: list[int] | list[bool]
-    ) -> list[tuple[str, PlcValue]] | ExcCodes:
+    ) -> list[_Store] | ExcCodes:
         """Resolve a register write into (address, value) stores without storing any."""
         if not 1 <= len(values) <= MAX_WRITE_REGISTERS:
             return ExcCodes.ILLEGAL_VALUE
-        plan: list[tuple[str, PlcValue]] = []
+        plan: list[_Store] = []
         i = 0
         while i < len(values):
             mapped = modbus_to_plc_register(address + i)
@@ -337,6 +360,11 @@ class _ClickDeviceContext(ModbusDeviceContext):
             reg_val = int(values[i])
             if not 0 <= reg_val <= 0xFFFF:
                 return ExcCodes.ILLEGAL_VALUE
+
+            if _is_unnamed_word(bank, index):
+                plan.append((address + i, reg_val))
+                i += 1
+                continue
 
             if bank == "TXT":
                 txt_base_index = (index - 1) // 2 * 2 + 1
@@ -362,6 +390,8 @@ class _ClickDeviceContext(ModbusDeviceContext):
                 i += 1
 
         for plc_addr, value in plan:
+            if not isinstance(plc_addr, str):
+                continue
             bank, index = parse_address(plc_addr)
             try:
                 assert_runtime_value(BANKS[bank].data_type, value, bank=bank, index=index)
@@ -395,6 +425,7 @@ class ClickServer:
         self.host = host
         self.port = port
         self._server: ModbusTcpServer | None = None
+        self._spare_words: dict[int, int] = {}
 
     @staticmethod
     def _format_peer(connection: Any) -> str:
@@ -445,7 +476,7 @@ class ClickServer:
 
     async def start(self) -> None:
         """Start the Modbus TCP server."""
-        context = _ClickDeviceContext(self.provider)
+        context = _ClickDeviceContext(self.provider, self._spare_words)
         server_context = ModbusServerContext(devices=context, single=True)
         self._server = ModbusTcpServer(
             context=server_context,
@@ -462,7 +493,7 @@ class ClickServer:
 
     async def serve_forever(self) -> None:
         """Start the server and block until stopped."""
-        context = _ClickDeviceContext(self.provider)
+        context = _ClickDeviceContext(self.provider, self._spare_words)
         server_context = ModbusServerContext(devices=context, single=True)
         self._server = ModbusTcpServer(
             context=server_context,

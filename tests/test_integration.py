@@ -386,3 +386,27 @@ class TestRawRequestLimits:
         assert bad == bytes([0x85, 3])
         assert provider.get("C1") is True
         assert good[0] == 5
+
+
+class TestRawAnswers:
+    async def test_read_past_ds_answers_exception_02(self, plc_fixture):
+        plc, _provider = plc_fixture
+        response = await plc._client.read_holding_registers(4499, count=2)
+        assert response.isError()
+        assert response.exception_code == 2
+
+    async def test_unnamed_yd_word_survives_a_server_restart(self):
+        provider = MemoryDataProvider()
+        server = ClickServer(provider, port=TEST_PORT)
+        yd_base, _ = plc_to_modbus("YD", 0)
+        for step in ("write", "read"):
+            async with server:
+                await asyncio.sleep(0.1)
+                async with ClickClient("localhost", TEST_PORT) as plc:
+                    if step == "write":
+                        response = await plc._client.write_register(yd_base + 3, 0x8000)
+                        assert not response.isError()
+                    else:
+                        response = await plc._client.read_holding_registers(yd_base + 2, count=2)
+                        assert response.registers == [0, 0x8000]
+        assert provider.get("YD1") == 0

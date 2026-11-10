@@ -279,10 +279,12 @@ class TestContextCoilReads:
         assert result == [True]
 
     def test_read_unmapped_coil(self):
+        from pymodbus.constants import ExcCodes
+
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.getValues(1, 10000, 1)
-        assert result == [False]
+        assert result == ExcCodes.ILLEGAL_ADDRESS
 
     def test_read_sparse_gap(self):
         """Coil 48 is a sparse gap -> False."""
@@ -336,10 +338,12 @@ class TestContextRegisterReads:
         assert result == [0xABCD]
 
     def test_read_unmapped_register(self):
+        from pymodbus.constants import ExcCodes
+
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.getValues(3, 5000, 1)
-        assert result == [0]
+        assert result == ExcCodes.ILLEGAL_ADDRESS
 
     def test_read_ds_negative(self):
         p = MemoryDataProvider()
@@ -694,7 +698,7 @@ class TestRequestLimits:
     def test_read_counts_at_the_limits_are_served(self):
         ctx = _ClickDeviceContext(MemoryDataProvider())
         assert len(cast(list, ctx.getValues(3, 0, 125))) == 125
-        assert len(cast(list, ctx.getValues(1, 0, 2000))) == 2000
+        assert len(cast(list, ctx.getValues(1, 16384, 2000))) == 2000
 
     def test_fc15_over_1968_coils_is_illegal_value(self):
         from pymodbus.constants import ExcCodes
@@ -712,3 +716,72 @@ class TestRequestLimits:
         addr, _ = plc_to_modbus("DS", 1)
         assert ctx.setValues(16, addr, [1] * 124) == ExcCodes.ILLEGAL_VALUE
         assert p.get("DS1") == 0
+
+
+class TestAnswersAsAClick:
+    """What a CLICK answered to raw requests on 2026-11-10 (pyrung's modbus_raw part)."""
+
+    @pytest.mark.parametrize(
+        ("func_code", "address", "count"),
+        [
+            (3, 4500, 1),  # the register past DS4500
+            (3, 4499, 2),  # DS4500 and the register past it
+            (1, 18384, 1),  # C2001
+            (3, 18384, 2),  # DD1001
+        ],
+    )
+    def test_read_past_a_bank_is_illegal_address(self, func_code, address, count):
+        from pymodbus.constants import ExcCodes
+
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert ctx.getValues(func_code, address, count) == ExcCodes.ILLEGAL_ADDRESS
+
+    def test_read_in_the_y_gap_is_off(self):
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        # Between Y116 and Y201.
+        assert ctx.getValues(1, 8192 + 48, 1) == [False]
+
+    def test_fc15_across_the_c_end_stores_nothing(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("C", 1999)
+        assert ctx.setValues(15, addr, [True] * 4) == ExcCodes.ILLEGAL_ADDRESS
+        assert p.get("C1999") is False
+        assert p.get("C2000") is False
+
+    def test_fc15_over_the_y_gap_skips_it(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        addr, _ = plc_to_modbus("Y", 116)
+        assert ctx.setValues(15, addr, [True] * 18) is None
+        assert p.get("Y116") is True
+        assert p.get("Y201") is True
+
+    def test_unnamed_yd_register_keeps_its_own_word(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        yd_base, _ = plc_to_modbus("YD", 0)
+        assert ctx.setValues(6, yd_base + 3, [0x8000]) is None
+        assert p.get("YD1") == 0
+        assert ctx.getValues(3, yd_base + 2, 2) == [0, 0x8000]
+
+    def test_unnamed_yd_registers_in_a_range_write(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        yd_base, _ = plc_to_modbus("YD", 0)
+        assert ctx.setValues(16, yd_base + 2, [1, 2, 3]) is None
+        assert p.get("YD1") == 1
+        assert p.get("YD2") == 3
+        assert ctx.getValues(3, yd_base + 2, 3) == [1, 2, 3]
+
+    def test_unnamed_xd_register_reads_0_and_refuses_a_write(self):
+        from pymodbus.constants import ExcCodes
+
+        p = MemoryDataProvider()
+        p.set("XD1", 0x1234)
+        ctx = _ClickDeviceContext(p)
+        xd_base, _ = plc_to_modbus("XD", 0)
+        assert ctx.getValues(4, xd_base + 2, 2) == [0x1234, 0]
+        assert ctx.setValues(6, xd_base + 3, [5]) == ExcCodes.ILLEGAL_ADDRESS
