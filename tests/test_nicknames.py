@@ -268,3 +268,54 @@ class TestRoundTrip:
         assert ds_records[0].nickname == "Speed"
         assert ds_records[0].comment == "Motor speed"
         assert ds_records[0].retentive is True
+
+
+class TestCsvFormat:
+    """Byte-level form of the CSV, as CLICK writes it."""
+
+    HEADER = "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment"
+
+    def test_read_accepts_utf8_bom(self, tmp_path):
+        csv_path = tmp_path / "bom.csv"
+        csv_path.write_bytes(
+            b"\xef\xbb\xbf" + (self.HEADER + '\r\nDS1,INT,"Temp",100,Yes,""\r\n').encode()
+        )
+        records = read_csv(csv_path)
+        assert records[get_addr_key("DS", 1)].nickname == "Temp"
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "Address,Data Type,Initial Value,Retentive,Address Comment",
+            "Data Type,Nickname,Initial Value,Retentive,Address Comment",
+            "DS1,INT,100",
+        ],
+    )
+    def test_read_missing_required_column_raises(self, tmp_path, header):
+        csv_path = tmp_path / "bad.csv"
+        csv_path.write_text(header + "\nDS1,INT,100\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="missing required column"):
+            read_csv(csv_path)
+
+    def test_write_uses_crlf(self, tmp_path):
+        csv_path = tmp_path / "out.csv"
+        record = AddressRecord(memory_type="DS", address=1, nickname="Temp", data_type=DataType.INT)
+        write_csv(csv_path, [record])
+        raw = csv_path.read_bytes()
+        assert raw.count(b"\r\n") == 2
+        assert raw.count(b"\n") == 2
+
+    @pytest.mark.parametrize("initial", [",", '"', 'a,"b"', "a b", " "])
+    def test_txt_initial_value_round_trips(self, tmp_path, initial):
+        csv_path = tmp_path / "txt.csv"
+        record = AddressRecord(
+            memory_type="TXT",
+            address=5,
+            nickname="Msg",
+            initial_value=initial,
+            data_type=DataType.TXT,
+        )
+        write_csv(csv_path, [record])
+        loaded = read_csv(csv_path)[get_addr_key("TXT", 5)]
+        assert loaded.initial_value == initial
+        assert loaded.nickname == "Msg"

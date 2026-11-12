@@ -797,3 +797,23 @@ def test_set_row_new_value_from_display_takes_chr_200():
     row = DataViewRecord.from_address("txt1")
     DataViewFile.set_row_new_value_from_display(row, chr(200))
     assert row.new_value == chr(200)
+
+
+class TestCdvBytes:
+    def _clicks_file(self, path):
+        lines = ["-1,0,0", f"DS1,{_CdvStorageCode.INT},100"] + [",0"] * 99
+        path.write_bytes(b"\xff\xfe" + ("\r\n".join(lines) + "\r\n").encode("utf-16-le"))
+
+    def test_edited_save_is_utf16le_bom_crlf(self, tmp_path):
+        cdv = tmp_path / "test.cdv"
+        self._clicks_file(cdv)
+
+        dataview = DataViewFile.load(cdv)
+        dataview.rows[1] = DataViewRecord(address="DS2", data_type=DataType.INT)
+        dataview.save()
+
+        raw = cdv.read_bytes()
+        assert raw[:2] == b"\xff\xfe"
+        text = raw[2:].decode("utf-16-le")
+        assert text.count("\n") == text.count("\r\n") == 101
+        assert text.startswith(f"-1,0,0\r\nDS1,{_CdvStorageCode.INT},100\r\nDS2,")

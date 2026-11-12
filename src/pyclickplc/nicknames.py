@@ -209,7 +209,11 @@ def read_csv(path: str | Path) -> AddressRecordMap:
     """Read a user-format CSV file into AddressRecords.
 
     The user CSV has columns: Address, Data Type, Nickname, Initial Value,
-    Retentive, Address Comment.
+    Retentive, Address Comment. A UTF-8 byte order mark is accepted.
+
+    Raises:
+        ValueError: If the Address or Nickname column is missing, or a
+            nickname repeats.
 
     Args:
         path: Path to the CSV file.
@@ -220,8 +224,13 @@ def read_csv(path: str | Path) -> AddressRecordMap:
     result = AddressRecordMap()
     seen_nicknames: dict[str, tuple[str, str, int]] = {}
 
-    with open(path, newline="", encoding="utf-8") as csvfile:
+    with open(path, newline="", encoding="utf-8-sig") as csvfile:
         reader = csv.DictReader(csvfile)
+        missing = [
+            name for name in ("Address", "Nickname") if name not in (reader.fieldnames or [])
+        ]
+        if missing:
+            raise ValueError(f"CSV is missing required column(s): {', '.join(missing)}")
 
         for row in reader:
             addr_str = row.get("Address", "").strip()
@@ -249,7 +258,9 @@ def read_csv(path: str | Path) -> AddressRecordMap:
             # Get other fields
             nickname = row.get("Nickname", "").strip()
             comment = row.get("Address Comment", "").strip()
-            initial_value = row.get("Initial Value", "").strip()
+            initial_value = row.get("Initial Value", "")
+            if data_type != DataType.TXT:
+                initial_value = initial_value.strip()
 
             if nickname:
                 key = nickname.lower()
@@ -316,8 +327,8 @@ def write_csv(
     )
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
-        # Write header manually (matching CLICK format)
-        csvfile.write(",".join(CSV_COLUMNS) + "\n")
+        # Write header manually (matching CLICK format); lines end in CRLF
+        csvfile.write(",".join(CSV_COLUMNS) + "\r\n")
 
         def format_quoted(text: str | None) -> str:
             if text is None:
@@ -331,6 +342,8 @@ def write_csv(
             # Format initial value: use "0" for numeric types when empty, "" for TXT
             if record.initial_value:
                 initial_value_str = str(record.initial_value)
+                if record.data_type == DataType.TXT:
+                    initial_value_str = format_quoted(initial_value_str)
             elif record.data_type == DataType.TXT:
                 initial_value_str = ""
             else:
@@ -345,6 +358,6 @@ def write_csv(
                 format_quoted(record.comment),
             ]
 
-            csvfile.write(",".join(line_parts) + "\n")
+            csvfile.write(",".join(line_parts) + "\r\n")
 
     return len(rows_to_write)
