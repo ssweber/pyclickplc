@@ -209,7 +209,8 @@ def read_csv(path: str | Path) -> AddressRecordMap:
     """Read a user-format CSV file into AddressRecords.
 
     The user CSV has columns: Address, Data Type, Nickname, Initial Value,
-    Retentive, Address Comment. A UTF-8 byte order mark is accepted.
+    Retentive, Address Comment. A UTF-8 byte order mark is accepted and a Text
+    initial value keeps its spaces.
 
     Raises:
         ValueError: If the Address or Nickname column is missing, or a
@@ -301,7 +302,8 @@ def write_csv(
 
     Only records with content (nickname, comment, non-default initial value
     or retentive) are written. Records are sorted by memory type order then
-    address.
+    address. Lines end in CRLF and a Text initial value is quoted, as in
+    CLICK's export.
 
     Args:
         path: Path to write the CSV file.

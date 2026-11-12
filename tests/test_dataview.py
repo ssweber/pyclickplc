@@ -1,5 +1,7 @@
 """Tests for pyclickplc.dataview - DataView model and CDV file I/O."""
 
+from pathlib import Path
+
 import pytest
 
 from pyclickplc.banks import DataType
@@ -817,3 +819,12 @@ class TestCdvBytes:
         text = raw[2:].decode("utf-16-le")
         assert text.count("\n") == text.count("\r\n") == 101
         assert text.startswith(f"-1,0,0\r\nDS1,{_CdvStorageCode.INT},100\r\nDS2,")
+
+    def test_clicks_fixture_rewrites_to_same_bytes(self, tmp_path):
+        fixture = Path(__file__).parent / "fixtures" / "DataView1.cdv"
+        original = fixture.read_bytes()
+        dataview = DataViewFile.load(fixture)
+        dataview._original_bytes = None  # skip the unchanged-file shortcut
+        out = tmp_path / "out.cdv"
+        dataview.save(out)
+        assert out.read_bytes() == original
