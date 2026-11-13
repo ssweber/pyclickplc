@@ -4,11 +4,17 @@
 
 ### Fixed
 
-- A saved DataView is UTF-16 LE with a byte order mark and CRLF line ends, as CLICK writes it.
-- `read_csv` reads a UTF-8 file with a byte order mark, and raises `ValueError` when the Address or Nickname column is missing (it returned no rows).
-- `read_csv` keeps the spaces of a Text initial value.
-- `write_csv` quotes a Text initial value, so a comma or quote round-trips, and ends lines with CRLF as CLICK's export does.
-  - Check in CLICK: import a CSV with a Text initial value holding a comma or quote, and confirm it reads back unchanged.
+- A saved DataView `.cdv` is now written as CLICK writes it: UTF-16 LE with a byte order mark and CRLF line ends, on any platform.
+- `write_csv` now writes a nickname CSV as CLICK's export does: CRLF line ends and a quoted Text initial value, so a comma or quote in it round-trips.
+- `read_csv` reads a UTF-8 CSV that starts with a byte order mark.
+- `read_csv` keeps the leading and trailing spaces of a Text initial value.
+
+### Behaviour changes
+
+- `read_csv` raises `ValueError` when the Address or Nickname column is missing (it returned no rows).
+  - Catch `ValueError` where you read a CSV that may not be a CLICK nickname export.
+- The bytes of a saved `.cdv` and of `write_csv` output change: CRLF line ends, and a quoted Text initial value in the CSV.
+  - Regenerate any saved files your tests compare this output against.
 
 ## 0.5.1 - 2026-11-10
 
