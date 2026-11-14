@@ -805,9 +805,7 @@ class ClickClient:
         if bank_upper not in MODBUS_MAPPINGS:
             raise AttributeError(f"'{bank}' is not a supported address type.")
         if bank_upper not in self._accessors:
-            self._accessors[bank_upper] = cast(
-                AddressAccessor[PlcValue], AddressAccessor(self, bank_upper)
-            )
+            self._accessors[bank_upper] = AddressAccessor(self, bank_upper)
         return self._accessors[bank_upper]
 
     @overload
