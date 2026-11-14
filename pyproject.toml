@@ -91,7 +91,7 @@ bump = true
 packages = ["src/pyclickplc"]
 
 [tool.uv]
-required-version = ">=0.11.29"
+required-version = ">=0.13.8"
 exclude-newer = "7 days"
 exclude-newer-package = { ty = "0 days" }
 
@@ -152,9 +152,9 @@ exclude = [
 
 [tool.ty.rules]
 # Configure rules as needed. By default ty is strict.
-# Note: unresolved-import is ignored because ty has issues with src-layout
+# Note: import-not-found is ignored because ty has issues with src-layout
 # projects and relative imports. The code runs correctly with Python.
-unresolved-import = "ignore"
+import-not-found = "ignore"
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]
