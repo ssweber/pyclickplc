@@ -27,12 +27,8 @@ EXPECTED_AUTHORED_SOURCES = {
     PurePosixPath("guides/server.md"),
     PurePosixPath("guides/files.md"),
     PurePosixPath("guides/examples.md"),
-    PurePosixPath("releases/v0.2.0.md"),
-    PurePosixPath("releases/v0.3.0.md"),
 }
-EXPECTED_SITEMAP_SOURCES = (EXPECTED_AUTHORED_SOURCES | EXPECTED_REFERENCE_SOURCES) - {
-    PurePosixPath("releases/v0.3.0.md")
-}
+EXPECTED_SITEMAP_SOURCES = EXPECTED_AUTHORED_SOURCES | EXPECTED_REFERENCE_SOURCES
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 

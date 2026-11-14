@@ -47,9 +47,12 @@ Read and write by address string when the bank isn't known at code time:
 
 ```python
 await plc.addr.write("DS1", 100)
-await plc.addr.write("df1", 3.14)  # case-insensitive
-value = await plc.addr.read("C1")
+await plc.addr.write("df1", 3.14)       # case-insensitive
+values = await plc.addr.read("C1-C3")  # {"C1": False, "C2": False, "C3": False}
+c1 = (await plc.addr.read("C1"))["C1"]
 ```
+
+`addr.read` returns a `ModbusResponse` even for one address.
 
 ## Tag interface
 

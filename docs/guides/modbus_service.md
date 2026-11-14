@@ -40,7 +40,7 @@ The next sync call (`connect`, `read`, `write`, etc.) restarts the loop automati
 
 `on_values` and `on_state` callbacks run on the service thread, not the main thread. GUI apps should marshal callback data to the UI thread before updating widgets.
 
-Do not call `connect`, `disconnect`, `read`, `write`, or poll config methods from inside a callback — this will deadlock.
+Calling `connect`, `disconnect`, `read`, `write`, or a poll method from inside a callback raises `RuntimeError`.
 
 ## Error handling
 

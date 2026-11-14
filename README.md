@@ -1,6 +1,6 @@
 # pyclickplc
 
-**Talk to AutomationDirect CLICK PLCs from Python.** Async Modbus TCP client and server, the CLICK address model, and nickname CSV and DataView CDV file I/O.
+**Talk to AutomationDirect CLICK PLCs from Python.** Async Modbus TCP client and server, the CLICK address model, and readers and writers for CLICK's files: nickname CSV, DataView CDV, PLC data dumps and Project.ini.
 
 It's the wire under [pyrung](https://pyrung.com/pyrung/) and [ClickNick](https://pyrung.com/clicknick/), and it stands on its own as a Modbus client for any CLICK.
 
@@ -30,7 +30,7 @@ async def main():
         await plc.ds.write(1, 100)
         ds1 = await plc.ds[1]          # int
         await plc.y.write(1, True)     # bool
-        df1 = await plc.addr.read("DF1")  # float
+        values = await plc.addr.read("DF1-DF2")  # {"DF1": 0.0, "DF2": 0.0}
 
 asyncio.run(main())
 ```
@@ -45,7 +45,7 @@ The [quickstart](https://pyrung.com/pyclickplc/getting-started/quickstart/) uses
 
 **[Modbus server](https://pyrung.com/pyclickplc/guides/server/)** — `ClickServer` simulates a CLICK PLC over Modbus TCP. Use it for development and testing without hardware.
 
-**[File I/O](https://pyrung.com/pyclickplc/guides/files/)** — Read and write CLICK nickname CSV and DataView CDV files. Compatible with CLICK programming software and [ClickNick](https://pyrung.com/clicknick/).
+**[File I/O](https://pyrung.com/pyclickplc/guides/files/)** — Read and write nickname CSV and DataView CDV files and PLC data dumps as CLICK writes them, and read installed modules and I/O assignments from a project's Project.ini.
 
 ## Learn more
 
@@ -54,8 +54,8 @@ The [quickstart](https://pyrung.com/pyclickplc/getting-started/quickstart/) uses
 | [Quickstart](https://pyrung.com/pyclickplc/getting-started/quickstart/) | Connect, read/write, simulate a traffic light |
 | [Client guide](https://pyrung.com/pyclickplc/guides/client/) | Bank accessors, address strings, tags |
 | [Types & values](https://pyrung.com/pyclickplc/guides/types/) | Native Python types per bank family |
-| [Addressing](https://pyrung.com/pyclickplc/guides/addressing/) | Normalization, sparse X/Y, XD/YD display indexing |
-| [File I/O](https://pyrung.com/pyclickplc/guides/files/) | Nickname CSV and DataView CDV |
+| [Addressing](https://pyrung.com/pyclickplc/guides/addressing/) | Normalization, sparse X/Y, XD/YD words |
+| [File I/O](https://pyrung.com/pyclickplc/guides/files/) | Nickname CSV, DataView CDV, PLC data dumps, Project.ini |
 | [Examples](https://pyrung.com/pyclickplc/guides/examples/) | Runnable scripts |
 
 ## Development
@@ -64,7 +64,7 @@ The [quickstart](https://pyrung.com/pyclickplc/getting-started/quickstart/) uses
 uv sync --all-extras --dev    # Install dependencies
 make test                     # Run tests (uv run pytest)
 make lint                     # Lint (codespell, ruff, ty)
-make docs-build               # Build docs (mkdocs + mkdocstrings)
+make docs-build               # Build docs (zensical + mkdocstrings)
 make docs-serve               # Serve docs locally
-make                          # All of the above
+make                          # Install, lint and test
 ```
