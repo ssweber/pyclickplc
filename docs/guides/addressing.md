@@ -24,46 +24,36 @@ X/Y addresses are zero-padded to 3 digits (`X001`). All other banks use no paddi
 `X` and `Y` are hardware I/O banks tied to physical module slots. Not every numeric value is a valid address — for example, `X017` doesn't exist because slots have gaps.
 
 ```python
-from pyclickplc import normalize_address
+from pyclickplc import normalize_address, parse_address
 
-normalize_address("X001")  # "X001" — valid
-normalize_address("X017")  # ValueError — no such address
+normalize_address("X001")  # "X001"
+normalize_address("X017")  # None — no such address
+parse_address("X017")      # ValueError
 ```
 
-Use `normalize_address` or `parse_address` to validate before building dynamic address lists.
+Check an address you build at run time with `normalize_address` (returns `None`) or `parse_address` (raises).
 
-## XD and YD display indexing
+## XD and YD words
 
-`XD` and `YD` are 16-bit word views of the X/Y I/O banks. They use display indices `0` through `8`:
+`XD` and `YD` read one I/O position of `X` or `Y` as a 16-bit word:
 
-| Display index | What it reads |
+| Address | Points |
 |---|---|
-| `XD0` | X001–X008 as a 16-bit word (lower byte) |
-| `XD1` | X101–X108 as a 16-bit word (lower byte) |
+| `XD0` | X001–X016 (CPU, or CLICK PLUS slot 0) |
+| `XD0u` | X021–X036 (CLICK PLUS slot 1) |
+| `XD1` | X101–X116 (expansion 1) |
 | ... | ... |
-| `XD8` | X801–X808 as a 16-bit word (lower byte) |
+| `XD8` | X801–X816 (expansion 8) |
 
-Bank accessors use display indexing by default:
-
-```python
-xd0 = await plc.xd[0]  # display index 0
-values = await plc.xd.read(0, 3)  # display indices 0, 1, 2
-```
-
-## XD0u and YD0u upper-byte aliases
-
-Each XD/YD display index has a lower byte (default) and an upper byte. The upper byte covers inputs X009–X016 for slot 0, X109–X116 for slot 1, and so on.
-
-Access the upper byte with the `u` suffix:
+`YD` follows the same layout over `Y`. Bank accessors take the number after `XD`; `XD0u` has its own accessor:
 
 ```python
-normalize_address("XD0u")  # "XD0u"
-parse_address("XD0u")      # ("XD", 1)  — MDB index 1
-
-upper = await plc.xd0u.read()
+xd0 = await plc.xd[0]             # XD0
+values = await plc.xd.read(0, 2)  # XD0, XD1, XD2
+upper = await plc.xd0u.read()     # {"XD0u": 0}
 ```
 
-Upper-byte addresses cannot be mixed with regular XD/YD in range reads.
+`XD0u` and `YD0u` are the only `u` addresses, and a range read cannot include them.
 
 ## See also
 

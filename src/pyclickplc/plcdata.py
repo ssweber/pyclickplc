@@ -1,8 +1,8 @@
 """Read / write Click PLC 'Read Data from PLC' CSV dump files.
 
 The Click Programming Software can export a full snapshot of PLC memory
-via Data > Read Data from PLC > Save to File, and reload it via
-Data > Write Data into PLC > Load from File.  This module handles both
+via PLC > Read Data from PLC... > All > Save, and reload it via
+PLC > Write Data into PLC > File Select.  This module handles both
 directions.
 """
 
@@ -80,7 +80,7 @@ def read_plc_data(
 
     Args:
         path: Path to the CSV file exported from Click Programming Software
-              via Data > Read Data from PLC > Save to File.
+              via PLC > Read Data from PLC... > All > Save.
         skip_default: If *True*, omit addresses whose value equals the bank
               default (``False`` for bits, ``0`` for ints, ``0.0`` for floats,
               ``""`` for text).
@@ -182,7 +182,7 @@ def write_plc_data(
     *,
     banks: Iterable[str] | None = None,
 ) -> None:
-    """Write a Click PLC data CSV that can be loaded via Write Data into PLC.
+    """Write a Click PLC data CSV to load via PLC > Write Data into PLC > File Select.
 
     Args:
         path: Output file path.

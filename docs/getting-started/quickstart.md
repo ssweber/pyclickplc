@@ -37,8 +37,8 @@ async def main():
 
             # Read/write by address string
             await plc.addr.write("C1", False)
-            c1 = await plc.addr.read("C1")
-            print(f"C1 = {c1}")  # False
+            values = await plc.addr.read("C1")
+            print(values["C1"])  # False
 
 asyncio.run(main())
 ```
@@ -54,9 +54,9 @@ import asyncio
 from pyclickplc import ClickClient, ClickServer, MemoryDataProvider
 
 STATES = {
-    "red":    {"C1": True,  "C2": False, "C3": False, "TXT1": "RED"},
-    "green":  {"C1": False, "C2": False, "C3": True,  "TXT1": "GREEN"},
-    "yellow": {"C1": False, "C2": True,  "C3": False, "TXT1": "YELLOW"},
+    "red":    {"C1": True,  "C2": False, "C3": False, "TXT1": "R"},
+    "green":  {"C1": False, "C2": False, "C3": True,  "TXT1": "G"},
+    "yellow": {"C1": False, "C2": True,  "C3": False, "TXT1": "Y"},
 }
 CYCLE = ["red", "green", "yellow"]
 DURATIONS = {"red": 3, "green": 3, "yellow": 1}
@@ -82,11 +82,9 @@ async def main():
         async with ClickClient("localhost", 5020) as plc:
             for _ in range(5):
                 await asyncio.sleep(2)
-                txt = await plc.addr.read("TXT1")
-                c1 = await plc.addr.read("C1")
-                c2 = await plc.addr.read("C2")
-                c3 = await plc.addr.read("C3")
-                print(f"  Client sees: {txt}  (R={c1} Y={c2} G={c3})")
+                state = await plc.txt[1]
+                lights = await plc.addr.read("C1-C3")
+                print(f"  Client sees: {state}  (R={lights['C1']} Y={lights['C2']} G={lights['C3']})")
 
 asyncio.run(main())
 ```
@@ -126,5 +124,5 @@ The CSV file uses the same format as CLICK programming software's nickname expor
 
 - [Client guide](../guides/client.md) — bank accessors, string addresses, and tag-based access
 - [Types & values](../guides/types.md) — what Python types each bank returns
-- [Addressing](../guides/addressing.md) — normalization, sparse X/Y ranges, XD/YD display indexing
+- [Addressing](../guides/addressing.md) — normalization, sparse X/Y ranges, XD/YD words
 - [Examples](../guides/examples.md) — full runnable scripts

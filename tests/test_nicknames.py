@@ -1,5 +1,7 @@
 """Tests for pyclickplc.nicknames — CSV read/write for address data."""
 
+from pathlib import Path
+
 import pytest
 
 from pyclickplc.addresses import AddressRecord, get_addr_key
@@ -268,3 +270,129 @@ class TestRoundTrip:
         assert ds_records[0].nickname == "Speed"
         assert ds_records[0].comment == "Motor speed"
         assert ds_records[0].retentive is True
+
+
+class TestCsvFormat:
+    """Byte-level form of the CSV, as CLICK writes it."""
+
+    HEADER = "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment"
+
+    def test_read_accepts_utf8_bom(self, tmp_path):
+        csv_path = tmp_path / "bom.csv"
+        csv_path.write_bytes(
+            b"\xef\xbb\xbf" + (self.HEADER + '\r\nDS1,INT,"Temp",100,Yes,""\r\n').encode()
+        )
+        records = read_csv(csv_path)
+        assert records[get_addr_key("DS", 1)].nickname == "Temp"
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "Address,Data Type,Initial Value,Retentive,Address Comment",
+            "Data Type,Nickname,Initial Value,Retentive,Address Comment",
+            "DS1,INT,100",
+        ],
+    )
+    def test_read_missing_required_column_raises(self, tmp_path, header):
+        csv_path = tmp_path / "bad.csv"
+        csv_path.write_text(header + "\nDS1,INT,100\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="missing required column"):
+            read_csv(csv_path)
+
+    def test_write_uses_crlf(self, tmp_path):
+        csv_path = tmp_path / "out.csv"
+        record = AddressRecord(memory_type="DS", address=1, nickname="Temp", data_type=DataType.INT)
+        write_csv(csv_path, [record])
+        raw = csv_path.read_bytes()
+        assert raw.count(b"\r\n") == 2
+        assert raw.count(b"\n") == 2
+
+    @pytest.mark.parametrize("initial", [",", '"', 'a,"b"', "a b", " "])
+    def test_txt_initial_value_round_trips(self, tmp_path, initial):
+        csv_path = tmp_path / "txt.csv"
+        record = AddressRecord(
+            memory_type="TXT",
+            address=5,
+            nickname="Msg",
+            initial_value=initial,
+            data_type=DataType.TXT,
+        )
+        write_csv(csv_path, [record])
+        loaded = read_csv(csv_path)[get_addr_key("TXT", 5)]
+        assert loaded.initial_value == initial
+        assert loaded.nickname == "Msg"
+
+    @pytest.mark.parametrize(
+        ("initial", "cell"),
+        [("A", b"A"), (" ", b" "), ("", b""), (",", b'","'), ('"', b'""""')],
+    )
+    def test_txt_initial_value_bare_unless_comma_or_quote(self, tmp_path, initial, cell):
+        """CLICK writes Text bare, but imports a comma or double quote only quoted."""
+        csv_path = tmp_path / "txt.csv"
+        record = AddressRecord(
+            memory_type="TXT",
+            address=1,
+            nickname="Msg",
+            initial_value=initial,
+            data_type=DataType.TXT,
+            retentive=True,
+        )
+        write_csv(csv_path, [record])
+        assert csv_path.read_bytes().splitlines()[1] == b'TXT1,TEXT,"Msg",' + cell + b',Yes,""'
+
+    def test_every_text_character_round_trips(self, tmp_path):
+        csv_path = tmp_path / "txt.csv"
+        chars = [chr(code) for code in range(1, 256)]
+        records = [
+            AddressRecord(
+                memory_type="TXT",
+                address=i,
+                nickname=f"T{i}",
+                initial_value=char,
+                data_type=DataType.TXT,
+            )
+            for i, char in enumerate(chars, 1)
+        ]
+        write_csv(csv_path, records)
+        loaded = read_csv(csv_path)
+        assert [loaded[get_addr_key("TXT", i)].initial_value for i in range(1, 256)] == chars
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+class TestClickExports:
+    """Real CSV files exported by CLICK."""
+
+    def test_click_export_rewrites_to_the_same_bytes(self, tmp_path):
+        """Every bank and column type, as CLICK exported it."""
+        fixture = FIXTURES / "NicknameExport.csv"
+        out = tmp_path / "out.csv"
+        write_csv(out, read_csv(fixture))
+        assert out.read_bytes() == fixture.read_bytes()
+
+    def test_reads_clicks_bare_comma_and_quote(self):
+        """CLICK exports these Text values bare; no value is lost and no row shifts."""
+        records = read_csv(FIXTURES / "NicknameExportTxtSpecials.csv")
+        txt = [records[get_addr_key("TXT", i)] for i in range(1, 6)]
+        assert [(r.nickname, r.initial_value, r.retentive, r.comment) for r in txt] == [
+            ("Msg_Plain", "A", True, ""),
+            ("Msg_Comma", ",", False, ""),
+            ("Msg_Quote", '"', True, ""),
+            ("Msg_Space", " ", True, ""),
+            ("Msg_Empty", "", True, ""),
+        ]
+        assert records[get_addr_key("DF", 1)].comment == "Degrees, F"
+
+    def test_click_export_rewrites_with_comma_and_quote_importable(self, tmp_path):
+        """Only TXT2 and TXT3 change: CLICK cannot import its own bare form of them."""
+        fixture = FIXTURES / "NicknameExportTxtSpecials.csv"
+        out = tmp_path / "out.csv"
+        write_csv(out, read_csv(fixture))
+        expected = (
+            fixture.read_bytes()
+            .replace(b'TXT2,TEXT,"Msg_Comma",,,No,""', b'TXT2,TEXT,"Msg_Comma",",",No,""')
+            .replace(b'TXT3,TEXT,"Msg_Quote",",Yes,""', b'TXT3,TEXT,"Msg_Quote","""",Yes,""')
+        )
+        assert expected != fixture.read_bytes()
+        assert out.read_bytes() == expected

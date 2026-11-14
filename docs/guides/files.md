@@ -1,6 +1,6 @@
 # File I/O
 
-Read and write CLICK nickname CSV and DataView CDV files. These are the same formats that CLICK programming software and [ClickNick](https://github.com/ssweber/clicknick) use.
+Read and write the files CLICK programming software uses: nickname CSV, DataView CDV and PLC data dumps. Read the installed hardware from a project's `Project.ini`. [ClickNick](https://pyrung.com/clicknick/) uses the same formats.
 
 ## Nickname CSV
 
@@ -19,7 +19,7 @@ print(motor.nickname, motor.comment)
 
 # Look up by tag name (case-insensitive)
 tag = records.tag["TankTemp"]
-print(tag.address, tag.data_type)
+print(tag.display_address)  # DS1
 ```
 
 `read_csv` returns an `AddressRecordMap` with `.addr` and `.tag` lookup dicts.
@@ -48,7 +48,7 @@ print(f"Wrote {count} rows")
 from pyclickplc import make_address_record
 
 record = make_address_record("DS1", nickname="TankTemp")
-# AddressRecord(address="DS1", nickname="TankTemp", data_type=DataType.INT16, ...)
+# AddressRecord(address='DS1', data_type='INT', nickname='TankTemp')
 ```
 
 Address normalization, data type inference, and default values are handled automatically.
@@ -82,7 +82,7 @@ write_cdv("monitoring.cdv", [
 
 ## PLC Data Dump
 
-Read and write the CSV files produced by Data > Read Data from PLC > Save to File (and consumed by Data > Write Data into PLC > Load from File).
+Read and write the CSV files produced by PLC > Read Data from PLC... > All > Save (and loaded back by PLC > Write Data into PLC > File Select).
 
 ### Read
 
@@ -97,7 +97,7 @@ data = read_plc_data("data.csv")
 data = read_plc_data("data.csv", skip_default=True)
 ```
 
-Returns a flat dict mapping normalised addresses to native Python values (`bool` for bits, `int` for INT/INT2/HEX, `float` for FLOAT, `str` for TXT).
+Returns a flat dict mapping normalized addresses to native Python values (`bool` for bits, `int` for INT/INT2/HEX, `float` for FLOAT, `str` for TXT).
 
 ### Write
 
@@ -119,97 +119,57 @@ data["DS3"] = 42
 write_plc_data("to_plc.csv", data)
 ```
 
-## Address helpers
+## Project.ini
 
-Parse and normalize addresses without a client connection:
+A CLICK project folder keeps its hardware configuration in `Project.ini`. These readers don't need CLICK installed. Unknown hardware or a malformed record raises `ValueError`.
+
+### Installed modules
 
 ```python
-from pyclickplc import format_address_display, normalize_address, parse_address
+from pyclickplc import read_modules
 
-parse_address("X001")            # ("X", 1)
-normalize_address("x1")          # "X001"
-format_address_display("X", 1)   # "X001"
+modules = read_modules("Project.ini")
+if modules.cpu is not None:
+    print(modules.cpu.model)  # C2-01CPU-2
+
+for slot, module in modules.slots.items():
+    print(slot, module.model)  # 0 C2-14D1
+
+for position, module in modules.expansions.items():
+    print(position, module.model, module.discrete_inputs)  # 1 C0-08NE3 8
 ```
 
-See [Addressing](addressing.md) for normalization rules and edge cases.
+`slots` holds CLICK PLUS CPU slots 0 and 1; `expansions` holds positions 1 through 8. Empty positions are left out. Each `Module` gives its point counts: `discrete_inputs`, `discrete_outputs`, `analog_inputs` and `analog_outputs`.
+
+### Channel parameters
+
+```python
+from pyclickplc import read_channel_parameters
+
+channels = read_channel_parameters("Project.ini")
+print(channels.inputs)   # frozenset({'DF41', 'DF42', 'DF43', 'DF44'})
+print(channels.outputs)  # frozenset({'DF45'})
+```
+
+These are the DF addresses assigned to analog input and output channels. A project with no analog channels gives empty sets.
+
+### I/O layout
+
+```python
+from pyclickplc import read_io_layout
+
+for io in read_io_layout("Project.ini"):
+    print(io.location, io.position, io.module.model, io.inputs, io.analog_inputs)
+# cpu 0 C2-01CPU-2 () ()
+# slot 0 C2-14D1 ('X001', ..., 'X008') ()
+# slot 1 C2-08D2-6V ('X021', 'X022', 'X023', 'X024') ('DF41', 'DF42', 'DF43', 'DF44')
+# expansion 1 C0-08NE3 ('X101', ..., 'X108') ()
+```
+
+You get one `ModuleIO` per installed module, in physical order. `inputs` and `outputs` are its X and Y addresses. `analog_inputs` and `analog_outputs` are its channels' DF addresses, with `None` for a channel that has none.
 
 ## See also
 
 - [Quickstart](../getting-started/quickstart.md) — generate CSV and CDV files from scratch
 - [Client guide](client.md) — use tag names from a nickname CSV
-
-## Installed modules
-
-```python
-from pyclickplc.project import read_modules
-
-modules = read_modules("Project.ini")
-if modules.cpu is not None:
-    print(modules.cpu.model)
-
-for position, module in modules.expansions.items():
-    print(position, module.model, module.discrete_inputs, module.discrete_outputs)
-
-for slot, module in modules.slots.items():
-    print(slot, module.model, module.analog_inputs, module.analog_outputs)
-```
-
-`Modules` contains the CPU (or `None` if unspecified), CPU slots keyed by
-**0 and 1**, and expansions keyed by **1 through 8**. Empty positions are
-omitted. The result, its mappings, and its `Module` records are immutable.
-Power supplies are not included.
-
-Each `Module` has `module_id`, `model`, `discrete_inputs`, `discrete_outputs`,
-`analog_inputs`, and `analog_outputs`. These are hardware capacity counts;
-`read_channel_parameters()` returns the assigned DF addresses. Both readers
-share installed-module parsing and the same bundled hardware catalog.
-
-Zero means a known absence of that kind of I/O. Unknown module IDs raise
-`ValueError`; the reader does not guess their capabilities.
-
-`read_modules()` does not interpret channel settings, so it can read the
-hardware inventory even if a channel record is malformed. It ignores stale
-CPU slot entries that the installed CPU does not support. No CLICK
-installation is required.
-
-## Channel parameters
-
-```python
-from pyclickplc.project import read_channel_parameters
-
-channels = read_channel_parameters("Project.ini")
-print(channels.inputs)   # frozenset of DF addresses receiving analog input
-print(channels.outputs)  # frozenset of DF addresses driving analog output
-```
-
-Reads the assigned addresses for built-in CPU channels, CLICK PLUS CPU slots
-0 and 1, and expansion positions 1 through 8. The returned `ChannelParameters`
-is immutable. Scaling, electrical ranges, and discrete X/Y assignments are not
-included. CLICK does not need to be installed.
-
-The reader uses installed module IDs to distinguish input and output channels
-and ignores settings retained for removed or non-analog modules. It raises
-`ValueError` for unknown hardware or malformed channel data, and `OSError`
-for unreadable files. A project without assigned analog channels returns
-empty sets.
-
-## I/O layout
-
-```python
-from pyclickplc.project import read_io_layout
-
-for io in read_io_layout("Project.ini"):
-    print(io.location, io.position, io.module.model)
-    print(io.inputs, io.outputs)                 # ("X101", ...), ("Y101", ...)
-    print(io.analog_inputs, io.analog_outputs)   # ("DF1", None, ...) per channel
-```
-
-Returns one immutable `ModuleIO` per installed module in physical order: the
-CPU, CLICK PLUS slots 0 and 1, then expansions 1 through 8. Empty positions and
-power supplies are omitted.
-
-Discrete addresses follow position: built-in CPU points and slot 0 start at
-`X001`/`Y001`, slot 1 at `X021`/`Y021`, and expansion *n* at `Xn01`/`Yn01`.
-Analog tuples list each channel's assigned DF address in channel order, with
-`None` for an unassigned channel; they come from the same parsing as
-`read_channel_parameters()` and raise the same errors.
+- [Addressing](addressing.md) — parse and normalize addresses without a connection

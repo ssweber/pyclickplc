@@ -793,8 +793,8 @@ class DataViewFile:
                 lines.append(f"{row.address},{cdv_code}")
                 new_storage_tokens.append(None)
 
-        content = "\n".join(lines) + "\n"
-        encoded = content.encode("utf-16")
+        content = "\r\n".join(lines) + "\r\n"
+        encoded = b"\xff\xfe" + content.encode("utf-16-le")
         target.write_bytes(encoded)
         self.path = target
         self._original_bytes = encoded

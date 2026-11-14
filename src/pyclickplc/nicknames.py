@@ -7,6 +7,8 @@ Provides functions to read and write address data in CLICK software CSV format
 from __future__ import annotations
 
 import csv
+import io
+import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, TypeVar, cast, overload
@@ -16,6 +18,29 @@ from .banks import BANKS, DEFAULT_RETENTIVE, MEMORY_TYPE_BASES, MEMORY_TYPE_TO_D
 
 # CSV column names (matching CLICK software export format)
 CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive", "Address Comment"]
+
+# CLICK exports a Text initial value bare, even a comma or a double quote, which
+# breaks CSV parsing. The value is one character between the always-quoted
+# Nickname and Retentive, so such a row is found by position and requoted.
+_CLICK_RAW_TXT_ROW = re.compile(
+    r'^(?P<head>[^,\r\n]+,(?:TEXT|TXT),"(?:[^"\r\n]|"")*",)'
+    r'(?P<char>[,"])'
+    r'(?P<tail>,(?:Yes|No),"(?:[^"\r\n]|"")*")(?=\r?$)',
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def _requote_click_raw_txt(text: str) -> str:
+    """Quote a bare comma or double quote Text initial value in CLICK's export."""
+    if text.split("\n", 1)[0].rstrip("\r") != ",".join(CSV_COLUMNS):
+        return text
+
+    def requote(match: re.Match[str]) -> str:
+        char = match["char"].replace('"', '""')
+        return f'{match["head"]}"{char}"{match["tail"]}'
+
+    return _CLICK_RAW_TXT_ROW.sub(requote, text)
+
 
 # Data type string to code mapping
 DATA_TYPE_STR_TO_CODE: dict[str, int] = {
@@ -209,7 +234,13 @@ def read_csv(path: str | Path) -> AddressRecordMap:
     """Read a user-format CSV file into AddressRecords.
 
     The user CSV has columns: Address, Data Type, Nickname, Initial Value,
-    Retentive, Address Comment.
+    Retentive, Address Comment. A UTF-8 byte order mark is accepted and a Text
+    initial value keeps its spaces. A Text initial value may be quoted, or bare
+    as CLICK exports it, even when it is a comma or a double quote.
+
+    Raises:
+        ValueError: If the Address or Nickname column is missing, or a
+            nickname repeats.
 
     Args:
         path: Path to the CSV file.
@@ -220,64 +251,71 @@ def read_csv(path: str | Path) -> AddressRecordMap:
     result = AddressRecordMap()
     seen_nicknames: dict[str, tuple[str, str, int]] = {}
 
-    with open(path, newline="", encoding="utf-8") as csvfile:
-        reader = csv.DictReader(csvfile)
+    with open(path, newline="", encoding="utf-8-sig") as csvfile:
+        text = _requote_click_raw_txt(csvfile.read())
 
-        for row in reader:
-            addr_str = row.get("Address", "").strip()
-            if not addr_str:
-                continue
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    missing = [name for name in ("Address", "Nickname") if name not in (reader.fieldnames or [])]
+    if missing:
+        raise ValueError(f"CSV is missing required column(s): {', '.join(missing)}")
 
-            try:
-                mem_type, mdb_address = parse_address(addr_str)
-            except ValueError:
-                continue
+    for row in reader:
+        addr_str = row.get("Address", "").strip()
+        if not addr_str:
+            continue
 
-            if mem_type not in BANKS:
-                continue
+        try:
+            mem_type, mdb_address = parse_address(addr_str)
+        except ValueError:
+            continue
 
-            # Get data type (default based on memory type)
-            default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, 0)
-            data_type_str = row.get("Data Type", "").strip().upper()
-            data_type = DATA_TYPE_STR_TO_CODE.get(data_type_str, default_data_type)
+        if mem_type not in BANKS:
+            continue
 
-            # Get retentive
-            default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
-            retentive_str = row.get("Retentive", "").strip()
-            retentive = retentive_str.lower() == "yes" if retentive_str else default_retentive
+        # Get data type (default based on memory type)
+        default_data_type = MEMORY_TYPE_TO_DATA_TYPE.get(mem_type, 0)
+        data_type_str = row.get("Data Type", "").strip().upper()
+        data_type = DATA_TYPE_STR_TO_CODE.get(data_type_str, default_data_type)
 
-            # Get other fields
-            nickname = row.get("Nickname", "").strip()
-            comment = row.get("Address Comment", "").strip()
-            initial_value = row.get("Initial Value", "").strip()
+        # Get retentive
+        default_retentive = DEFAULT_RETENTIVE.get(mem_type, False)
+        retentive_str = row.get("Retentive", "").strip()
+        retentive = retentive_str.lower() == "yes" if retentive_str else default_retentive
 
-            if nickname:
-                key = nickname.lower()
-                # Allow duplicate nicknames for system addresses (SC/SD) —
-                # Click auto-populates these and may produce duplicates.
-                if key in seen_nicknames and mem_type not in {"SC", "SD"}:
-                    first_nickname, first_address, first_line = seen_nicknames[key]
-                    raise ValueError(
-                        "Case-insensitive duplicate nickname in CSV at "
-                        f"line {reader.line_num}: {nickname!r} at {addr_str} "
-                        f"conflicts with {first_nickname!r} at {first_address} "
-                        f"(line {first_line})."
-                    )
-                seen_nicknames[key] = (nickname, addr_str, reader.line_num)
+        # Get other fields
+        nickname = row.get("Nickname", "").strip()
+        comment = row.get("Address Comment", "").strip()
+        initial_value = row.get("Initial Value", "")
+        if data_type != DataType.TXT:
+            initial_value = initial_value.strip()
 
-            addr_key = get_addr_key(mem_type, mdb_address)
+        if nickname:
+            key = nickname.lower()
+            # Allow duplicate nicknames for system addresses (SC/SD) —
+            # Click auto-populates these and may produce duplicates.
+            if key in seen_nicknames and mem_type not in {"SC", "SD"}:
+                first_nickname, first_address, first_line = seen_nicknames[key]
+                raise ValueError(
+                    "Case-insensitive duplicate nickname in CSV at "
+                    f"line {reader.line_num}: {nickname!r} at {addr_str} "
+                    f"conflicts with {first_nickname!r} at {first_address} "
+                    f"(line {first_line})."
+                )
+            seen_nicknames[key] = (nickname, addr_str, reader.line_num)
 
-            record = AddressRecord(
-                memory_type=mem_type,
-                address=mdb_address,
-                nickname=nickname,
-                comment=comment,
-                initial_value=initial_value,
-                retentive=retentive,
-                data_type=data_type,
-            )
+        addr_key = get_addr_key(mem_type, mdb_address)
 
-            result[addr_key] = record
+        record = AddressRecord(
+            memory_type=mem_type,
+            address=mdb_address,
+            nickname=nickname,
+            comment=comment,
+            initial_value=initial_value,
+            retentive=retentive,
+            data_type=data_type,
+        )
+
+        result[addr_key] = record
 
     return result
 
@@ -290,7 +328,10 @@ def write_csv(
 
     Only records with content (nickname, comment, non-default initial value
     or retentive) are written. Records are sorted by memory type order then
-    address.
+    address. Lines end in CRLF and a Text initial value is bare, as in CLICK's
+    export. A Text initial value holding a comma, double quote or line break is
+    quoted: CLICK exports a comma or double quote bare but can only import it
+    quoted.
 
     Args:
         path: Path to write the CSV file.
@@ -316,8 +357,8 @@ def write_csv(
     )
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
-        # Write header manually (matching CLICK format)
-        csvfile.write(",".join(CSV_COLUMNS) + "\n")
+        # Write header manually (matching CLICK format); lines end in CRLF
+        csvfile.write(",".join(CSV_COLUMNS) + "\r\n")
 
         def format_quoted(text: str | None) -> str:
             if text is None:
@@ -331,6 +372,10 @@ def write_csv(
             # Format initial value: use "0" for numeric types when empty, "" for TXT
             if record.initial_value:
                 initial_value_str = str(record.initial_value)
+                if record.data_type == DataType.TXT and any(
+                    char in initial_value_str for char in ',"\r\n'
+                ):
+                    initial_value_str = format_quoted(initial_value_str)
             elif record.data_type == DataType.TXT:
                 initial_value_str = ""
             else:
@@ -345,6 +390,6 @@ def write_csv(
                 format_quoted(record.comment),
             ]
 
-            csvfile.write(",".join(line_parts) + "\n")
+            csvfile.write(",".join(line_parts) + "\r\n")
 
     return len(rows_to_write)
