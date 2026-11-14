@@ -82,7 +82,7 @@ write_cdv("monitoring.cdv", [
 
 ## PLC Data Dump
 
-Read and write the CSV files produced by PLC > Read Data from PLC... > All > Save (and consumed by Data > Write Data into PLC > Load from File).
+Read and write the CSV files produced by PLC > Read Data from PLC... > All > Save (and loaded back by PLC > Write Data into PLC > File Select).
 
 ### Read
 
