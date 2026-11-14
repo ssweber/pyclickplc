@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.5.2 - 2026-11-14
 
 ### Fixed
 
 - A saved DataView `.cdv` is now written as CLICK writes it: UTF-16 LE with a byte order mark and CRLF line ends, on any platform.
-- `write_csv` now writes a nickname CSV as CLICK's export does, with CRLF line ends and each Text initial value bare.
+- `write_csv` now writes a nickname CSV with CRLF line ends, as CLICK's export does.
 - `write_csv` quotes a Text initial value that is a comma or a double quote. CLICK's own export of such a value can't be imported back into CLICK, so pyclickplc writes it in the form CLICK accepts.
 - `read_csv` reads CLICK's own export when a Text initial value is a comma or a double quote (it lost the value or shifted the row, and a double quote swallowed the next row).
 - `read_csv` reads a UTF-8 CSV that starts with a byte order mark.
