@@ -8,8 +8,12 @@ directions.
 
 from __future__ import annotations
 
+import math
 import re
+import string
+import struct
 from collections.abc import Iterable, Mapping
+from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from pathlib import Path
 
 from .addresses import format_address_display, parse_address
@@ -44,6 +48,23 @@ _XY_ROW_STARTS = (1, 101, 201, 301, 401, 501, 601, 701, 801)
 _STD_STRIDE = 10
 _STD_HEADER_OFFSETS = list(range(1, _STD_STRIDE + 1))
 
+# CLICK writes a DF value it can't show as a number (a NaN or an infinity) as this.
+_DF_ERROR = "Err-Format"
+
+# CLICK writes a DF value in fixed point with 8 decimals, and with no more than 40 digits
+# in all (3e38 has one decimal). It keeps as many leading digits as fit in an unsigned
+# 64-bit integer and writes zeros after them: 20 for 1e30, 19 for 3e38.
+_DF_DECIMALS = 8
+_DF_MAX_DIGITS = 40
+_DF_KEPT_LIMIT = 2**64
+
+# CLICK writes a TXT space, control character or byte above 0x7E as "$" and its code in
+# uppercase hex without leading zeros ("$20", "$D", "$C8"), and other characters plain.
+_TXT_ESCAPE = re.compile(r"\$([0-9A-Fa-f]{1,2})")
+# The characters a CLICK dump shows plain. Other printable ASCII (such as "," "$" '"')
+# raises on write until a CLICK dump shows its form.
+_TXT_PLAIN = frozenset(string.ascii_letters + string.digits + "+-.")
+
 # Defaults per data type (used by skip_default)
 _DEFAULTS: dict[DataType, bool | int | float | str] = {
     DataType.BIT: False,
@@ -62,11 +83,12 @@ def _parse_value(raw: str, data_type: DataType) -> bool | int | float | str:
     if data_type in (DataType.INT, DataType.INT2):
         return int(raw)
     if data_type == DataType.FLOAT:
-        return float(raw)
+        return math.nan if raw == _DF_ERROR else float(raw)
     if data_type == DataType.HEX:
         return int(raw, 16)
     if data_type == DataType.TXT:
-        return raw
+        escaped = _TXT_ESCAPE.fullmatch(raw)
+        return chr(int(escaped.group(1), 16)) if escaped else raw
     return raw  # pragma: no cover
 
 
@@ -159,18 +181,54 @@ def read_plc_data(
     return result
 
 
-def _format_value(value: bool | int | float | str, data_type: DataType) -> str:
+def _format_float(value: bool | int | float | str, addr: str) -> str:
+    """Format a DF value as CLICK does: the float32 value in CLICK's fixed point."""
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{addr} value {number} has no number form in a CLICK data file.")
+    try:
+        (single,) = struct.unpack("<f", struct.pack("<f", number))
+    except OverflowError:
+        raise ValueError(f"{addr} value {number} is outside the float32 range.") from None
+    exact = Decimal(single)
+    decimals = min(_DF_DECIMALS, _DF_MAX_DIGITS - len(str(int(abs(exact)))))
+    with localcontext() as ctx:
+        ctx.prec = _DF_MAX_DIGITS + _DF_DECIMALS
+        exponent = -_DF_DECIMALS
+        while abs(exact).scaleb(-exponent) >= _DF_KEPT_LIMIT:
+            exponent += 1
+        rounded = exact.quantize(Decimal(1).scaleb(exponent), rounding=ROUND_HALF_EVEN)
+    return f"{rounded:.{decimals}f}"
+
+
+def _format_text(value: bool | int | float | str, addr: str) -> str:
+    """Format a TXT value as CLICK does: plain, or ``$`` and its code in hex."""
+    if value == "" or value == "\x00":
+        return ""
+    if not isinstance(value, str) or len(value) != 1 or ord(value) > 0xFF:
+        raise ValueError(f"{addr} value {value!r} is not a single character with code 0..255.")
+    if value in _TXT_PLAIN:
+        return value
+    code = ord(value)
+    if code <= 0x20 or code >= 0x7F:
+        return f"${code:X}"
+    raise ValueError(
+        f"{addr} value {value!r}: the form CLICK writes for this character is not known."
+    )
+
+
+def _format_value(value: bool | int | float | str, data_type: DataType, addr: str) -> str:
     """Format a native Python value as a CSV cell."""
     if data_type == DataType.BIT:
         return "1" if value else "0"
     if data_type in (DataType.INT, DataType.INT2):
         return str(int(value))
     if data_type == DataType.FLOAT:
-        return f"{float(value):.8f}"
+        return _format_float(value, addr)
     if data_type == DataType.HEX:
         return format(int(value), "x")
     if data_type == DataType.TXT:
-        return str(value) if value else ""
+        return _format_text(value, addr)
     return str(value)  # pragma: no cover
 
 
@@ -211,12 +269,9 @@ def write_plc_data(
 
     lines: list[str] = []
 
-    for i, bank_name in enumerate(selected):
+    for bank_name in selected:
         cfg = BANKS[bank_name]
         dt = cfg.data_type
-
-        if i > 0:
-            lines.append("")  # blank line between sections
 
         lines.append(f"<{bank_name}=START>")
 
@@ -229,7 +284,7 @@ def write_plc_data(
                 vals: list[str] = []
                 for off in offsets:
                     addr = format_address_display(bank_name, start + off - 1)
-                    vals.append(_format_value(data.get(addr, _DEFAULTS[dt]), dt))
+                    vals.append(_format_value(data.get(addr, _DEFAULTS[dt]), dt, addr))
                 lines.append(f"{bank_name}{start},{','.join(vals)},")
         else:
             hdr = ",".join(str(c) for c in _STD_HEADER_OFFSETS)
@@ -242,10 +297,12 @@ def write_plc_data(
                     if addr_num > cfg.max_addr:
                         break
                     addr = format_address_display(bank_name, addr_num)
-                    vals.append(_format_value(data.get(addr, _DEFAULTS[dt]), dt))
+                    vals.append(_format_value(data.get(addr, _DEFAULTS[dt]), dt, addr))
                 lines.append(f"{bank_name}{start},{','.join(vals)},")
 
+        # CLICK follows every section, the last one too, with a blank line.
         lines.append(f"</{bank_name}=END>")
+        lines.append("")
 
-    lines.append("")  # trailing newline
-    Path(path).write_text("\n".join(lines))
+    # Every cell is ASCII once TXT is escaped; CLICK ends every line with CRLF.
+    Path(path).write_bytes("".join(f"{line}\r\n" for line in lines).encode("ascii"))
