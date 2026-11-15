@@ -46,7 +46,7 @@ matrix before that.
   to a public name, an output byte or an exception is a change for them: the hand-back lists
   each, and each gets a line in the CHANGELOG's "Behaviour changes" block (AGENTS.md says how).
   Reviewers grep their `src/` for the callers. Before a release, run their suites against the
-  branch: `cd ../clicknick && uv run --with-editable ../pyclickplc pytest -q`; for pyrung,
+  branch: `cd ../clicknick && uv run --no-sync --with-editable ../pyclickplc pytest -q`; for pyrung,
   whose full suite takes over 25 minutes here, run `tests/click` and its nickname, tag-map and
   data-dump tests with a timeout.
 - A bug fix comes with a regression test that fails on the base and passes on the branch.
