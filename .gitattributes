@@ -1,3 +1,4 @@
-# CLICK-written fixtures are compared byte for byte; keep their CRLF line ends.
+# CLICK-written fixtures are compared byte for byte; keep their line ends as CLICK wrote them.
 tests/fixtures/*.csv -text
 tests/fixtures/*.cdv -text
+tests/fixtures/*.ini -text
