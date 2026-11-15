@@ -109,7 +109,9 @@ def read_plc_data(
     Returns:
         Dict mapping normalized address strings (e.g. ``"X001"``, ``"DS1"``)
         to native Python values (``bool`` for bits, ``int`` for INT/INT2/HEX,
-        ``float`` for FLOAT, ``str`` for TXT).
+        ``float`` for FLOAT, ``str`` for TXT). A DF cell CLICK writes as
+        ``Err-Format`` reads as ``float("nan")``, and a TXT cell CLICK writes
+        as ``$`` and a hex code (``$20``) reads as that character (``" "``).
     """
     text = Path(path).read_text()
     lines = text.splitlines()
@@ -248,6 +250,13 @@ def write_plc_data(
         banks: Bank names to include (e.g. ``["DS", "DF"]``).  *None*
               (default) writes every bank present in *data*.  Pass
               :data:`ALL_BANKS` to force a full dump with defaults.
+
+    Raises:
+        ValueError: Naming the address, for a DF value that is NaN, infinite
+            or outside the float32 range, and for a TXT value that isn't one
+            character with code 0..255 or whose form in CLICK's file isn't
+            known (punctuation other than ``+``, ``-`` and ``.``). Nothing is
+            written then.
     """
     if banks is not None:
         selected = list(banks)

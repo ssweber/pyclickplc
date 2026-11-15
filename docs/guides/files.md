@@ -112,6 +112,8 @@ data = read_plc_data("data.csv", skip_default=True)
 
 Returns a flat dict mapping normalized addresses to native Python values (`bool` for bits, `int` for INT/INT2/HEX, `float` for FLOAT, `str` for TXT).
 
+A DF cell that CLICK shows as `Err-Format` (a NaN or infinity in the PLC) reads as `float("nan")`. CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code; it reads as the character (`$20` is `" "`, `$C8` is `"\xc8"`).
+
 ### Write
 
 ```python
@@ -124,6 +126,8 @@ write_plc_data("output.csv", data, banks=["DS", "DF"])  # specific banks
 
 Unspecified addresses within included banks get bank defaults. Banks not in `banks` (or not present in data keys when `banks` is omitted) are excluded from the file.
 
+A DF value is written as the float32 the PLC holds, in CLICK's form (`66.7` is written `66.69999695`). `write_plc_data` raises `ValueError` naming the address for a NaN or infinite DF value, and for a TXT character whose form in CLICK's file isn't known: punctuation other than `+`, `-` and `.`.
+
 ### Modify and write back
 
 ```python
@@ -131,6 +135,8 @@ data = read_plc_data("from_plc.csv")
 data["DS3"] = 42
 write_plc_data("to_plc.csv", data)
 ```
+
+If the dump has an `Err-Format` cell, set that address to a number before writing.
 
 ## Project.ini
 

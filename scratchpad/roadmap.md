@@ -25,8 +25,19 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 - Does CLICK accept spaces around an address? `parse_address` accepts them. If not, it refuses them.
 - Does CLICK strip a tab (or other whitespace) at the edge of a nickname or comment, and does it import a bare
   tab as a Text initial value? Today only spaces are rejected (nickname, comment) or quoted (Text value).
-- Does a "Read Data from PLC" dump give X/Y expansion rows more than 16 cells? `read_plc_data` skips cells
-  past a bank's addresses. If it does, check what those cells hold before skipping them stays the rule.
+- Data dumps ("Read Data from PLC", `tests/fixtures/PlcDataDump.csv`). Owed:
+  - Does PLC > Write Data into PLC accept `Err-Format` in a DF cell, and what does the DF then hold? If it
+    accepts it, `write_plc_data` writes NaN as `Err-Format` instead of raising.
+  - Which DF values does CLICK show as `Err-Format`: NaN only, or +inf and -inf too? `read_plc_data` reads
+    every one as NaN.
+  - How does CLICK write a TXT `,`, `$`, `"` and the other punctuation besides `+`, `-` and `.`?
+    `write_plc_data` raises for them until a dump shows each form.
+  - The DF form is inferred from 1e30, 3e37 and 3e38: CLICK keeps as many leading digits as fit in an
+    unsigned 64-bit integer, writes zeros after them, and cuts decimals to keep 40 digits. Read back DF values
+    of 2e30, 1.5e30, 1e35, -3e38, -0.0 and 0.001953125 to confirm; `write_plc_data` writes
+    `2000000030094932440000000000000.00000000`, `1499999947013335603900000000000.00000000`,
+    `100000004091847875960000000000000000.0000`, `-300000000549775575800000000000000000000.0`,
+    `-0.00000000` and `0.00195312`.
 - The PLC name in Project.ini. The fixtures show that CLICK 3 (`[PLCName] PLCName=`) and CLICK 4
   (`[Sec20] Key1=`) always write the name line, empty for a project with no name, so `write_plc_name` never
   adds a section to a file CLICK wrote. Still owed: does CLICK match section names regardless of case?
