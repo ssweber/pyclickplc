@@ -147,7 +147,10 @@ def _restore_names(parser: ConfigParser) -> None:
     for placeholder, (section, names) in _PLACEHOLDER_NAMES.items():
         if not parser.has_section(placeholder):
             continue
-        parser.add_section(section)
+        # A file can hold both, such as a [PLCName] another tool added. CLICK 4 writes
+        # the placeholder, so its values win over the named section's.
+        if not parser.has_section(section):
+            parser.add_section(section)
         for key, value in parser.items(placeholder):
             name = _placeholder_key(key, names)
             if name is not None:
@@ -341,11 +344,27 @@ def _plc_name(parser: ConfigParser) -> str | None:
     return parser.get(*_PLC_NAME, fallback="").strip() or None
 
 
+def _plc_name_option(written: ConfigParser) -> tuple[str, str]:
+    """The section and key ``read_plc_name`` reads the name from, in the file as written."""
+    if not _uses_placeholder_names(written):
+        return _PLC_NAME
+    placeholder = _placeholder_option(*_PLC_NAME)
+    if written.has_option(*placeholder):
+        return placeholder
+    if written.has_option(*_PLC_NAME):
+        return _PLC_NAME
+    # No name yet: use [PLCName] only if it is there and the placeholder section isn't.
+    if written.has_section(_PLC_NAME[0]) and not written.has_section(placeholder[0]):
+        return _PLC_NAME
+    return placeholder
+
+
 def read_plc_name(path: str | Path) -> str | None:
     """Read the PLC name from a CLICK Project.ini file.
 
     The name is ``[PLCName] PLCName=``, which CLICK 4 writes as ``[Sec20] Key1=``.
-    Returns None if the project has no PLC name.
+    If a CLICK 4 file has both, ``[Sec20]`` wins. Returns None if the project has
+    no PLC name.
 
     Raises OSError for unreadable files and ValueError for malformed INI data.
     No CLICK installation is required.
@@ -377,11 +396,14 @@ def _set_option(data: bytes, section: str, key: str, value: str) -> bytes:
         match = _SECTION.match(line.strip())
         if match is None:
             continue
-        if start is not None:
+        if start is not None and end == len(lines):
             end = index
-            break
         if match["header"] == header:
             start = index
+        elif match["header"].lower() == header.lower():
+            # configparser tells these apart, but Windows' INI functions don't.
+            spelling = match["header"].decode("ascii", "replace")
+            raise ValueError(f"Section [{spelling}] differs from [{section}] only in case")
 
     if start is None:
         if lines and not _line_end(lines[-1]):
@@ -430,13 +452,14 @@ def write_plc_name(path: str | Path, name: str) -> None:
     """Set the PLC name in a CLICK Project.ini file.
 
     Only the line holding the name changes, or is added if the project has no
-    name; every other byte stays as it was. A file CLICK 4 wrote gets the name
-    in ``[Sec20] Key1=``, any other file in ``[PLCName] PLCName=``. The name is
-    checked with ``validate_click_name`` and written without surrounding
-    whitespace. The new file goes to a temporary file in the same folder, which
-    then replaces Project.ini in one step.
+    name; every other byte stays as it was. The name goes where ``read_plc_name``
+    reads it; a CLICK 4 file with no name gets ``[Sec20] Key1=``, any other file
+    ``[PLCName] PLCName=``. The name is checked with ``validate_click_name`` and
+    written without surrounding whitespace. The new file goes to a temporary
+    file in the same folder, which then replaces Project.ini in one step.
 
-    Raises ValueError for an invalid name or malformed INI data, and OSError if
+    Raises ValueError for an invalid name, malformed INI data, or a section
+    header that differs from the name's section only in case, and OSError if
     the file can't be read or replaced. On an error the file is unchanged.
     """
     is_valid, error = validate_click_name(name)
@@ -446,11 +469,11 @@ def write_plc_name(path: str | Path, name: str) -> None:
     path = Path(path)
     original = path.read_bytes()
     written = _parse_project(original, path, restore=False)
-    if _uses_placeholder_names(written) and not written.has_section(_PLC_NAME[0]):
-        section, key = _placeholder_option(*_PLC_NAME)
-    else:
-        section, key = _PLC_NAME
-    updated = _set_option(original, section, key, name)
+    section, key = _plc_name_option(written)
+    try:
+        updated = _set_option(original, section, key, name)
+    except ValueError as exc:
+        raise ValueError(f"Cannot set the PLC name in {path}: {exc}") from exc
 
     # Check the edit before writing: the name reads back and no other value moved.
     expected = _options(written)
@@ -460,7 +483,8 @@ def write_plc_name(path: str | Path, name: str) -> None:
         or _plc_name(_parse_project(updated, path)) != name
     ):
         raise ValueError(f"Cannot set the PLC name in {path}")
-    _replace(path, updated)
+    # Replace the file a symlink points to, not the link.
+    _replace(path.resolve(), updated)
 
 
 __all__ = [
