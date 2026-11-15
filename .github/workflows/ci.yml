@@ -3,13 +3,12 @@
 
 name: CI
 
+# No run on a push to main: a PR must be up to date to merge, so its run already
+# tested the merged tree.
 on:
-  push:
-    # Use ["main", "master"] for CI only on the default branch.
-    # Use ["**"] for CI on all branches.
-    branches: ["main", "master"]
   pull_request:
-    branches: ["main", "master"]
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -64,3 +63,11 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+  ci:
+    # The one required check: it fails unless every test job passed.
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.build.result }}" = "success"
