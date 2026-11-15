@@ -12,6 +12,13 @@
 
 - `read_modules`, `read_channel_parameters` and `read_io_layout` read a CLICK 4 `Project.ini` that also has a `[SystemConfigData]` or `[CPUBuild]` section, and take CLICK 4's values (they raised `ValueError`).
 
+### Behaviour changes
+
+- `validate_nickname` and `validate_comment` reject a value with a leading or trailing space (`Cannot start or end with a space`). CLICK strips them, so `Pump ` and `Pump` would be one nickname.
+  - Strip the value before you validate and store it, or have the user remove the space. `read_csv` still reads such a file as written.
+- `write_csv` and `format_csv` write a Text initial value that is a single space as `" "`, quoted (it was bare, and CLICK imports a bare space as empty).
+  - Regenerate any saved output your tests compare against.
+
 ## 0.6.0 - 2026-11-15
 
 ### Added

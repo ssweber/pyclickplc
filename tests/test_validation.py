@@ -37,6 +37,14 @@ class TestValidateNickname:
         assert valid is False
         assert "Too long" in error
 
+    @pytest.mark.parametrize("name", [" Pump", "Pump ", "  Spaced Nick  ", " "])
+    def test_leading_or_trailing_space_invalid(self, name):
+        # CLICK strips them, so "Pump " and "Pump" would be one nickname
+        assert validate_nickname(name) == (False, "Cannot start or end with a space")
+
+    def test_inner_spaces_valid(self):
+        assert validate_nickname("Inner  Two") == (True, "")
+
     def test_starts_with_underscore(self):
         valid, error = validate_nickname("_invalid")
         assert valid is False
@@ -126,6 +134,13 @@ class TestValidateComment:
         valid, error = validate_comment(comment)
         assert valid is False
         assert "Too long" in error
+
+    @pytest.mark.parametrize("comment", [" note", "note ", "  spaced comment  "])
+    def test_leading_or_trailing_space_invalid(self, comment):
+        assert validate_comment(comment) == (False, "Cannot start or end with a space")
+
+    def test_inner_spaces_valid(self):
+        assert validate_comment("two  words") == (True, "")
 
     def test_block_tags_not_rejected(self):
         # Length-only validation -- block tags are NOT rejected here

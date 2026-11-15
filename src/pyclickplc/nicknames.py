@@ -407,8 +407,9 @@ def _format_csv(
         # A defaulted numeric is written "0", as CLICK does; Text's default is empty
         if record.initial_value:
             initial_value_str = str(record.initial_value)
-            # Bare as CLICK writes it, unless the cell would not read back as one value
-            if any(char in initial_value_str for char in ',"\r\n'):
+            # Bare as CLICK writes it, unless it would not read back as written: CLICK imports a
+            # bare space as empty, and a comma, double quote or line break splits the cell
+            if initial_value_str == " " or any(char in initial_value_str for char in ',"\r\n'):
                 initial_value_str = format_quoted(initial_value_str)
         elif record.data_type == DataType.TXT:
             initial_value_str = ""
@@ -449,9 +450,9 @@ def write_csv(
     Only records with content (nickname, comment, non-default initial value
     or retentive) are written. Records are sorted by memory type order then
     address. Lines end in CRLF and an initial value is bare, as in CLICK's
-    export. An initial value holding a comma, double quote or line break is
-    quoted: CLICK exports a Text comma or double quote bare but can only import
-    it quoted.
+    export. An initial value that is a space, or holds a comma, double quote or
+    line break, is quoted: CLICK exports a Text space, comma or double quote bare
+    but can only import it quoted.
 
     Args:
         path: Path to write the CSV file.

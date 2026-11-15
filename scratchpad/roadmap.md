@@ -22,18 +22,9 @@ Needs: nothing for the code; the API names are settled with the ClickNick sessio
 
 Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's behaviour until answered.
 
-- Does CLICK accept leading zeros (`DS0001`) and surrounding spaces in an address? If not, `parse_address`
-  refuses them.
-- Does CLICK import a bare space as a Text initial value? It exports one bare and imports a quoted `" "`.
-  If it refuses bare, `write_csv` quotes a space as it quotes a comma or double quote.
-- Does CLICK strip spaces from nicknames and comments on import or export? Decides whether 0.6.0's
-  "keep as written" needs a rule on write.
-- Does CLICK import a nickname CSV whose non-Text initial value is quoted (`"1.5"`)? `write_csv` quotes one
-  only when it holds a comma, double quote or line break. If not, `write_csv` refuses such a value instead.
-- Does CLICK ever export a Data Type that isn't the bank's, or the name `TXT`? `read_csv` refuses both, and
-  `read_mdb_csv` ignores Address.csv's DataType column. If it does, `read_csv` accepts what CLICK writes.
-- Can an Address Comment hold a line break? If yes, `read_csv` must requote a bare-comma Text row whose
-  quoted comment spans lines (it raises today).
+- Does CLICK accept spaces around an address? `parse_address` accepts them. If not, it refuses them.
+- Does CLICK strip a tab (or other whitespace) at the edge of a nickname or comment, and does it import a bare
+  tab as a Text initial value? Today only spaces are rejected (nickname, comment) or quoted (Text value).
 - Does a "Read Data from PLC" dump give X/Y expansion rows more than 16 cells? `read_plc_data` skips cells
   past a bank's addresses. If it does, check what those cells hold before skipping them stays the rule.
 - The PLC name in Project.ini. The fixtures show that CLICK 3 (`[PLCName] PLCName=`) and CLICK 4

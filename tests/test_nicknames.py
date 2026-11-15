@@ -695,10 +695,10 @@ class TestCsvFormat:
 
     @pytest.mark.parametrize(
         ("initial", "cell"),
-        [("A", b"A"), (" ", b" "), ("", b""), (",", b'","'), ('"', b'""""')],
+        [("A", b"A"), (" ", b'" "'), ("", b""), (",", b'","'), ('"', b'""""')],
     )
-    def test_txt_initial_value_bare_unless_comma_or_quote(self, tmp_path, initial, cell):
-        """CLICK writes Text bare, but imports a comma or double quote only quoted."""
+    def test_txt_initial_value_bare_unless_space_comma_or_quote(self, tmp_path, initial, cell):
+        """CLICK writes Text bare, but imports a space, comma or double quote only quoted."""
         csv_path = tmp_path / "txt.csv"
         record = AddressRecord(
             memory_type="TXT",
@@ -756,7 +756,7 @@ class TestClickExports:
         assert records[get_addr_key("DF", 1)].comment == "Degrees, F"
 
     def test_click_export_rewrites_with_comma_and_quote_importable(self, tmp_path):
-        """Only TXT2 and TXT3 change: CLICK cannot import its own bare form of them."""
+        """Only TXT2, TXT3 and TXT4 change: CLICK cannot import its own bare form of them."""
         fixture = FIXTURES / "NicknameExportTxtSpecials.csv"
         out = tmp_path / "out.csv"
         write_csv(out, read_csv(fixture))
@@ -764,6 +764,7 @@ class TestClickExports:
             fixture.read_bytes()
             .replace(b'TXT2,TEXT,"Msg_Comma",,,No,""', b'TXT2,TEXT,"Msg_Comma",",",No,""')
             .replace(b'TXT3,TEXT,"Msg_Quote",",Yes,""', b'TXT3,TEXT,"Msg_Quote","""",Yes,""')
+            .replace(b'TXT4,TEXT,"Msg_Space", ,Yes,""', b'TXT4,TEXT,"Msg_Space"," ",Yes,""')
         )
         assert expected != fixture.read_bytes()
         assert out.read_bytes() == expected
