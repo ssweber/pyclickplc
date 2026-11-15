@@ -46,6 +46,14 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   If it refuses bare, `write_csv` quotes a space as it quotes a comma or double quote.
 - Does CLICK strip spaces from nicknames and comments on import or export? Decides whether item 1's
   "keep as written" needs a rule on write.
+- Does CLICK import a nickname CSV whose non-Text initial value is quoted (`"1.5"`)? `write_csv` quotes one
+  only when it holds a comma, double quote or line break. If not, `write_csv` refuses such a value instead.
+- Does CLICK ever export a Data Type that isn't the bank's, or the name `TXT`? `read_csv` refuses both, and
+  `read_mdb_csv` ignores Address.csv's DataType column. If it does, `read_csv` accepts what CLICK writes.
+- Can an Address Comment hold a line break? If yes, `read_csv` must requote a bare-comma Text row whose
+  quoted comment spans lines (it raises today).
+- Does a "Read Data from PLC" dump give X/Y expansion rows more than 16 cells? `read_plc_data` skips cells
+  past a bank's addresses. If it does, check what those cells hold before skipping them stays the rule.
 
 ## Unscheduled
 

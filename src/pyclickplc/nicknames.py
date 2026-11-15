@@ -473,9 +473,10 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
     CLICK writes this file beside its project database, as UTF-8 with a byte
     order mark, with columns AddrKey, MemoryType, Address, DataType, Nickname,
     Use, InitialValue, Retentive, Comment. Address is the MDB address (XD1 is
-    2), and Use and Retentive are numbers. DataType is not read: every record
-    takes its bank's type. Only rows with content are kept. A row whose MemoryType or Address pyclickplc does not know is
-    skipped, as is an XD/YD slot CLICK does not show (MDB 3, 5, ... 15).
+    2), and Use and Retentive are numbers. DataType is not read: every
+    record takes its bank's type. Only rows with content are kept. A row
+    whose MemoryType or Address pyclickplc does not know is skipped, as is
+    an XD/YD slot CLICK does not show (MDB 3, 5, ... 15).
 
     Raises:
         ValueError: If the file is not UTF-8 or not CSV. The message names the
