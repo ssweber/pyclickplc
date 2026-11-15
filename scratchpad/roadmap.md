@@ -17,6 +17,10 @@ Unreleased section lists them. laddercodec's parity test waits on this release, 
 onto `read_csv`, `format_csv` and `read_mdb_csv`. pyrung's tag map reads through `read_csv`, so a pyrung CSV
 with a bad address or an unknown Data Type now fails to load instead of losing the row.
 
+pyrung follow-up (pyrung's, not ours): `read_csv` no longer fails on a repeated nickname, and pyrung's own
+repeat check (`seen_names` in `tag_map/_nickname_io.py`) is case-sensitive, so `Pump` at X001 and `pump` at
+X002 now load as two tags in pyrung, where pyclickplc's `.tag` treats them as one nickname.
+
 ## 2. Smaller items from ClickNick's inventory
 
 Needs: nothing for the code; the API names are settled with the ClickNick session through Sam.

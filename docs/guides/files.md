@@ -24,7 +24,7 @@ print(tag.display_address)  # DS1
 
 `read_csv` returns an `AddressRecordMap` with `.addr` and `.tag` lookup dicts.
 
-A row whose Address isn't a CLICK address raises `ValueError` naming the file and line. A nickname used twice still loads; looking it up through `.tag` raises.
+A row whose Address isn't a CLICK address, or whose Data Type isn't its bank's, raises `ValueError` naming the file and line. A file with a nickname used twice (ignoring case) still loads and `.addr` works, but every `.tag` lookup raises `ValueError` naming the repeats until one is renamed.
 
 ### Write
 
