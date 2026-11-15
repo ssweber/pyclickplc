@@ -14,11 +14,6 @@ PR only once Sam has said so directly; otherwise stop at "CI green locally, read
 
 Needs: nothing for the code; the API names are settled with the ClickNick session through Sam.
 
-- **Take `validate_click_name`** (PLC and DataView names: 1-24 of letters, digits, space, `_`, `-`) into
-  `pyclickplc.validation`.
-- **Take `read_plc_name` and `write_plc_name`** into `pyclickplc.project`. Its knowledge of CLICK 4's
-  placeholder sections (`[Sec20] Key1=` for `[PLCName] PLCName=`) joins `project.py`'s `_restore_names`
-  instead of living twice. `write_plc_name` keeps the rest of Project.ini byte for byte.
 - **Leave the unassigned I/O slot titles in ClickNick** ("Option slot N - unassigned" and the like). They are
   ClickNick's wording, not a CLICK fact; pyclickplc's `ModuleIO` already gives the location and position.
   Revisit if CLICK itself shows these names.
@@ -41,6 +36,10 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   quoted comment spans lines (it raises today).
 - Does a "Read Data from PLC" dump give X/Y expansion rows more than 16 cells? `read_plc_data` skips cells
   past a bank's addresses. If it does, check what those cells hold before skipping them stays the rule.
+- The PLC name in Project.ini. The fixtures show that CLICK 3 (`[PLCName] PLCName=`) and CLICK 4
+  (`[Sec20] Key1=`) always write the name line, empty for a project with no name, so `write_plc_name` never
+  adds a section to a file CLICK wrote. Still owed: does CLICK match section names regardless of case?
+  `write_plc_name` refuses a header that differs from the name's section only in case.
 
 ## Unscheduled
 

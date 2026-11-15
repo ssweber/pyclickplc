@@ -45,7 +45,7 @@ The [quickstart](https://pyrung.com/pyclickplc/getting-started/quickstart/) uses
 
 **[Modbus server](https://pyrung.com/pyclickplc/guides/server/)** — `ClickServer` simulates a CLICK PLC over Modbus TCP. Use it for development and testing without hardware.
 
-**[File I/O](https://pyrung.com/pyclickplc/guides/files/)** — Read and write nickname CSV and DataView CDV files and PLC data dumps as CLICK writes them, and read installed modules and I/O assignments from a project's Project.ini.
+**[File I/O](https://pyrung.com/pyclickplc/guides/files/)** — Read and write nickname CSV and DataView CDV files and PLC data dumps as CLICK writes them, read installed modules and I/O assignments from a project's Project.ini, and read and set its PLC name.
 
 ## Learn more
 

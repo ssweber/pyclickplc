@@ -43,6 +43,8 @@ from .project import (
     read_channel_parameters,
     read_io_layout,
     read_modules,
+    read_plc_name,
+    write_plc_name,
 )
 from .server import ClickServer, MemoryDataProvider, ServerClientInfo
 from .server_tui import run_server_tui
@@ -58,6 +60,7 @@ from .system import (
 )
 from .validation import (
     SYSTEM_NICKNAME_TYPES,
+    validate_click_name,
     validate_comment,
     validate_initial_value,
     validate_nickname,
@@ -71,6 +74,8 @@ __all__ = [
     "read_channel_parameters",
     "ModuleIO",
     "read_io_layout",
+    "read_plc_name",
+    "write_plc_name",
     "BankConfig",
     "BANKS",
     "DataType",
@@ -123,4 +128,5 @@ __all__ = [
     "validate_nickname",
     "validate_comment",
     "validate_initial_value",
+    "validate_click_name",
 ]

@@ -1,6 +1,6 @@
 # File I/O
 
-Read and write the files CLICK programming software uses: nickname CSV, DataView CDV and PLC data dumps. Read the installed hardware from a project's `Project.ini`. [ClickNick](https://pyrung.com/clicknick/) uses the same formats.
+Read and write the files CLICK programming software uses: nickname CSV, DataView CDV and PLC data dumps. Read the installed hardware and the PLC name from a project's `Project.ini`, and set the name. [ClickNick](https://pyrung.com/clicknick/) uses the same formats.
 
 ## Nickname CSV
 
@@ -134,7 +134,7 @@ write_plc_data("to_plc.csv", data)
 
 ## Project.ini
 
-A CLICK project folder keeps its hardware configuration in `Project.ini`. These readers don't need CLICK installed. Unknown hardware or a malformed record raises `ValueError`.
+A CLICK project folder keeps its hardware configuration and PLC name in `Project.ini`. These functions don't need CLICK installed. Unknown hardware or a malformed record raises `ValueError`.
 
 ### Installed modules
 
@@ -180,6 +180,20 @@ for io in read_io_layout("Project.ini"):
 ```
 
 You get one `ModuleIO` per installed module, in physical order. `inputs` and `outputs` are its X and Y addresses. `analog_inputs` and `analog_outputs` are its channels' DF addresses, with `None` for a channel that has none.
+
+### PLC name
+
+```python
+from pyclickplc import read_plc_name, validate_click_name, write_plc_name
+
+print(read_plc_name("Project.ini"))  # Line 1, or None if the project has no name
+
+ok, error = validate_click_name("Line 2")
+if ok:
+    write_plc_name("Project.ini", "Line 2")
+```
+
+A PLC name is 1 to 24 letters, digits, spaces, underscores and hyphens. `write_plc_name` raises `ValueError` for a name `validate_click_name` refuses. It changes only the line holding the name, or adds one, and leaves the rest of the file as it was.
 
 ## See also
 

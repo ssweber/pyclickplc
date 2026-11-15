@@ -1,10 +1,18 @@
 """Channel parameters use installed hardware, not every DF token in the file."""
 
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 
 import pytest
 
-from pyclickplc import Module, ModuleIO, read_io_layout
+from pyclickplc import (
+    Module,
+    ModuleIO,
+    read_io_layout,
+    read_modules,
+    read_plc_name,
+    write_plc_name,
+)
 from pyclickplc.project import ChannelParameters, read_channel_parameters
 
 
@@ -386,3 +394,284 @@ def test_layout_is_immutable(tmp_path):
     (cpu,) = _layout(tmp_path, "[SystemConfig]\nItem1=225\n")
     with pytest.raises(FrozenInstanceError):
         cpu.inputs = ()
+
+
+# ==============================================================================
+# read_plc_name / write_plc_name
+# ==============================================================================
+
+# CLICK 4 writes [PLCName] PLCName= as [Sec20] Key1=; Sec21 marks a CLICK 4 file.
+CLICK_3 = b"[SystemConfig]\r\nItem1=199\r\n[PLCName]\r\nPLCName=Line 1\r\n[Other]\r\nValue=1\r\n"
+CLICK_4 = b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Line 1\r\n[Sec22]\r\nKey1_2=\r\n"
+
+
+def _project(tmp_path, data):
+    path = tmp_path / "Project.ini"
+    path.write_bytes(data)
+    return path
+
+
+def _write(tmp_path, data, name):
+    path = _project(tmp_path, data)
+    write_plc_name(path, name)
+    assert read_plc_name(path) == name.strip()
+    return path.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "data,name",
+    [
+        (CLICK_3, "Line 1"),
+        (CLICK_4, "Line 1"),
+        (b"\xef\xbb\xbf" + CLICK_3, "Line 1"),
+        (b"[PLCName]\nplcname =  Mixer 2  \n", "Mixer 2"),
+        (b"[PLCName]\r\nPLCName=\r\n", None),
+        (b"[SystemConfig]\r\nItem1=199\r\n", None),
+        (b"", None),
+        # Without Sec21 the file uses CLICK 3's names, so Sec20 is not the PLC name.
+        (b"[Sec20]\r\nKey1=Line 1\r\n", None),
+    ],
+)
+def test_read_plc_name(tmp_path, data, name):
+    assert read_plc_name(_project(tmp_path, data)) == name
+
+
+def test_read_plc_name_errors(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        read_plc_name(tmp_path / "missing.ini")
+    with pytest.raises(ValueError, match="Invalid CLICK project"):
+        read_plc_name(_project(tmp_path, b"not an ini file"))
+    with pytest.raises(ValueError, match="Invalid CLICK project"):
+        read_plc_name(_project(tmp_path, b"[PLCName]\r\nPLCName=\xff\r\n"))
+
+
+def test_placeholder_plc_name_leaves_hardware_readers_alone(tmp_path):
+    path = _project(tmp_path, CLICK_4)
+    write_plc_name(path, "Mixer")
+    assert [io.module.model for io in read_io_layout(path)] == ["C2-01CPU-2"]
+
+
+# A CLICK 4 file that also has the named sections, as another tool may have added them.
+# CLICK 4 writes the placeholders, so their values win.
+BOTH_NAMES = "\r\n".join(
+    [
+        "[Sec20]",
+        "Key1=Line 1",
+        "[PLCName]",
+        "PLCName=Other",
+        "[Sec21]",
+        "Key3_1=241",
+        "Key3_2=160",
+        "[Sec22]",
+        "Key1_2=" + _channels("DF5", "DF6", "DF7", "DF8"),
+        "[SystemConfigData]",
+        "Item2=" + _channels("DF105", "DF106", "DF107", "DF108"),
+        "[Sec23]",
+        "Key1=241",
+        "Key9=DF1,5,0",
+        "Key10=DF2,5,0",
+        "Key11=DF3,5,0",
+        "Key12=DF4,5,0",
+        "[CPUBuild]",
+        "ID=241",
+        "AD1=DF101,5,0",
+        "AD2=DF102,5,0",
+        "DA1=DF103,5,0",
+        "DA2=DF104,5,0",
+        "",
+    ]
+).encode("ascii")
+
+
+def test_readers_take_the_placeholder_when_both_sections_exist(tmp_path):
+    path = _project(tmp_path, BOTH_NAMES)
+
+    modules = read_modules(path)
+    assert modules.cpu is not None
+    assert (modules.cpu.model, modules.expansions[1].model) == ("C0-02DD1-D", "C0-04AD")
+    assert read_channel_parameters(path) == ChannelParameters(
+        frozenset({"DF1", "DF2", "DF5", "DF6", "DF7", "DF8"}), frozenset({"DF3", "DF4"})
+    )
+    cpu, expansion = read_io_layout(path)
+    assert (cpu.analog_inputs, cpu.analog_outputs) == (("DF1", "DF2"), ("DF3", "DF4"))
+    assert expansion.analog_inputs == ("DF5", "DF6", "DF7", "DF8")
+    assert read_plc_name(path) == "Line 1"
+
+
+def test_write_sets_the_placeholder_when_both_sections_exist(tmp_path):
+    assert _write(tmp_path, BOTH_NAMES, "Mixer") == BOTH_NAMES.replace(
+        b"Key1=Line 1\r\n", b"Key1=Mixer\r\n"
+    )
+
+
+# Project.ini files CLICK wrote, with the name line as CLICK wrote it (empty for a project with
+# no name) and the modules [SystemConfig] or [Sec21] lists. Credential-like values are blanked
+# in the CLICK 3 files (14 in [wsnc], [emsnc] and [rpsnc]), and long hex values in the CLICK 4
+# files ([Sec55] Key1, [Sec52] Key3_1, and Key4_1 in the named one). Every other byte is as
+# CLICK wrote it.
+CLICK_FIXTURES = [
+    pytest.param("Project_click3.ini", b"[PLCName]\r\nPLCName=", "V3PLC", [], id="click3"),
+    pytest.param(
+        "Project_click3_noname.ini", b"[PLCName]\r\nPLCName=", None, [], id="click3-noname"
+    ),
+    pytest.param(
+        "Project_click4.ini",
+        b"[Sec20]\r\nKey1=",
+        "Conformance",
+        [("cpu", 0, "C2-03CPU"), ("slot", 0, "C2-14D2")],
+        id="click4",
+    ),
+    pytest.param(
+        "Project_click4_noname.ini",
+        b"[Sec20]\r\nKey1=",
+        None,
+        [("cpu", 0, "C0-00DD1-D")],
+        id="click4-noname",
+    ),
+]
+
+
+@pytest.mark.parametrize("filename,name_line,name,layout", CLICK_FIXTURES)
+def test_click_fixture_readers(filename, name_line, name, layout):
+    path = Path(__file__).parent / "fixtures" / filename
+    assert read_plc_name(path) == name
+    modules = read_modules(path)
+    installed = [modules.cpu, *modules.slots.values(), *modules.expansions.values()]
+    assert [module.model for module in installed if module] == [model for *_, model in layout]
+    assert read_channel_parameters(path) == ChannelParameters()
+    assert [(io.location, io.position, io.module.model) for io in read_io_layout(path)] == layout
+
+
+@pytest.mark.parametrize("filename,name_line,name,layout", CLICK_FIXTURES)
+def test_click_fixture_write_changes_only_the_name(tmp_path, filename, name_line, name, layout):
+    original = (Path(__file__).parent / "fixtures" / filename).read_bytes()
+    line = name_line + (name or "").encode("ascii") + b"\r\n"
+    assert original.count(line) == 1
+
+    # CLICK writes the name line even with no name, so the write fills it in place.
+    expected = original.replace(line, name_line + b"Mixer 2\r\n")
+    assert _write(tmp_path, original, "Mixer 2") == expected
+
+
+@pytest.mark.parametrize("bom", [b"", b"\xef\xbb\xbf"])
+def test_write_changes_only_the_name_line(tmp_path, bom):
+    assert _write(tmp_path, bom + CLICK_3, "Mixer 2") == bom + CLICK_3.replace(
+        b"PLCName=Line 1\r\n", b"PLCName=Mixer 2\r\n"
+    )
+
+
+def test_write_click_4_name(tmp_path):
+    assert _write(tmp_path, CLICK_4, "Mixer 2") == CLICK_4.replace(
+        b"Key1=Line 1\r\n", b"Key1=Mixer 2\r\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "line,expected",
+    [
+        (b"PLCName=\r\n", b"PLCName=Mixer\r\n"),
+        (b"plcname = Old  \n", b"plcname = Mixer\n"),
+        (b"PLCName: Old\r", b"PLCName: Mixer\r"),
+        (b"PLCName=Old", b"PLCName=Mixer"),
+    ],
+)
+def test_write_keeps_the_name_line_as_written(tmp_path, line, expected):
+    before = b"[PLCName]\r\n;PLCName=comment\r\nOther=keep\r\n"
+    after = b"[Next]\r\nValue=1\r\n" if line.endswith((b"\r", b"\n")) else b""
+    assert _write(tmp_path, before + line + after, "Mixer") == before + expected + after
+
+
+@pytest.mark.parametrize(
+    "data,expected",
+    [
+        (b"[Other]\r\nValue=1\r\n", b"[Other]\r\nValue=1\r\n[PLCName]\r\nPLCName=Mixer\r\n"),
+        (b"[Other]\nValue=1", b"[Other]\nValue=1\n[PLCName]\nPLCName=Mixer\n"),
+        (b"[Other]\rValue=1\r", b"[Other]\rValue=1\r[PLCName]\rPLCName=Mixer\r"),
+        (b"", b"[PLCName]\r\nPLCName=Mixer\r\n"),
+        (b"[PLCName]\r\nOther=keep\r\n", b"[PLCName]\r\nPLCName=Mixer\r\nOther=keep\r\n"),
+        (b"[A]\r\n[PLCName]", b"[A]\r\n[PLCName]\r\nPLCName=Mixer\r\n"),
+        # A CLICK 4 file gets the placeholder name.
+        (b"[Sec21]\r\nKey3_1=199\r\n", b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Mixer\r\n"),
+        (b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n", b"[Sec21]\r\n[Sec20]\r\nKey1=Mixer\r\nKey2=x\r\n"),
+        # A CLICK 4 file that already has [PLCName] keeps the name there, where it is read.
+        (b"[Sec21]\r\n[PLCName]\r\nPLCName=A\r\n", b"[Sec21]\r\n[PLCName]\r\nPLCName=Mixer\r\n"),
+        # With both sections the name goes where it was read: [Sec20] unless only [PLCName] has it.
+        (
+            b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n[PLCName]\r\nPLCName=A\r\n",
+            b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n[PLCName]\r\nPLCName=Mixer\r\n",
+        ),
+        (
+            b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n[PLCName]\r\n",
+            b"[Sec21]\r\n[Sec20]\r\nKey1=Mixer\r\nKey2=x\r\n[PLCName]\r\n",
+        ),
+    ],
+)
+def test_write_adds_a_missing_name(tmp_path, data, expected):
+    assert _write(tmp_path, data, "Mixer") == expected
+
+
+def test_write_strips_the_name(tmp_path):
+    assert _write(tmp_path, CLICK_3, "  Mixer 2\t") == CLICK_3.replace(b"Line 1", b"Mixer 2")
+
+
+@pytest.mark.parametrize(
+    "data,name,match",
+    [
+        (CLICK_3, "", "Name is required"),
+        (CLICK_3, "A" * 25, "Name is too long"),
+        (CLICK_3, "Line/1", "Use only letters"),
+        (CLICK_3, "Línea", "Use only letters"),
+        (b"not an ini file", "Mixer", "Invalid CLICK project"),
+        (b"\xff[PLCName]\r\n", "Mixer", "Invalid CLICK project"),
+        # The edited line would not read back as the name alone.
+        (b"[PLCName]\r\nPLCName=Old\r\n  more\r\n", "Mixer", "Cannot set the PLC name"),
+        # A header that matches the name's section only in case: Windows reads either.
+        (b"[plcname]\r\nplcname=Old\r\n", "Mixer", r"\[plcname\] differs from \[PLCName\]"),
+        (b"[PLCName]\r\nPLCName=A\r\n[PLCNAME]\r\n", "Mixer", "only in case"),
+        (b"[Sec21]\r\n[sec20]\r\nKey1=A\r\n", "Mixer", r"\[sec20\] differs from \[Sec20\]"),
+    ],
+)
+def test_write_refuses_and_leaves_the_file(tmp_path, data, name, match):
+    path = _project(tmp_path, data)
+    with pytest.raises(ValueError, match=match):
+        write_plc_name(path, name)
+    assert path.read_bytes() == data
+    assert [p.name for p in tmp_path.iterdir()] == ["Project.ini"]
+
+
+def test_write_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        write_plc_name(tmp_path / "Project.ini", "Mixer")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_write_through_a_symlink_keeps_the_link(tmp_path):
+    target = tmp_path / "target.ini"
+    target.write_bytes(CLICK_3)
+    link = tmp_path / "Project.ini"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("cannot create symlinks here")
+
+    write_plc_name(link, "Mixer")
+
+    assert link.is_symlink()
+    assert target.read_bytes() == CLICK_3.replace(b"Line 1", b"Mixer")
+
+
+def test_write_replaces_in_one_step(tmp_path, monkeypatch):
+    path = _project(tmp_path, CLICK_3)
+    replaced = []
+
+    def replace(source, destination):
+        replaced.append((Path(source).parent, Path(source).read_bytes(), Path(destination)))
+        raise PermissionError("locked")
+
+    monkeypatch.setattr("pyclickplc.project.os.replace", replace)
+    with pytest.raises(PermissionError):
+        write_plc_name(path, "Mixer")
+
+    assert replaced == [(tmp_path, CLICK_3.replace(b"Line 1", b"Mixer"), path)]
+    assert path.read_bytes() == CLICK_3
+    assert [p.name for p in tmp_path.iterdir()] == ["Project.ini"]
