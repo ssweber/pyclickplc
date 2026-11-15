@@ -407,7 +407,8 @@ def _format_csv(
         # A defaulted numeric is written "0", as CLICK does; Text's default is empty
         if record.initial_value:
             initial_value_str = str(record.initial_value)
-            # Bare as CLICK writes it, unless CLICK would not import it back as written
+            # Bare as CLICK writes it, unless it would not read back as written: CLICK imports a
+            # bare space as empty, and a comma, double quote or line break splits the cell
             if initial_value_str == " " or any(char in initial_value_str for char in ',"\r\n'):
                 initial_value_str = format_quoted(initial_value_str)
         elif record.data_type == DataType.TXT:

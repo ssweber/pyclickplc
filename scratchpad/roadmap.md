@@ -23,6 +23,8 @@ Needs: nothing for the code; the API names are settled with the ClickNick sessio
 Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's behaviour until answered.
 
 - Does CLICK accept spaces around an address? `parse_address` accepts them. If not, it refuses them.
+- Does CLICK strip a tab (or other whitespace) at the edge of a nickname or comment, and does it import a bare
+  tab as a Text initial value? Today only spaces are rejected (nickname, comment) or quoted (Text value).
 - Does a "Read Data from PLC" dump give X/Y expansion rows more than 16 cells? `read_plc_data` skips cells
   past a bank's addresses. If it does, check what those cells hold before skipping them stays the rule.
 - The PLC name in Project.ini. The fixtures show that CLICK 3 (`[PLCName] PLCName=`) and CLICK 4
