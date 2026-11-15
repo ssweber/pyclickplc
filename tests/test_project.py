@@ -1,10 +1,11 @@
 """Channel parameters use installed hardware, not every DF token in the file."""
 
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 
 import pytest
 
-from pyclickplc import Module, ModuleIO, read_io_layout
+from pyclickplc import Module, ModuleIO, read_io_layout, read_plc_name, write_plc_name
 from pyclickplc.project import ChannelParameters, read_channel_parameters
 
 
@@ -386,3 +387,155 @@ def test_layout_is_immutable(tmp_path):
     (cpu,) = _layout(tmp_path, "[SystemConfig]\nItem1=225\n")
     with pytest.raises(FrozenInstanceError):
         cpu.inputs = ()
+
+
+# ==============================================================================
+# read_plc_name / write_plc_name
+# ==============================================================================
+
+# CLICK 4 writes [PLCName] PLCName= as [Sec20] Key1=; Sec21 marks a CLICK 4 file.
+CLICK_3 = b"[SystemConfig]\r\nItem1=199\r\n[PLCName]\r\nPLCName=Line 1\r\n[Other]\r\nValue=1\r\n"
+CLICK_4 = b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Line 1\r\n[Sec22]\r\nKey1_2=\r\n"
+
+
+def _project(tmp_path, data):
+    path = tmp_path / "Project.ini"
+    path.write_bytes(data)
+    return path
+
+
+def _write(tmp_path, data, name):
+    path = _project(tmp_path, data)
+    write_plc_name(path, name)
+    assert read_plc_name(path) == name.strip()
+    return path.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "data,name",
+    [
+        (CLICK_3, "Line 1"),
+        (CLICK_4, "Line 1"),
+        (b"\xef\xbb\xbf" + CLICK_3, "Line 1"),
+        (b"[PLCName]\nplcname =  Mixer 2  \n", "Mixer 2"),
+        (b"[PLCName]\r\nPLCName=\r\n", None),
+        (b"[SystemConfig]\r\nItem1=199\r\n", None),
+        (b"", None),
+        # Without Sec21 the file uses CLICK 3's names, so Sec20 is not the PLC name.
+        (b"[Sec20]\r\nKey1=Line 1\r\n", None),
+    ],
+)
+def test_read_plc_name(tmp_path, data, name):
+    assert read_plc_name(_project(tmp_path, data)) == name
+
+
+def test_read_plc_name_errors(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        read_plc_name(tmp_path / "missing.ini")
+    with pytest.raises(ValueError, match="Invalid CLICK project"):
+        read_plc_name(_project(tmp_path, b"not an ini file"))
+    with pytest.raises(ValueError, match="Invalid CLICK project"):
+        read_plc_name(_project(tmp_path, b"[PLCName]\r\nPLCName=\xff\r\n"))
+
+
+def test_placeholder_plc_name_leaves_hardware_readers_alone(tmp_path):
+    path = _project(tmp_path, CLICK_4)
+    write_plc_name(path, "Mixer")
+    assert [io.module.model for io in read_io_layout(path)] == ["C2-01CPU-2"]
+
+
+@pytest.mark.parametrize("bom", [b"", b"\xef\xbb\xbf"])
+def test_write_changes_only_the_name_line(tmp_path, bom):
+    assert _write(tmp_path, bom + CLICK_3, "Mixer 2") == bom + CLICK_3.replace(
+        b"PLCName=Line 1\r\n", b"PLCName=Mixer 2\r\n"
+    )
+
+
+def test_write_click_4_name(tmp_path):
+    assert _write(tmp_path, CLICK_4, "Mixer 2") == CLICK_4.replace(
+        b"Key1=Line 1\r\n", b"Key1=Mixer 2\r\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "line,expected",
+    [
+        (b"PLCName=\r\n", b"PLCName=Mixer\r\n"),
+        (b"plcname = Old  \n", b"plcname = Mixer\n"),
+        (b"PLCName: Old\r", b"PLCName: Mixer\r"),
+        (b"PLCName=Old", b"PLCName=Mixer"),
+    ],
+)
+def test_write_keeps_the_name_line_as_written(tmp_path, line, expected):
+    before = b"[PLCName]\r\n;PLCName=comment\r\nOther=keep\r\n"
+    after = b"[Next]\r\nValue=1\r\n" if line.endswith((b"\r", b"\n")) else b""
+    assert _write(tmp_path, before + line + after, "Mixer") == before + expected + after
+
+
+@pytest.mark.parametrize(
+    "data,expected",
+    [
+        (b"[Other]\r\nValue=1\r\n", b"[Other]\r\nValue=1\r\n[PLCName]\r\nPLCName=Mixer\r\n"),
+        (b"[Other]\nValue=1", b"[Other]\nValue=1\n[PLCName]\nPLCName=Mixer\n"),
+        (b"[Other]\rValue=1\r", b"[Other]\rValue=1\r[PLCName]\rPLCName=Mixer\r"),
+        (b"", b"[PLCName]\r\nPLCName=Mixer\r\n"),
+        (b"[PLCName]\r\nOther=keep\r\n", b"[PLCName]\r\nPLCName=Mixer\r\nOther=keep\r\n"),
+        (b"[A]\r\n[PLCName]", b"[A]\r\n[PLCName]\r\nPLCName=Mixer\r\n"),
+        # A CLICK 4 file gets the placeholder name.
+        (b"[Sec21]\r\nKey3_1=199\r\n", b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Mixer\r\n"),
+        (b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n", b"[Sec21]\r\n[Sec20]\r\nKey1=Mixer\r\nKey2=x\r\n"),
+        # A CLICK 4 file that already has [PLCName] keeps the name there, where it is read.
+        (b"[Sec21]\r\n[PLCName]\r\nPLCName=A\r\n", b"[Sec21]\r\n[PLCName]\r\nPLCName=Mixer\r\n"),
+    ],
+)
+def test_write_adds_a_missing_name(tmp_path, data, expected):
+    assert _write(tmp_path, data, "Mixer") == expected
+
+
+def test_write_strips_the_name(tmp_path):
+    assert _write(tmp_path, CLICK_3, "  Mixer 2\t") == CLICK_3.replace(b"Line 1", b"Mixer 2")
+
+
+@pytest.mark.parametrize(
+    "data,name,match",
+    [
+        (CLICK_3, "", "Name is required"),
+        (CLICK_3, "A" * 25, "Name is too long"),
+        (CLICK_3, "Line/1", "Use only letters"),
+        (CLICK_3, "Línea", "Use only letters"),
+        (b"not an ini file", "Mixer", "Invalid CLICK project"),
+        (b"\xff[PLCName]\r\n", "Mixer", "Invalid CLICK project"),
+        # The edited line would not read back as the name alone.
+        (b"[PLCName]\r\nPLCName=Old\r\n  more\r\n", "Mixer", "Cannot set the PLC name"),
+        (b"[Sec21]\r\n[Sec20]\r\nKey1=A\r\n[PLCName]\r\n", "Mixer", "Invalid CLICK project"),
+    ],
+)
+def test_write_refuses_and_leaves_the_file(tmp_path, data, name, match):
+    path = _project(tmp_path, data)
+    with pytest.raises(ValueError, match=match):
+        write_plc_name(path, name)
+    assert path.read_bytes() == data
+    assert [p.name for p in tmp_path.iterdir()] == ["Project.ini"]
+
+
+def test_write_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        write_plc_name(tmp_path / "Project.ini", "Mixer")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_write_replaces_in_one_step(tmp_path, monkeypatch):
+    path = _project(tmp_path, CLICK_3)
+    replaced = []
+
+    def replace(source, destination):
+        replaced.append((Path(source).parent, Path(source).read_bytes(), Path(destination)))
+        raise PermissionError("locked")
+
+    monkeypatch.setattr("pyclickplc.project.os.replace", replace)
+    with pytest.raises(PermissionError):
+        write_plc_name(path, "Mixer")
+
+    assert replaced == [(tmp_path, CLICK_3.replace(b"Line 1", b"Mixer"), path)]
+    assert path.read_bytes() == CLICK_3
+    assert [p.name for p in tmp_path.iterdir()] == ["Project.ini"]

@@ -9,6 +9,7 @@ from pyclickplc.validation import (
     FORBIDDEN_CHARS,
     SYSTEM_NICKNAME_TYPES,
     assert_runtime_value,
+    validate_click_name,
     validate_comment,
     validate_initial_value,
     validate_nickname,
@@ -130,6 +131,36 @@ class TestValidateComment:
         # Length-only validation -- block tags are NOT rejected here
         assert validate_comment("[Block:MyBlock]") == (True, "")
         assert validate_comment("[Block:Dup]") == (True, "")
+
+
+# ==============================================================================
+# validate_click_name
+# ==============================================================================
+
+
+class TestValidateClickName:
+    @pytest.mark.parametrize(
+        "name", ["A", "A" * 24, "Line 1", "Line_1", "Line-1", " Line 1 ", "a" * 24 + "  "]
+    )
+    def test_valid(self, name):
+        assert validate_click_name(name) == (True, "")
+
+    @pytest.mark.parametrize(
+        "name,error",
+        [
+            ("", "Name is required."),
+            ("   ", "Name is required."),
+            ("A" * 25, "Name is too long (25/24)."),
+            ("Line/1", "Use only letters, numbers, spaces, underscores, and hyphens."),
+            ("Line.1", "Use only letters, numbers, spaces, underscores, and hyphens."),
+            ("Line@1", "Use only letters, numbers, spaces, underscores, and hyphens."),
+            ("Line\t1", "Use only letters, numbers, spaces, underscores, and hyphens."),
+            ("Línea", "Use only letters, numbers, spaces, underscores, and hyphens."),
+            ("Line١", "Use only letters, numbers, spaces, underscores, and hyphens."),
+        ],
+    )
+    def test_invalid(self, name, error):
+        assert validate_click_name(name) == (False, error)
 
 
 # ==============================================================================

@@ -1,10 +1,21 @@
-"""Read installed modules and channel parameters from a CLICK Project.ini file."""
+"""Read installed modules, channel parameters and the PLC name from CLICK's Project.ini.
+
+``write_plc_name`` sets the PLC name.
+"""
 
 from __future__ import annotations
 
+import codecs
+import io
+import os
+import re
+import shutil
+import stat
+import tempfile
 from collections.abc import Mapping
 from configparser import ConfigParser
 from configparser import Error as ConfigParserError
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -12,6 +23,7 @@ from typing import Literal
 
 from ._module_catalog import _MODULE_CATALOG, Module
 from .addresses import format_address_display, parse_address
+from .validation import validate_click_name
 
 
 @dataclass(frozen=True)
@@ -83,6 +95,7 @@ def _module(module_id: int, location: str) -> Module | None:
 # the names read here. A key ending in "_" is a prefix for numbered keys (Key3_1 ->
 # Item1); every other key must match exactly.
 _PLACEHOLDER_NAMES = {
+    "Sec20": ("PLCName", {"Key1": "PLCName"}),
     "Sec21": ("SystemConfig", {"Key3_": "Item"}),
     "Sec22": ("SystemConfigData", {"Key1_": "Item"}),
     "Sec23": (
@@ -111,9 +124,25 @@ def _placeholder_key(key: str, names: Mapping[str, str]) -> str | None:
     return None
 
 
+def _uses_placeholder_names(parser: ConfigParser) -> bool:
+    """Whether the file as written uses CLICK 4's placeholder names."""
+    return not parser.has_section("SystemConfig") and parser.has_section("Sec21")
+
+
+def _placeholder_option(section: str, key: str) -> tuple[str, str]:
+    """The CLICK 4 placeholder section and key for a named section and key."""
+    for placeholder, (name, names) in _PLACEHOLDER_NAMES.items():
+        if name != section:
+            continue
+        for placeholder_key, key_name in names.items():
+            if key_name == key and not placeholder_key.endswith("_"):
+                return placeholder, placeholder_key
+    raise KeyError((section, key))
+
+
 def _restore_names(parser: ConfigParser) -> None:
     """Rename a CLICK 4 file's placeholder sections and keys to the names read here."""
-    if parser.has_section("SystemConfig") or not parser.has_section("Sec21"):
+    if not _uses_placeholder_names(parser):
         return
     for placeholder, (section, names) in _PLACEHOLDER_NAMES.items():
         if not parser.has_section(placeholder):
@@ -125,15 +154,21 @@ def _restore_names(parser: ConfigParser) -> None:
                 parser.set(section, name, value)
 
 
-def _read_project(path: str | Path) -> ConfigParser:
+def _parse_project(data: bytes, path: str | Path, *, restore: bool = True) -> ConfigParser:
+    """Parse Project.ini bytes; with *restore*, CLICK 4's placeholder names are mapped back."""
     parser = ConfigParser(interpolation=None)
     try:
-        with Path(path).open(encoding="utf-8-sig") as stream:
-            parser.read_file(stream)
-        _restore_names(parser)
+        # newline=None reads \r\n, \r and \n line ends as opening the file in text mode does.
+        parser.read_file(io.StringIO(data.decode("utf-8-sig"), newline=None), source=str(path))
+        if restore:
+            _restore_names(parser)
     except (ConfigParserError, UnicodeError) as exc:
         raise ValueError(f"Invalid CLICK project configuration: {path}") from exc
     return parser
+
+
+def _read_project(path: str | Path) -> ConfigParser:
+    return _parse_project(Path(path).read_bytes(), path)
 
 
 def _read_modules(parser: ConfigParser) -> Modules:
@@ -294,6 +329,140 @@ def read_io_layout(path: str | Path) -> tuple[ModuleIO, ...]:
     return tuple(layout)
 
 
+_PLC_NAME = ("PLCName", "PLCName")
+
+# A section header and the start of an option line, matched as configparser matches them.
+_SECTION = re.compile(rb"\[(?P<header>.+)\]")
+_OPTION = re.compile(rb"\s*(?P<option>.*?)\s*[=:]\s*")
+_COMMENT_PREFIXES = (b"#", b";")
+
+
+def _plc_name(parser: ConfigParser) -> str | None:
+    return parser.get(*_PLC_NAME, fallback="").strip() or None
+
+
+def read_plc_name(path: str | Path) -> str | None:
+    """Read the PLC name from a CLICK Project.ini file.
+
+    The name is ``[PLCName] PLCName=``, which CLICK 4 writes as ``[Sec20] Key1=``.
+    Returns None if the project has no PLC name.
+
+    Raises OSError for unreadable files and ValueError for malformed INI data.
+    No CLICK installation is required.
+    """
+    return _plc_name(_read_project(path))
+
+
+def _line_end(line: bytes) -> bytes:
+    return line[len(line.rstrip(b"\r\n")) :]
+
+
+def _set_option(data: bytes, section: str, key: str, value: str) -> bytes:
+    """Set one option in INI bytes, changing only its line, or add it if it's missing.
+
+    The value replaces whatever follows the option's delimiter, and the line keeps
+    its own line end. A missing option goes right after its section header; a
+    missing section goes at the end, with the line end the file already uses.
+    """
+    bom = codecs.BOM_UTF8 if data.startswith(codecs.BOM_UTF8) else b""
+    lines = data[len(bom) :].splitlines(keepends=True)
+    newline = next((_line_end(line) for line in lines if _line_end(line)), b"\r\n")
+    header = section.encode("ascii")
+    option = key.lower().encode("ascii")
+    encoded = value.encode("ascii")
+
+    start = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        match = _SECTION.match(line.strip())
+        if match is None:
+            continue
+        if start is not None:
+            end = index
+            break
+        if match["header"] == header:
+            start = index
+
+    if start is None:
+        if lines and not _line_end(lines[-1]):
+            lines[-1] += newline
+        lines += [b"[" + header + b"]" + newline, key.encode("ascii") + b"=" + encoded + newline]
+        return bom + b"".join(lines)
+
+    for index in range(start + 1, end):
+        line = lines[index]
+        if line.strip().startswith(_COMMENT_PREFIXES):
+            continue
+        match = _OPTION.match(line.rstrip(b"\r\n"))
+        if match is not None and match["option"].lower() == option:
+            lines[index] = line[: match.end()] + encoded + _line_end(line)
+            break
+    else:
+        if not _line_end(lines[start]):
+            lines[start] += newline
+        lines.insert(start + 1, key.encode("ascii") + b"=" + encoded + newline)
+    return bom + b"".join(lines)
+
+
+def _options(parser: ConfigParser) -> dict[str, dict[str, str]]:
+    return {section: dict(parser.items(section)) for section in parser.sections()}
+
+
+def _replace(path: Path, data: bytes) -> None:
+    """Write *data* to a temporary file beside *path*, then move it over *path* in one step."""
+    descriptor, staging = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        shutil.copymode(path, staging)
+        os.replace(staging, path)
+    except BaseException:
+        with suppress(OSError):
+            # copymode may have made it read-only, which Windows won't delete.
+            os.chmod(staging, stat.S_IREAD | stat.S_IWRITE)
+            os.unlink(staging)
+        raise
+
+
+def write_plc_name(path: str | Path, name: str) -> None:
+    """Set the PLC name in a CLICK Project.ini file.
+
+    Only the line holding the name changes, or is added if the project has no
+    name; every other byte stays as it was. A file CLICK 4 wrote gets the name
+    in ``[Sec20] Key1=``, any other file in ``[PLCName] PLCName=``. The name is
+    checked with ``validate_click_name`` and written without surrounding
+    whitespace. The new file goes to a temporary file in the same folder, which
+    then replaces Project.ini in one step.
+
+    Raises ValueError for an invalid name or malformed INI data, and OSError if
+    the file can't be read or replaced. On an error the file is unchanged.
+    """
+    is_valid, error = validate_click_name(name)
+    if not is_valid:
+        raise ValueError(error)
+    name = name.strip()
+    path = Path(path)
+    original = path.read_bytes()
+    written = _parse_project(original, path, restore=False)
+    if _uses_placeholder_names(written) and not written.has_section(_PLC_NAME[0]):
+        section, key = _placeholder_option(*_PLC_NAME)
+    else:
+        section, key = _PLC_NAME
+    updated = _set_option(original, section, key, name)
+
+    # Check the edit before writing: the name reads back and no other value moved.
+    expected = _options(written)
+    expected.setdefault(section, dict(written.items(written.default_section)))[key.lower()] = name
+    if (
+        _options(_parse_project(updated, path, restore=False)) != expected
+        or _plc_name(_parse_project(updated, path)) != name
+    ):
+        raise ValueError(f"Cannot set the PLC name in {path}")
+    _replace(path, updated)
+
+
 __all__ = [
     "Module",
     "Modules",
@@ -302,4 +471,6 @@ __all__ = [
     "read_modules",
     "read_channel_parameters",
     "read_io_layout",
+    "read_plc_name",
+    "write_plc_name",
 ]

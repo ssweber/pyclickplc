@@ -1,11 +1,13 @@
 """Validation functions for PLC address data.
 
-Validates nicknames, comments, and initial values against CLICK PLC rules.
+Validates nicknames, comments, initial values, and PLC and DataView names
+against CLICK PLC rules.
 """
 
 from __future__ import annotations
 
 import math
+import re
 import struct
 
 from .banks import (
@@ -18,6 +20,10 @@ from .banks import (
 
 NICKNAME_MAX_LENGTH = 24
 COMMENT_MAX_LENGTH = 128
+
+# PLC and DataView names: letters, digits, space, underscore and hyphen.
+CLICK_NAME_MAX_LENGTH = 24
+CLICK_NAME_PATTERN = re.compile(r"[A-Za-z0-9_\- ]+")
 
 # Memory types whose nicknames may start with _ (PLC system-generated).
 # SC/SD have system-preset names; X gets auto-generated feedback signals
@@ -139,6 +145,28 @@ def validate_comment(comment: str) -> tuple[bool, str]:
     if len(comment) > COMMENT_MAX_LENGTH:
         return False, f"Too long ({len(comment)}/128)"
 
+    return True, ""
+
+
+def validate_click_name(name: str) -> tuple[bool, str]:
+    """Validate a PLC or DataView name.
+
+    Leading and trailing whitespace is ignored. What remains must be 1 to 24
+    letters, digits, spaces, underscores and hyphens.
+
+    Args:
+        name: The name to validate
+
+    Returns:
+        Tuple of (is_valid, error_message) - error_message is "" if valid
+    """
+    name = name.strip()
+    if not name:
+        return False, "Name is required."
+    if len(name) > CLICK_NAME_MAX_LENGTH:
+        return False, f"Name is too long ({len(name)}/{CLICK_NAME_MAX_LENGTH})."
+    if not CLICK_NAME_PATTERN.fullmatch(name):
+        return False, "Use only letters, numbers, spaces, underscores, and hyphens."
     return True, ""
 
 

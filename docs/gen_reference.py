@@ -48,7 +48,10 @@ PAGES: tuple[ReferencePage, ...] = (
         slug="files",
         title="Files API",
         tier="Stable Core",
-        summary="Nickname CSV, DataView CDV, PLC data, installed modules, and channel parameters.",
+        summary=(
+            "Nickname CSV, DataView CDV, PLC data, installed modules, channel parameters, "
+            "and the PLC name."
+        ),
         symbols=(
             "read_csv",
             "write_csv",
@@ -72,6 +75,8 @@ PAGES: tuple[ReferencePage, ...] = (
             "read_channel_parameters",
             "ModuleIO",
             "read_io_layout",
+            "read_plc_name",
+            "write_plc_name",
             "read_plc_data",
             "write_plc_data",
         ),
@@ -93,7 +98,10 @@ PAGES: tuple[ReferencePage, ...] = (
         slug="validation",
         title="Validation API",
         tier="Stable Core",
-        summary="Nickname/comment/initial-value validators and system nickname constants.",
+        summary=(
+            "Nickname/comment/initial-value and PLC/DataView name validators, "
+            "and system nickname constants."
+        ),
         symbols=(
             "AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE",
             "AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE",
@@ -107,6 +115,7 @@ PAGES: tuple[ReferencePage, ...] = (
             "validate_nickname",
             "validate_comment",
             "validate_initial_value",
+            "validate_click_name",
         ),
     ),
     ReferencePage(
