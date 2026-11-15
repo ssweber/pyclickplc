@@ -7,8 +7,10 @@ When an item lands, delete it.
 Each item says what it needs: **nothing** (code only), **CLICK software**, **a real PLC**, or **Sam's
 judgment**. Work that needs nothing is not queued behind work that needs Sam.
 
-Branches: feature and refactor branches into an always-releasable `main`. Sam squash-merges. Push and open a
-PR only once Sam has said so directly; otherwise stop at "CI green locally, ready to push".
+Branches: feature and refactor branches into an always-releasable `main`. Since 2026-11-15 the session pushes
+its branch, opens the PR and squash-merges it once CI is green on the head commit, a fresh reviewer has passed
+that commit, and nothing in it waits on Sam (his judgment, a CLICK check, a real PLC). The release (tag and
+publish) stays Sam's.
 
 ## 1. Smaller items from ClickNick's inventory
 
