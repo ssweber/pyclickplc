@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import struct
 from pathlib import Path
 from textwrap import dedent
 
@@ -605,3 +607,159 @@ class TestRoundTrip:
         # Defaults should have been stripped by skip_default
         assert "X003" not in reread
         assert "DS1" not in reread
+
+
+# ── A dump CLICK wrote ───────────────────────────────────────────────
+
+CLICK_DUMP = Path(__file__).parent / "fixtures" / "PlcDataDump.csv"
+
+
+def _float32(value: float) -> float:
+    return struct.unpack("<f", struct.pack("<f", value))[0]
+
+
+def _first_cell(tmp_path: Path, data: dict[str, bool | int | float | str], bank: str) -> str:
+    """Write *data* as a one-bank file and return the first cell of its first data row."""
+    out = tmp_path / "out.csv"
+    write_plc_data(out, data, banks=[bank])
+    return out.read_bytes().decode("ascii").split("\r\n")[2].split(",")[1]
+
+
+class TestClickDump:
+    def test_reads_err_format_as_nan(self) -> None:
+        data = read_plc_data(CLICK_DUMP)
+        nan = {a for a, v in data.items() if isinstance(v, float) and math.isnan(v)}
+        assert len(nan) == 46
+        assert {"DF31", "DF32", "DF42", "DF43", "DF122", "DF498"} <= nan
+
+    def test_reads_escaped_txt(self) -> None:
+        data = read_plc_data(CLICK_DUMP)
+        assert data["TXT12"] == " "
+        assert data["TXT64"] == "\r"
+        assert data["TXT95"] == "\xc8"
+        assert data["TXT833"] == " "
+        assert data["TXT81"] == "H"
+        assert data["TXT13"] == ""
+
+    def test_reads_large_df_values(self) -> None:
+        data = read_plc_data(CLICK_DUMP)
+        assert data["DF40"] == _float32(3e38)
+        assert data["DF482"] == _float32(3e37)
+        assert data["DF82"] == _float32(1e30)
+        assert data["DF84"] == _float32(-1e30)
+        assert data["DF26"] == 123456.703125
+
+    def test_reads_16_cells_in_each_xy_expansion_row(self) -> None:
+        data = read_plc_data(CLICK_DUMP)
+        for bank in ("X", "Y"):
+            for slot in range(1, 9):
+                row = [a for a in data if a.startswith(f"{bank}{slot}") and len(a) == 4]
+                assert len(row) == 16, (bank, slot)
+
+    def test_write_matches_click_bytes_apart_from_err_format(self, tmp_path: Path) -> None:
+        """With each NaN set to 0.0, the write is the dump with Err-Format as 0.00000000."""
+        data = read_plc_data(CLICK_DUMP)
+        data = {a: 0.0 if isinstance(v, float) and math.isnan(v) else v for a, v in data.items()}
+        out = tmp_path / "out.csv"
+        write_plc_data(out, data, banks=_SECTION_ORDER)
+        assert out.read_bytes() == CLICK_DUMP.read_bytes().replace(b"Err-Format", b"0.00000000")
+
+    def test_write_back_raises_on_err_format(self, tmp_path: Path) -> None:
+        out = tmp_path / "out.csv"
+        with pytest.raises(ValueError, match="DF31"):
+            write_plc_data(out, read_plc_data(CLICK_DUMP))
+        assert not out.exists()
+
+
+class TestWriteDfForm:
+    @pytest.mark.parametrize(
+        ("value", "cell"),
+        [
+            (0.0, "0.00000000"),
+            (66.7, "66.69999695"),
+            (-1.6, "-1.60000002"),
+            (0.1, "0.10000000"),
+            (123456.7, "123456.70312500"),
+            (16777221.0, "16777220.00000000"),
+            (1e10, "10000000000.00000000"),
+            (1e30, "1000000015047466219900000000000.00000000"),
+            (-1e30, "-1000000015047466219900000000000.00000000"),
+            (3e37, "30000001069098037760000000000000000000.00"),
+            (3e38, "300000000549775575800000000000000000000.0"),
+        ],
+    )
+    def test_writes_click_float_form(self, tmp_path: Path, value: float, cell: str) -> None:
+        assert _first_cell(tmp_path, {"DF1": value}, "DF") == cell
+
+    @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+    def test_non_finite_raises(self, tmp_path: Path, value: float) -> None:
+        with pytest.raises(ValueError, match="DF7"):
+            write_plc_data(tmp_path / "out.csv", {"DF7": value})
+
+    def test_past_float32_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="DF7.*float32"):
+            write_plc_data(tmp_path / "out.csv", {"DF7": 1e39})
+
+
+class TestTxtForm:
+    def test_reads_escaped_cells(self, tmp_path: Path) -> None:
+        p = _write(
+            tmp_path,
+            """\
+            <TXT=START>
+            Address,1,2,3,4,5,
+            TXT1,$20,$D,$C8,$,A,
+            </TXT=END>
+            """,
+        )
+        data = read_plc_data(p)
+        assert [data[f"TXT{i}"] for i in range(1, 6)] == [" ", "\r", "\xc8", "$", "A"]
+
+    @pytest.mark.parametrize(
+        ("value", "cell"),
+        [
+            ("A", "A"),
+            ("z", "z"),
+            ("7", "7"),
+            ("+", "+"),
+            ("-", "-"),
+            (".", "."),
+            ("", ""),
+            ("\x00", ""),
+            (" ", "$20"),
+            ("\r", "$D"),
+            ("\x01", "$1"),
+            ("\x7f", "$7F"),
+            ("\xc8", "$C8"),
+            ("\xff", "$FF"),
+        ],
+    )
+    def test_writes_click_text_form(self, tmp_path: Path, value: str, cell: str) -> None:
+        assert _first_cell(tmp_path, {"TXT1": value}, "TXT") == cell
+
+    @pytest.mark.parametrize("value", [",", "$", '"', "!", "_"])
+    def test_character_with_unknown_form_raises(self, tmp_path: Path, value: str) -> None:
+        with pytest.raises(ValueError, match="TXT3"):
+            write_plc_data(tmp_path / "out.csv", {"TXT3": value})
+
+    @pytest.mark.parametrize("value", ["AB", "Ā"])
+    def test_not_one_byte_raises(self, tmp_path: Path, value: str) -> None:
+        with pytest.raises(ValueError, match="TXT3"):
+            write_plc_data(tmp_path / "out.csv", {"TXT3": value})
+
+    def test_round_trip(self, tmp_path: Path) -> None:
+        original = {"TXT1": " ", "TXT2": "\r", "TXT3": "\xc8", "TXT4": "Q", "TXT5": ""}
+        out = tmp_path / "out.csv"
+        write_plc_data(out, original)
+        data = read_plc_data(out)
+        assert {a: data[a] for a in original} == original
+
+
+class TestWriteBytes:
+    def test_crlf_and_a_blank_line_after_every_section(self, tmp_path: Path) -> None:
+        out = tmp_path / "out.csv"
+        write_plc_data(out, {"CT1": True, "CTD1": 5})
+        text = out.read_bytes().decode("ascii")
+        assert "\n" not in text.replace("\r\n", "")
+        assert "</CT=END>\r\n\r\n<CTD=START>\r\n" in text
+        assert text.endswith("</CTD=END>\r\n\r\n")
