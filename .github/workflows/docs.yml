@@ -15,10 +15,6 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -58,15 +54,19 @@ jobs:
         run: uv run --no-sync python .github/scripts/check_public_site.py site
 
       - name: Upload Pages artifact
-        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+        if: (github.event_name == 'release' && !github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-pages-artifact@v4
         with:
           path: site
 
   deploy:
     # The public docs describe the latest release, not unreleased work on main.
-    if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+    if: (github.event_name == 'release' && !github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v'))
     needs: build
+    # Only deploys share the group, so a PR or main build never cancels a queued release deploy.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment:
       name: github-pages
