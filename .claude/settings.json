@@ -1,0 +1,6 @@
+{
+  "extraKnownMarketplaces": {
+    "bob": { "source": { "source": "github", "repo": "ssweber/bob" } }
+  },
+  "enabledPlugins": { "bob@bob": true }
+}

@@ -10,6 +10,7 @@
 - **Single test**: `uv run pytest tests/test_addresses.py::TestParseAddress::test_xd_yd_returns_mdb -v`
 - **Lint**: `make lint` (codespell, `ruff check --fix`, `ruff format`, `ty check`). It edits files.
 - **Build**: `make build`
+- **Multi-branch work**: the bob plugin's `/bob` skill (builders and a fresh reviewer per branch, worktrees, bounded test runs). This repo's settings for it are in `.claude/bob/`.
 
 ## Architecture
 
