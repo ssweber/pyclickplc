@@ -25,8 +25,11 @@ This repo's specifics for the bob plugin's skill and agents.
 
 The local gate is `make lint && make test && make docs-check` on the branch's last commit,
 with a clean worktree afterwards (lint rewrites nothing). All three are cheap, so builders run
-the whole gate. GitHub CI reruns lint and tests on Python 3.11-3.14 and builds the docs; the
-required checks are `ci` and the docs `build`.
+the whole gate. Read a gate's exit code directly, never through a pipe without `pipefail`.
+GitHub CI reruns lint and tests on Python 3.11-3.14 (its `ci` job passes only when all of them
+did) and builds the docs on every pull request. `main` requires the docs `build` and, until Sam
+swaps the ruleset to `ci`, the four `build (ubuntu-latest, 3.x)` checks: don't change the test
+matrix before that.
 
 ## Correctness contract (put in every builder and reviewer brief)
 
