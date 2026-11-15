@@ -48,12 +48,16 @@ _XY_ROW_STARTS = (1, 101, 201, 301, 401, 501, 601, 701, 801)
 _STD_STRIDE = 10
 _STD_HEADER_OFFSETS = list(range(1, _STD_STRIDE + 1))
 
-# CLICK writes a DF value that is not a number (a NaN, and perhaps an infinity) as this.
+# CLICK shows this for a DF value it can't display. CLICK's editor can't enter a NaN or
+# an infinity, so write_plc_data refuses them (a program or a Modbus write can still put
+# one in the PLC).
 _DF_ERROR = "Err-Format"
 
 # CLICK writes a DF value in fixed point with 8 decimals, and with no more than 40 digits
-# in all (3e38 has one decimal). It keeps as many leading digits as fit in an unsigned
-# 64-bit integer and writes zeros after them: 20 for 1e30, 19 for 3e38.
+# in all (3e38 has one decimal). It keeps some leading digits and writes zeros after
+# them: 20 for 1e30, 19 for 3e38. The dump only puts the cut-off between those two;
+# 2**64 (as many digits as fit in an unsigned 64-bit integer) is inferred, and a check
+# in CLICK is owed (scratchpad/roadmap.md).
 _DF_DECIMALS = 8
 _DF_MAX_DIGITS = 40
 _DF_KEPT_LIMIT = 2**64
@@ -109,9 +113,10 @@ def read_plc_data(
     Returns:
         Dict mapping normalized address strings (e.g. ``"X001"``, ``"DS1"``)
         to native Python values (``bool`` for bits, ``int`` for INT/INT2/HEX,
-        ``float`` for FLOAT, ``str`` for TXT). A DF cell CLICK writes as
-        ``Err-Format`` reads as ``float("nan")``, and a TXT cell CLICK writes
-        as ``$`` and a hex code (``$20``) reads as that character (``" "``).
+        ``float`` for FLOAT, ``str`` for TXT). CLICK shows ``Err-Format`` for
+        a DF value it can't display; it reads as ``float("nan")``. A TXT cell
+        CLICK writes as ``$`` and a hex code (``$20``) reads as that character
+        (``" "``).
     """
     text = Path(path).read_text()
     lines = text.splitlines()
@@ -185,9 +190,12 @@ def read_plc_data(
 
 def _format_float(value: bool | int | float | str, addr: str) -> str:
     """Format a DF value as CLICK does: the float32 value in CLICK's fixed point."""
-    number = float(value)
+    try:
+        number = float(value)
+    except (OverflowError, TypeError, ValueError):
+        raise ValueError(f"{addr} value {value!r} is not a float32.") from None
     if not math.isfinite(number):
-        raise ValueError(f"{addr} value {number} has no number form in a CLICK data file.")
+        raise ValueError(f"{addr} value {number}: CLICK can't enter a NaN or an infinity.")
     try:
         (single,) = struct.unpack("<f", struct.pack("<f", number))
     except OverflowError:
@@ -252,11 +260,12 @@ def write_plc_data(
               :data:`ALL_BANKS` to force a full dump with defaults.
 
     Raises:
-        ValueError: Naming the address, for a DF value that is NaN, infinite
-            or outside the float32 range, and for a TXT value that isn't one
-            character with code 0..255 or whose form in CLICK's file isn't
-            known (punctuation other than ``+``, ``-`` and ``.``). Nothing is
-            written then.
+        ValueError: Naming the address, for a DF value that isn't a number
+            in the float32 range, and for a TXT value that isn't one character
+            with code 0..255 or whose form in CLICK's file isn't known
+            (punctuation other than ``+``, ``-`` and ``.``). CLICK's editor
+            can't enter a NaN or an infinity, so they raise too (a program or a
+            Modbus write can still put one in the PLC). Nothing is written then.
     """
     if banks is not None:
         selected = list(banks)

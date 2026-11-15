@@ -6,6 +6,7 @@ import math
 import struct
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import pytest
 
@@ -649,12 +650,18 @@ class TestClickDump:
         assert data["DF84"] == _float32(-1e30)
         assert data["DF26"] == 123456.703125
 
-    def test_reads_16_cells_in_each_xy_expansion_row(self) -> None:
-        data = read_plc_data(CLICK_DUMP)
+    def test_xy_expansion_rows_hold_16_cells(self) -> None:
+        lines = CLICK_DUMP.read_bytes().decode("ascii").split("\r\n")
         for bank in ("X", "Y"):
-            for slot in range(1, 9):
-                row = [a for a in data if a.startswith(f"{bank}{slot}") and len(a) == 4]
-                assert len(row) == 16, (bank, slot)
+            rows = {line.split(",")[0]: line for line in lines if line.startswith(bank)}
+            assert rows[f"{bank}1"].count(",") == 33
+            for start in range(101, 802, 100):
+                assert rows[f"{bank}{start}"].count(",") == 17, (bank, start)
+
+    def test_skip_default_keeps_err_format(self) -> None:
+        data = read_plc_data(CLICK_DUMP, skip_default=True)
+        value = data["DF31"]
+        assert isinstance(value, float) and math.isnan(value)
 
     def test_write_matches_click_bytes_apart_from_err_format(self, tmp_path: Path) -> None:
         """With each NaN set to 0.0, the write is the dump with Err-Format as 0.00000000."""
@@ -700,6 +707,11 @@ class TestWriteDfForm:
         with pytest.raises(ValueError, match="DF7.*float32"):
             write_plc_data(tmp_path / "out.csv", {"DF7": 1e39})
 
+    @pytest.mark.parametrize("value", [10**400, "abc", None])
+    def test_not_a_number_raises_with_the_address(self, tmp_path: Path, value: Any) -> None:
+        with pytest.raises(ValueError, match="DF7"):
+            write_plc_data(tmp_path / "out.csv", {"DF7": value})
+
 
 class TestTxtForm:
     def test_reads_escaped_cells(self, tmp_path: Path) -> None:
@@ -742,8 +754,8 @@ class TestTxtForm:
         with pytest.raises(ValueError, match="TXT3"):
             write_plc_data(tmp_path / "out.csv", {"TXT3": value})
 
-    @pytest.mark.parametrize("value", ["AB", "Ā"])
-    def test_not_one_byte_raises(self, tmp_path: Path, value: str) -> None:
+    @pytest.mark.parametrize("value", ["AB", "Ā", 5])
+    def test_not_one_byte_raises(self, tmp_path: Path, value: str | int) -> None:
         with pytest.raises(ValueError, match="TXT3"):
             write_plc_data(tmp_path / "out.csv", {"TXT3": value})
 
