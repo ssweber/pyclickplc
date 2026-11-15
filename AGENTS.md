@@ -10,6 +10,7 @@
 - **Single test**: `uv run pytest tests/test_addresses.py::TestParseAddress::test_xd_yd_returns_mdb -v`
 - **Lint**: `make lint` (codespell, `ruff check --fix`, `ruff format`, `ty check`). It edits files.
 - **Build**: `make build`
+- **Multi-branch work**: the `/bob` skill (`.claude/skills/bob/`): builders and a fresh reviewer per branch, worktrees and bounded test runs through `devtools/mergeq/`.
 
 ## Architecture
 
