@@ -77,7 +77,9 @@ FLOAT_MAX = 3.4028235e38
 def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple[bool, str]:
     """Validate nickname format (length, characters, reserved words).
 
-    Does NOT check uniqueness -- that is application-specific.
+    A leading or trailing space is invalid: CLICK strips it, so "Pump " and
+    "Pump" would be one nickname. Does NOT check uniqueness -- that is
+    application-specific.
 
     Args:
         nickname: The nickname to validate
@@ -94,6 +96,9 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
 
     if len(nickname) > NICKNAME_MAX_LENGTH:
         return False, f"Too long ({len(nickname)}/24)"
+
+    if nickname != nickname.strip(" "):
+        return False, "Cannot start or end with a space"
 
     def _forbidden_char_error() -> str:
         invalid_chars = set(nickname) & FORBIDDEN_CHARS
@@ -129,7 +134,7 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
 
 
 def validate_comment(comment: str) -> tuple[bool, str]:
-    """Validate comment length.
+    """Validate comment length and edge spaces.
 
     Does NOT check block tag uniqueness -- that requires blocks.py context.
 
@@ -144,6 +149,9 @@ def validate_comment(comment: str) -> tuple[bool, str]:
 
     if len(comment) > COMMENT_MAX_LENGTH:
         return False, f"Too long ({len(comment)}/128)"
+
+    if comment != comment.strip(" "):
+        return False, "Cannot start or end with a space"
 
     return True, ""
 

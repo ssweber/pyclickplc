@@ -695,10 +695,10 @@ class TestCsvFormat:
 
     @pytest.mark.parametrize(
         ("initial", "cell"),
-        [("A", b"A"), (" ", b" "), ("", b""), (",", b'","'), ('"', b'""""')],
+        [("A", b"A"), (" ", b'" "'), ("", b""), (",", b'","'), ('"', b'""""')],
     )
-    def test_txt_initial_value_bare_unless_comma_or_quote(self, tmp_path, initial, cell):
-        """CLICK writes Text bare, but imports a comma or double quote only quoted."""
+    def test_txt_initial_value_bare_unless_space_comma_or_quote(self, tmp_path, initial, cell):
+        """CLICK writes Text bare, but imports a space, comma or double quote only quoted."""
         csv_path = tmp_path / "txt.csv"
         record = AddressRecord(
             memory_type="TXT",
