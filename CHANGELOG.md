@@ -5,8 +5,12 @@
 ### Added
 
 - `iter_address_slots` yields `(memory_type, address)` for every slot CLICK shows, in bank order, so a caller can loop over all of them.
-- `read_plc_name` reads the PLC name from a project's `Project.ini`, and `write_plc_name` sets it, changing only the line that holds it.
+- `read_plc_name` reads the PLC name from a project's `Project.ini`, and `write_plc_name` sets it, changing or adding only the name line.
 - `validate_click_name` checks a PLC or DataView name: 1 to 24 letters, digits, spaces, underscores and hyphens.
+
+### Fixed
+
+- `read_modules`, `read_channel_parameters` and `read_io_layout` read a CLICK 4 `Project.ini` that also has a `[SystemConfigData]` or `[CPUBuild]` section, and take CLICK 4's values (they raised `ValueError`).
 
 ## 0.6.0 - 2026-11-15
 
