@@ -48,7 +48,7 @@ _XY_ROW_STARTS = (1, 101, 201, 301, 401, 501, 601, 701, 801)
 _STD_STRIDE = 10
 _STD_HEADER_OFFSETS = list(range(1, _STD_STRIDE + 1))
 
-# CLICK writes a DF value it can't show as a number (a NaN or an infinity) as this.
+# CLICK writes a DF value that is not a number (a NaN, and perhaps an infinity) as this.
 _DF_ERROR = "Err-Format"
 
 # CLICK writes a DF value in fixed point with 8 decimals, and with no more than 40 digits

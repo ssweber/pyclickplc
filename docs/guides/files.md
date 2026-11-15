@@ -112,7 +112,7 @@ data = read_plc_data("data.csv", skip_default=True)
 
 Returns a flat dict mapping normalized addresses to native Python values (`bool` for bits, `int` for INT/INT2/HEX, `float` for FLOAT, `str` for TXT).
 
-A DF cell that CLICK shows as `Err-Format` (a NaN or infinity in the PLC) reads as `float("nan")`. CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code; it reads as the character (`$20` is `" "`, `$C8` is `"\xc8"`).
+A DF cell that CLICK shows as `Err-Format` (the PLC holds no number there, such as a NaN) reads as `float("nan")`. CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code; it reads as the character (`$20` is `" "`, `$C8` is `"\xc8"`).
 
 ### Write
 
