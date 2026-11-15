@@ -86,7 +86,7 @@ def read_plc_data(
               ``""`` for text).
 
     Returns:
-        Dict mapping normalised address strings (e.g. ``"X001"``, ``"DS1"``)
+        Dict mapping normalized address strings (e.g. ``"X001"``, ``"DS1"``)
         to native Python values (``bool`` for bits, ``int`` for INT/INT2/HEX,
         ``float`` for FLOAT, ``str`` for TXT).
     """
@@ -186,7 +186,7 @@ def write_plc_data(
 
     Args:
         path: Output file path.
-        data: Dict mapping normalised address strings (e.g. ``"X001"``,
+        data: Dict mapping normalized address strings (e.g. ``"X001"``,
               ``"DS1"``) to native Python values — the same format
               :func:`read_plc_data` returns.
         banks: Bank names to include (e.g. ``["DS", "DF"]``).  *None*

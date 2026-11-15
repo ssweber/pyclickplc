@@ -71,7 +71,7 @@ class ModbusResponse(AddressNormalizerMixin, Mapping[str, TValue_co], Generic[TV
     """Immutable mapping with normalized PLC address keys.
 
     Keys are stored in canonical uppercase form (``DS1``, ``X001``).
-    Look-ups normalise the key automatically, so ``response["ds1"]``
+    Look-ups normalize the key automatically, so ``response["ds1"]``
     and ``response["DS1"]`` both work.
     """
 

@@ -1,7 +1,7 @@
 """CSV read/write for CLICK PLC address nicknames.
 
-Provides functions to read and write address data in CLICK software CSV format
-(user-facing) and MDB-dump CSV format, using AddressRecord as the data model.
+Reads and writes the nickname CSV that CLICK Programming Software exports and
+imports, using AddressRecord as the data model.
 """
 
 from __future__ import annotations
