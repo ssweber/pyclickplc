@@ -8,7 +8,6 @@ import pytest
 from pyclickplc import (
     Module,
     ModuleIO,
-    Modules,
     read_io_layout,
     read_modules,
     read_plc_name,
@@ -512,7 +511,9 @@ def test_write_sets_the_placeholder_when_both_sections_exist(tmp_path):
 # CLICK wrote it.
 CLICK_FIXTURES = [
     pytest.param("Project_click3.ini", b"[PLCName]\r\nPLCName=", "V3PLC", [], id="click3"),
-    pytest.param("Project_click3_noname.ini", b"[PLCName]\r\nPLCName=", None, [], id="click3-noname"),
+    pytest.param(
+        "Project_click3_noname.ini", b"[PLCName]\r\nPLCName=", None, [], id="click3-noname"
+    ),
     pytest.param(
         "Project_click4.ini",
         b"[Sec20]\r\nKey1=",
