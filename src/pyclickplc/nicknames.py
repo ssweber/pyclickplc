@@ -473,8 +473,8 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
     CLICK writes this file beside its project database, as UTF-8 with a byte
     order mark, with columns AddrKey, MemoryType, Address, DataType, Nickname,
     Use, InitialValue, Retentive, Comment. Address is the MDB address (XD1 is
-    2), and DataType, Use and Retentive are numbers. Only rows with content
-    are kept. A row whose MemoryType or Address pyclickplc does not know is
+    2), and Use and Retentive are numbers. DataType is not read: every record
+    takes its bank's type. Only rows with content are kept. A row whose MemoryType or Address pyclickplc does not know is
     skipped, as is an XD/YD slot CLICK does not show (MDB 3, 5, ... 15).
 
     Raises:
@@ -517,10 +517,8 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
             elif not is_valid_address(mem_type, address):
                 continue
 
-            try:
-                data_type = DataType(int(row.get("DataType") or ""))
-            except ValueError:
-                data_type = MEMORY_TYPE_TO_DATA_TYPE[mem_type]
+            # CLICK's banks have fixed types; the DataType column is not read
+            data_type = BANKS[mem_type].data_type
 
             retentive_raw = (row.get("Retentive") or "").strip()
             retentive = (

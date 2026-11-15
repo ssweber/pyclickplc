@@ -553,6 +553,24 @@ class TestReadMdbCsv:
 
         assert [r.display_address for r in records.values()] == ["DS1"]
 
+    def test_data_type_is_the_banks(self, tmp_path):
+        """A DataType that isn't the bank's is not taken, so format_csv's text reads back."""
+        csv_path = self.write(
+            tmp_path,
+            "100663297,DS,1,4,Speed,1,5,1,",
+            "201326593,TXT,1,1,Msg,1,A,1,",
+            "100663298,DS,2,,Blank,1,0,1,",
+        )
+
+        records = read_mdb_csv(csv_path)
+        out = tmp_path / "Nicknames.csv"
+        out.write_bytes(format_csv(records).encode("utf-8"))
+        loaded = read_csv(out)
+
+        expected = [("DS1", DataType.INT), ("DS2", DataType.INT), ("TXT1", DataType.TXT)]
+        assert sorted((r.display_address, r.data_type) for r in records.values()) == expected
+        assert sorted((r.display_address, r.data_type) for r in loaded.values()) == expected
+
     def test_skips_xd_hidden_slots(self, tmp_path):
         """MDB XD3 is not shown by CLICK; it would display as XD1 beside the real XD1."""
         csv_path = self.write(
