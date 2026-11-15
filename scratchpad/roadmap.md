@@ -10,18 +10,7 @@ judgment**. Work that needs nothing is not queued behind work that needs Sam.
 Branches: feature and refactor branches into an always-releasable `main`. Sam squash-merges. Push and open a
 PR only once Sam has said so directly; otherwise stop at "CI green locally, ready to push".
 
-## 1. Release the address and CSV reader changes (0.6.0)
-
-Needs: Sam (he publishes the release). The changes are on `main` once their PR merges; the changelog's
-Unreleased section lists them. laddercodec's parity test waits on this release, and ClickNick can then move
-onto `read_csv`, `format_csv` and `read_mdb_csv`. pyrung's tag map reads through `read_csv`, so a pyrung CSV
-with a bad address or an unknown Data Type now fails to load instead of losing the row.
-
-pyrung follow-up (pyrung's, not ours): `read_csv` no longer fails on a repeated nickname, and pyrung's own
-repeat check (`seen_names` in `tag_map/_nickname_io.py`) is case-sensitive, so `Pump` at X001 and `pump` at
-X002 now load as two tags in pyrung, where pyclickplc's `.tag` treats them as one nickname.
-
-## 2. Smaller items from ClickNick's inventory
+## 1. Smaller items from ClickNick's inventory
 
 Needs: nothing for the code; the API names are settled with the ClickNick session through Sam.
 
@@ -36,7 +25,7 @@ Needs: nothing for the code; the API names are settled with the ClickNick sessio
   ClickNick's wording, not a CLICK fact; pyclickplc's `ModuleIO` already gives the location and position.
   Revisit if CLICK itself shows these names.
 
-## 3. Waiting on CLICK
+## 2. Waiting on CLICK
 
 Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's behaviour until answered.
 
@@ -44,7 +33,7 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   refuses them.
 - Does CLICK import a bare space as a Text initial value? It exports one bare and imports a quoted `" "`.
   If it refuses bare, `write_csv` quotes a space as it quotes a comma or double quote.
-- Does CLICK strip spaces from nicknames and comments on import or export? Decides whether item 1's
+- Does CLICK strip spaces from nicknames and comments on import or export? Decides whether 0.6.0's
   "keep as written" needs a rule on write.
 - Does CLICK import a nickname CSV whose non-Text initial value is quoted (`"1.5"`)? `write_csv` quotes one
   only when it holds a comma, double quote or line break. If not, `write_csv` refuses such a value instead.
