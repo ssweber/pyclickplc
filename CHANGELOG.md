@@ -6,14 +6,14 @@
 
 - `iter_address_slots` yields `(memory_type, address)` for every slot CLICK shows, in bank order, so a caller can loop over all of them.
 - `read_plc_name` reads the PLC name from a project's `Project.ini`, and `write_plc_name` sets it, changing or adding only the name line.
-- `validate_click_name` checks a PLC or DataView name: 1 to 24 letters, digits, spaces, underscores and hyphens.
+- `validate_click_name` checks a PLC or DataView name: 1 to 24 letters, digits, spaces, underscores and hyphens, ignoring surrounding whitespace.
 
 ### Fixed
 
 - `read_modules`, `read_channel_parameters` and `read_io_layout` read a CLICK 4 `Project.ini` that also has a `[SystemConfigData]` or `[CPUBuild]` section, and take CLICK 4's values (they raised `ValueError`).
 - `read_plc_data` reads a dump with a DF cell CLICK shows as `Err-Format` (it raised `ValueError`). The value is `float("nan")`.
 - `read_plc_data` reads a TXT cell CLICK writes as `$` and a hex code as that character: `$20` is a space, `$D` a carriage return and `$C8` is `"\xc8"` (it returned the cell's text).
-- `write_plc_data` writes a DF value as CLICK does: the float32 value in CLICK's fixed point (`66.7` is `66.69999695`, `3e38` is `300000000549775575800000000000000000000.0`).
+- `write_plc_data` writes a DF value in CLICK's form: the float32 value in fixed point (`66.7` is `66.69999695`, `3e38` is `300000000549775575800000000000000000000.0`). How many digits CLICK keeps above about 1e19 is inferred from one dump.
 - `write_plc_data` writes a TXT space, control character or character above `~` as CLICK does, as `$` and its hex code, and `"\x00"` as an empty cell.
 - `write_plc_data` writes CRLF line ends and a blank line after the last section on any platform, as CLICK does. A dump CLICK wrote reads and writes back byte for byte, unless it has an `Err-Format` cell or TXT punctuation other than `+`, `-` and `.`.
 
@@ -27,8 +27,10 @@
   - Regenerate any saved output your tests compare against.
 - `write_plc_data` raises `ValueError` naming the address for a DF value that is NaN, infinite or outside the float32 range (it wrote `nan`, `inf` or the full number). CLICK's editor can't enter a NaN or an infinity. A dump with an `Err-Format` cell reads as NaN, so writing it back raises.
   - Set such an address to a number before writing.
-- `write_plc_data` raises `ValueError` naming the address for a TXT value that isn't a string, is more than one character, has a code above 255, or is punctuation other than `+`, `-` and `.` (it wrote the value as is, so `5` was written `5`). CLICK's form for that punctuation isn't known yet.
+- `write_plc_data` raises `ValueError` naming the address for a TXT value that isn't a string, is more than one character, has a code above 255, or is punctuation other than `+`, `-` and `.` (it wrote the value as is, so an int such as `5` was written `5`). CLICK's form for that punctuation hasn't been checked.
   - Write one character per TXT address, and leave out that punctuation.
+- `read_plc_data` returns `float("nan")` for a DF cell CLICK shows as `Err-Format`, and the character itself for a TXT cell CLICK writes as `$` and a hex code (`$20` is now `" "`, not `"$20"`).
+  - Treat a NaN as a value CLICK can't show, and match TXT characters rather than their `$` form.
 
 ## 0.6.0 - 2026-11-15
 
