@@ -488,6 +488,7 @@ def test_readers_take_the_placeholder_when_both_sections_exist(tmp_path):
     path = _project(tmp_path, BOTH_NAMES)
 
     modules = read_modules(path)
+    assert modules.cpu is not None
     assert (modules.cpu.model, modules.expansions[1].model) == ("C0-02DD1-D", "C0-04AD")
     assert read_channel_parameters(path) == ChannelParameters(
         frozenset({"DF1", "DF2", "DF5", "DF6", "DF7", "DF8"}), frozenset({"DF3", "DF4"})
@@ -513,6 +514,7 @@ def test_click_4_fixture_readers():
     assert read_plc_name(path) == "Conformance"
     # [Sec21] Key3_1=198 is the CPU and Key3_10=8194 its slot 0; every other item is 0.
     modules = read_modules(path)
+    assert modules.cpu is not None
     assert modules.cpu.model == "C2-03CPU"
     assert {p: m.model for p, m in modules.slots.items()} == {0: "C2-14D2"}
     assert dict(modules.expansions) == {}
@@ -542,6 +544,7 @@ def test_click_4_noname_fixture_readers():
     assert read_plc_name(path) is None
     # [Sec21] Key3_1=225 is the CPU; every other item is 0.
     modules = read_modules(path)
+    assert modules.cpu is not None
     assert modules.cpu.model == "C0-00DD1-D"
     assert (dict(modules.slots), dict(modules.expansions)) == ({}, {})
     assert read_channel_parameters(path) == ChannelParameters()
