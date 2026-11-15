@@ -72,8 +72,7 @@ class BankConfig:
 
     ``min_addr`` and ``max_addr`` are MDB addresses. They equal the display
     numbers except for XD/YD, whose MDB addresses run 0-16 while CLICK shows
-    XD0-XD8 (plus XD0u). ``display_max_addr`` is the highest display number
-    and defaults to ``max_addr``.
+    XD0-XD8 (plus XD0u). ``display_max_addr`` is the highest display number.
     """
 
     name: str
@@ -82,11 +81,13 @@ class BankConfig:
     data_type: DataType
     valid_ranges: tuple[tuple[int, int], ...] | None = None  # None = contiguous
     interleaved_with: str | None = None
-    display_max_addr: int = -1  # -1 = max_addr
 
-    def __post_init__(self) -> None:
-        if self.display_max_addr < 0:
-            object.__setattr__(self, "display_max_addr", self.max_addr)
+    @property
+    def display_max_addr(self) -> int:
+        """The highest address CLICK shows: 8 for XD/YD (MDB 16 is XD8), else ``max_addr``."""
+        if self.name in ("XD", "YD"):
+            return self.max_addr // 2
+        return self.max_addr
 
 
 BANKS: dict[str, BankConfig] = {
@@ -100,8 +101,8 @@ BANKS: dict[str, BankConfig] = {
     "DD": BankConfig("DD", 1, 1000, DataType.INT2),
     "DH": BankConfig("DH", 1, 500, DataType.HEX),
     "DF": BankConfig("DF", 1, 500, DataType.FLOAT),
-    "XD": BankConfig("XD", 0, 16, DataType.HEX, display_max_addr=8),
-    "YD": BankConfig("YD", 0, 16, DataType.HEX, display_max_addr=8),
+    "XD": BankConfig("XD", 0, 16, DataType.HEX),
+    "YD": BankConfig("YD", 0, 16, DataType.HEX),
     "TD": BankConfig("TD", 1, 500, DataType.INT, interleaved_with="T"),
     "CTD": BankConfig("CTD", 1, 250, DataType.INT2, interleaved_with="CT"),
     "SD": BankConfig("SD", 1, 1000, DataType.INT),

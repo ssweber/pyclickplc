@@ -474,6 +474,51 @@ class TestWriteInferBanks:
         ds_pos = text.index("<DS=START>")
         assert x_pos < c_pos < ds_pos
 
+    def test_skips_keys_that_are_not_click_addresses(self, tmp_path: Path) -> None:
+        out = tmp_path / "out.csv"
+        write_plc_data(out, {"DS1": 1, "DH١": 2, "DF1u": 3.0, "FAKE1": 4})
+        text = out.read_text()
+        assert "<DS=START>" in text
+        assert "<DH=START>" not in text
+        assert "<DF=START>" not in text
+
+
+class TestReadAddresses:
+    def test_row_label_that_is_not_a_click_address_is_skipped(self, tmp_path: Path) -> None:
+        p = _write(
+            tmp_path,
+            """\
+            <DS=START>
+            Address,1,2,
+            DS0,7,8,
+            DS1u,5,6,
+            DS11,3,4,
+            </DS=END>
+            """,
+        )
+        assert read_plc_data(p) == {"DS11": 3, "DS12": 4}
+
+    def test_cells_past_the_bank_are_skipped(self, tmp_path: Path) -> None:
+        p = _write(
+            tmp_path,
+            """\
+            <X=START>
+            Address,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,
+            X801,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
+            </X=END>
+
+            <DS=START>
+            Address,1,2,
+            DS4499,1,2,
+            </DS=END>
+            """,
+        )
+        data = read_plc_data(p)
+        assert data["X816"] is True
+        assert "X817" not in data
+        assert data["DS4500"] == 2
+        assert "DS4501" not in data
+
 
 class TestWriteMultipleBanks:
     def test_explicit_bank_list(self, tmp_path: Path) -> None:

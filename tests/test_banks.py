@@ -1,6 +1,6 @@
 """Tests for pyclickplc.banks module."""
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from typing import Any, cast
 
 import pytest
@@ -63,6 +63,9 @@ class TestBankConfig:
         for name, bank in BANKS.items():
             if name not in ("XD", "YD"):
                 assert bank.display_max_addr == bank.max_addr, name
+
+    def test_display_max_addr_follows_a_replaced_max_addr(self):
+        assert replace(BANKS["DS"], max_addr=10).display_max_addr == 10
 
     def test_bank_names(self):
         expected = {

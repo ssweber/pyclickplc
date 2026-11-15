@@ -13,7 +13,14 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, TypeVar, cast, overload
 
-from .addresses import AddressNormalizerMixin, AddressRecord, get_addr_key, parse_address
+from .addresses import (
+    AddressNormalizerMixin,
+    AddressRecord,
+    format_address_display,
+    get_addr_key,
+    is_xd_yd_hidden_slot,
+    parse_address,
+)
 from .banks import (
     BANKS,
     DEFAULT_RETENTIVE,
@@ -70,6 +77,11 @@ DATA_TYPE_CODE_TO_STR: dict[int, str] = {
     6: "TEXT",
 }
 
+# The Data Type names CLICK writes, the only ones read_csv accepts (any case)
+_CLICK_DATA_TYPES: dict[str, DataType] = {
+    name: DataType(code) for code, name in DATA_TYPE_CODE_TO_STR.items()
+}
+
 _DefaultT = TypeVar("_DefaultT")
 
 
@@ -105,7 +117,11 @@ class AddressLookupView(AddressNormalizerMixin):
 
 
 class TagLookupView:
-    """Case-insensitive nickname-indexed view over an AddressRecordMap."""
+    """Case-insensitive nickname-indexed view over an AddressRecordMap.
+
+    While any nickname is used twice (ignoring case), every lookup raises
+    ``ValueError`` naming the repeats, whichever nickname is asked for.
+    """
 
     def __init__(self, records: AddressRecordMap) -> None:
         self._records = records
@@ -259,7 +275,9 @@ def _initial_value(raw: str, data_type: int) -> str:
     return raw if data_type == DataType.TXT else raw.strip()
 
 
-def read_csv(path: str | Path, *, required: Iterable[str] = REQUIRED_COLUMNS) -> AddressRecordMap:
+def read_csv(
+    path: str | Path, *, required: Iterable[str] | str = REQUIRED_COLUMNS
+) -> AddressRecordMap:
     """Read a nickname CSV file into AddressRecords.
 
     The CSV has columns: Address, Data Type, Nickname, Initial Value,
@@ -267,29 +285,34 @@ def read_csv(path: str | Path, *, required: Iterable[str] = REQUIRED_COLUMNS) ->
     Address Comment and a Text initial value are kept as written, spaces
     included. A Text initial value may be quoted, or bare as CLICK exports it,
     even when it is a comma or a double quote. Retentive is on for ``Yes``,
-    ``True`` or ``1`` in any case. Blank rows are skipped. A nickname that
-    repeats does not fail the read; looking it up through ``.tag`` raises.
+    ``True`` or ``1`` in any case, and off for anything else. Blank rows are
+    skipped. A nickname that repeats does not fail the read and ``.addr``
+    works, but every ``.tag`` lookup then raises ``ValueError``.
 
     The columns the file had are in the result's ``columns``; a missing
     optional column, or a blank cell in it, leaves its default (a blank Data
     Type is the bank's own).
 
     Raises:
-        ValueError: If a *required* column is missing, a row's Address is not
-            a CLICK address, its Data Type is not one CLICK writes (BIT, INT,
-            INT2, FLOAT, HEX, TEXT; TXT is accepted too), or the file is not
-            UTF-8 or not CSV. The message names the file and, for a row, its
-            line.
+        ValueError: If a *required* column is missing, a row has a non-blank
+            cell past the header's columns, a row's Address is not a CLICK
+            address, its Data Type is not one CLICK writes (BIT, INT, INT2,
+            FLOAT, HEX, TEXT, in any case) or not the type of its bank, or the
+            file is not UTF-8 or not CSV. The message names the file and, for
+            a row, its line.
 
     Args:
         path: Path to the CSV file.
-        required: Columns the file must have. Defaults to Address and Nickname.
+        required: Columns the file must have, or one column name. Defaults to
+            Address and Nickname.
 
     Returns:
         AddressRecordMap keyed by addr_key (int) with ``.addr`` and ``.tag`` views.
     """
     name = Path(path).name
     result = AddressRecordMap()
+    if isinstance(required, str):
+        required = (required,)
 
     try:
         with open(path, newline="", encoding="utf-8-sig") as csvfile:
@@ -308,6 +331,10 @@ def read_csv(path: str | Path, *, required: Iterable[str] = REQUIRED_COLUMNS) ->
         for row in reader:
             if _is_blank(row):
                 continue
+            if any(cell.strip() for cell in row.get(None) or ()):
+                raise ValueError(
+                    f"{name} line {reader.line_num}: more cells than the header has columns"
+                )
             addr_str = row.get("Address") or ""
             try:
                 mem_type, mdb_address = parse_address(addr_str)
@@ -316,15 +343,19 @@ def read_csv(path: str | Path, *, required: Iterable[str] = REQUIRED_COLUMNS) ->
                     f"{name} line {reader.line_num}: Address {addr_str!r} is not a CLICK address"
                 ) from None
 
+            bank_type = MEMORY_TYPE_TO_DATA_TYPE[mem_type]
             data_type_str = (row.get("Data Type") or "").strip()
-            if not data_type_str:
-                data_type = MEMORY_TYPE_TO_DATA_TYPE[mem_type]
-            elif data_type_str.upper() in DATA_TYPE_STR_TO_CODE:
-                data_type = DataType(DATA_TYPE_STR_TO_CODE[data_type_str.upper()])
-            else:
+            data_type = _CLICK_DATA_TYPES.get(data_type_str.upper()) if data_type_str else bank_type
+            if data_type is None:
                 raise ValueError(
                     f"{name} line {reader.line_num}: Data Type {data_type_str!r} is not a "
                     f"CLICK data type"
+                )
+            if data_type != bank_type:
+                raise ValueError(
+                    f"{name} line {reader.line_num}: Data Type {data_type_str!r} is not the "
+                    f"type of {format_address_display(mem_type, mdb_address)} "
+                    f"({DATA_TYPE_CODE_TO_STR[bank_type]})"
                 )
 
             retentive_str = (row.get("Retentive") or "").strip()
@@ -367,7 +398,8 @@ def _format_csv(
         )
     )
 
-    def format_quoted(text: str) -> str:
+    def format_quoted(value: object) -> str:
+        text = "" if value is None else str(value)
         return '"' + text.replace('"', '""') + '"'
 
     lines = [",".join(CSV_COLUMNS)]
@@ -375,9 +407,8 @@ def _format_csv(
         # A defaulted numeric is written "0", as CLICK does; Text's default is empty
         if record.initial_value:
             initial_value_str = str(record.initial_value)
-            if record.data_type == DataType.TXT and any(
-                char in initial_value_str for char in ',"\r\n'
-            ):
+            # Bare as CLICK writes it, unless the cell would not read back as one value
+            if any(char in initial_value_str for char in ',"\r\n'):
                 initial_value_str = format_quoted(initial_value_str)
         elif record.data_type == DataType.TXT:
             initial_value_str = ""
@@ -417,10 +448,10 @@ def write_csv(
 
     Only records with content (nickname, comment, non-default initial value
     or retentive) are written. Records are sorted by memory type order then
-    address. Lines end in CRLF and a Text initial value is bare, as in CLICK's
-    export. A Text initial value holding a comma, double quote or line break is
-    quoted: CLICK exports a comma or double quote bare but can only import it
-    quoted.
+    address. Lines end in CRLF and an initial value is bare, as in CLICK's
+    export. An initial value holding a comma, double quote or line break is
+    quoted: CLICK exports a Text comma or double quote bare but can only import
+    it quoted.
 
     Args:
         path: Path to write the CSV file.
@@ -444,7 +475,11 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
     Use, InitialValue, Retentive, Comment. Address is the MDB address (XD1 is
     2), and DataType, Use and Retentive are numbers. Only rows with content
     are kept. A row whose MemoryType or Address pyclickplc does not know is
-    skipped.
+    skipped, as is an XD/YD slot CLICK does not show (MDB 3, 5, ... 15).
+
+    Raises:
+        ValueError: If the file is not UTF-8 or not CSV. The message names the
+            file and, for a row, its line.
 
     Args:
         path: Path to the Address.csv file.
@@ -453,10 +488,17 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
         AddressRecordMap keyed by addr_key (int) with ``.addr`` and ``.tag`` views.
         ``used`` is True or False from the Use column, None where it is blank.
     """
+    name = Path(path).name
     result = AddressRecordMap()
 
-    with open(path, newline="", encoding="utf-8-sig") as csvfile:
-        reader = csv.DictReader(csvfile)
+    try:
+        with open(path, newline="", encoding="utf-8-sig") as csvfile:
+            text = csvfile.read()
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{name} is not UTF-8 text: {exc}") from exc
+
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    try:
         result.columns = tuple(reader.fieldnames or ())
         for row in reader:
             mem_type = (row.get("MemoryType") or "").strip()
@@ -467,7 +509,10 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
             except ValueError:
                 continue
             if mem_type in ("XD", "YD"):
-                if not BANKS[mem_type].min_addr <= address <= BANKS[mem_type].max_addr:
+                bank = BANKS[mem_type]
+                if not bank.min_addr <= address <= bank.max_addr:
+                    continue
+                if is_xd_yd_hidden_slot(mem_type, address):
                     continue
             elif not is_valid_address(mem_type, address):
                 continue
@@ -495,5 +540,7 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
             )
             if record.has_content:
                 result[get_addr_key(mem_type, address)] = record
+    except csv.Error as exc:
+        raise ValueError(f"{name} line {reader.line_num}: {exc}") from exc
 
     return result
