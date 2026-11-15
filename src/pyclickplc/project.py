@@ -147,8 +147,9 @@ def _restore_names(parser: ConfigParser) -> None:
     for placeholder, (section, names) in _PLACEHOLDER_NAMES.items():
         if not parser.has_section(placeholder):
             continue
-        # A file can hold both, such as a [PLCName] another tool added. CLICK 4 writes
-        # the placeholder, so its values win over the named section's.
+        # A file can hold both, such as a [PLCName] another tool added. The placeholder's
+        # values win over the named section's; checked in CLICK 4, which shows the
+        # [Sec20] name over a stray [PLCName].
         if not parser.has_section(section):
             parser.add_section(section)
         for key, value in parser.items(placeholder):
@@ -363,8 +364,8 @@ def read_plc_name(path: str | Path) -> str | None:
     """Read the PLC name from a CLICK Project.ini file.
 
     The name is ``[PLCName] PLCName=``, which CLICK 4 writes as ``[Sec20] Key1=``.
-    If a CLICK 4 file has both, ``[Sec20]`` wins. Returns None if the project has
-    no PLC name.
+    If a CLICK 4 file has both, ``[Sec20]`` wins, as it does in CLICK 4 itself.
+    Returns None if the project has no PLC name.
 
     Raises OSError for unreadable files and ValueError for malformed INI data.
     No CLICK installation is required.

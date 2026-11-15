@@ -38,12 +38,8 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   past a bank's addresses. If it does, check what those cells hold before skipping them stays the rule.
 - The PLC name in Project.ini. The fixtures show that CLICK 3 (`[PLCName] PLCName=`) and CLICK 4
   (`[Sec20] Key1=`) always write the name line, empty for a project with no name, so `write_plc_name` never
-  adds a section to a file CLICK wrote. Still owed:
-  - Does CLICK 4 read a `[PLCName]` section another tool added, and which wins when `[Sec20]` is there too?
-    pyclickplc reads and writes `[Sec20]`.
-  - Does CLICK match section names regardless of case? `write_plc_name` refuses a header that differs from
-    the name's section only in case.
-  - Does CLICK pick up a name changed in the Project.ini of a project it has open (its temp copy)?
+  adds a section to a file CLICK wrote. Still owed: does CLICK match section names regardless of case?
+  `write_plc_name` refuses a header that differs from the name's section only in case.
 
 ## Unscheduled
 
