@@ -11,7 +11,9 @@ from pyclickplc.nicknames import (
     DATA_TYPE_CODE_TO_STR,
     DATA_TYPE_STR_TO_CODE,
     AddressRecordMap,
+    format_csv,
     read_csv,
+    read_mdb_csv,
     write_csv,
 )
 
@@ -110,31 +112,35 @@ class TestReadCsv:
         with pytest.raises(KeyError):
             _ = records.tag[""]
 
-    def test_read_empty_rows_skipped(self, tmp_path):
+    def test_read_blank_rows_skipped(self, tmp_path):
         csv_path = tmp_path / "test.csv"
         csv_path.write_text(
             "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
-            ",BIT,,0,No,\n"
-            'X001,BIT,"Input1",0,No,""\n',
+            ",,,,,\n"
+            'X001,BIT,"Input1",0,No,""\n'
+            ",,  ,,,\n",
             encoding="utf-8",
         )
 
         records = read_csv(csv_path)
         assert len(records) == 1
 
-    def test_read_invalid_address_skipped(self, tmp_path):
+    @pytest.mark.parametrize("address", ["", "INVALID", "X017", "DS1u"])
+    def test_read_bad_address_raises_with_line(self, tmp_path, address):
         csv_path = tmp_path / "test.csv"
         csv_path.write_text(
             "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
-            'INVALID,BIT,"Bad",0,No,""\n'
-            'X001,BIT,"Good",0,No,""\n',
+            'X001,BIT,"Good",0,No,""\n'
+            f'{address},BIT,"Bad",0,No,""\n',
             encoding="utf-8",
         )
 
-        records = read_csv(csv_path)
-        assert len(records) == 1
+        with pytest.raises(
+            ValueError, match=r"test\.csv line 3: Address .* is not a CLICK address"
+        ):
+            read_csv(csv_path)
 
-    def test_read_duplicate_nickname_case_insensitive_raises(self, tmp_path):
+    def test_read_duplicate_nickname_loads_and_tag_lookup_raises(self, tmp_path):
         csv_path = tmp_path / "test.csv"
         csv_path.write_text(
             "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
@@ -142,20 +148,96 @@ class TestReadCsv:
             'X002,BIT,"pump",0,No,""\n',
             encoding="utf-8",
         )
-        with pytest.raises(ValueError, match="Case-insensitive duplicate nickname"):
-            read_csv(csv_path)
 
-    def test_read_duplicate_system_nickname_allowed(self, tmp_path):
-        """SC/SD system addresses may have duplicate nicknames from Click."""
+        records = read_csv(csv_path)
+
+        assert [r.nickname for r in records.values()] == ["Pump", "pump"]
+        with pytest.raises(ValueError, match="duplicate tag nickname"):
+            _ = records.tag["pump"]
+
+    def test_read_keeps_nickname_and_comment_as_written(self, tmp_path):
         csv_path = tmp_path / "test.csv"
         csv_path.write_text(
             "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
-            'SD1,SINT,"SysFlag",0,No,""\n'
-            'SD2,SINT,"SysFlag",0,No,""\n',
+            'X001,BIT," Pump ",0,No,"  spaced  "\n',
             encoding="utf-8",
         )
+
+        record = read_csv(csv_path).addr["X001"]
+
+        assert (record.nickname, record.comment) == (" Pump ", "  spaced  ")
+
+    @pytest.mark.parametrize(
+        ("cell", "expected"),
+        [("Yes", True), ("yes", True), ("TRUE", True), ("1", True), ("No", False), ("0", False)],
+    )
+    def test_read_retentive_spellings(self, tmp_path, cell, expected):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            f'C1,BIT,"Flag",0,{cell},""\n',
+            encoding="utf-8",
+        )
+
+        assert read_csv(csv_path).addr["C1"].retentive is expected
+
+    def test_read_reports_columns_and_takes_fewer_required(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text("Address,Address Comment\nDS1,Speed\n", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="missing required column.*Nickname"):
+            read_csv(csv_path)
+        records = read_csv(csv_path, required=["Address"])
+
+        assert records.columns == ("Address", "Address Comment")
+        assert records.addr["DS1"].comment == "Speed"
+        assert records.addr["DS1"].retentive is True  # the bank's default
+
+    def test_read_unknown_data_type_raises_with_line(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'DS1,INT,"Speed",0,Yes,""\n'
+            'SD1,SINT,"SysFlag",0,No,""\n',
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match=r"test\.csv line 3: Data Type 'SINT'"):
+            read_csv(csv_path)
+
+    def test_read_blank_data_type_is_the_banks(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'DF1,,"Flow",0,Yes,""\n'
+            'TXT1,txt,"Msg",A,Yes,""\n',
+            encoding="utf-8",
+        )
+
         records = read_csv(csv_path)
-        assert len(records) == 2
+
+        assert records.addr["DF1"].data_type is DataType.FLOAT
+        assert records.addr["TXT1"].data_type is DataType.TXT
+
+    def test_read_data_type_is_enum(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'DS1,INT,"Speed",0,Yes,""\n',
+            encoding="utf-8",
+        )
+
+        assert type(read_csv(csv_path).addr["DS1"].data_type) is DataType
+
+    def test_read_not_utf8_raises(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_bytes(
+            b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+            b'X001,BIT,"Caf\xe9",0,No,""\r\n'
+        )
+
+        with pytest.raises(ValueError, match=r"test\.csv is not UTF-8"):
+            read_csv(csv_path)
 
     def test_tag_lookup_rejects_case_collisions_after_mutation(self):
         records = AddressRecordMap(
@@ -226,6 +308,87 @@ class TestWriteCsv:
         lines = content.strip().split("\n")
         assert "X001" in lines[1]
         assert "DS1" in lines[2]
+
+    def test_format_csv_is_the_text_write_csv_writes(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        records = [
+            AddressRecord(
+                memory_type="TXT",
+                address=1,
+                nickname="Msg",
+                initial_value=",",
+                data_type=DataType.TXT,
+            ),
+            AddressRecord(memory_type="X", address=1, nickname="X_Nick"),
+        ]
+
+        write_csv(csv_path, records)
+
+        assert format_csv(records).encode("utf-8") == csv_path.read_bytes()
+
+
+class TestReadMdbCsv:
+    """CLICK's Address.csv: MDB columns and addresses, UTF-8 with a BOM."""
+
+    HEADER = "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment"
+
+    def write(self, tmp_path, *rows: str) -> Path:
+        csv_path = tmp_path / "Address.csv"
+        csv_path.write_bytes(
+            "".join(f"{line}\r\n" for line in (self.HEADER, *rows)).encode("utf-8-sig")
+        )
+        return csv_path
+
+    def test_reads_fields(self, tmp_path):
+        csv_path = self.write(tmp_path, '100663297,DS,1,1,Temp,1,100,1,"  spaced  "')
+
+        record = read_mdb_csv(csv_path).addr["DS1"]
+
+        assert record.nickname == "Temp"
+        assert record.comment == "  spaced  "
+        assert record.initial_value == "100"
+        assert record.retentive is True
+        assert record.used is True
+        assert record.data_type is DataType.INT
+
+    def test_xd_address_is_mdb(self, tmp_path):
+        csv_path = self.write(
+            tmp_path, "167772162,XD,2,4,Inputs1,0,0,0,", "167772161,XD,1,4,Upper,,0,0,"
+        )
+
+        records = read_mdb_csv(csv_path)
+
+        assert records.addr["XD1"].nickname == "Inputs1"
+        assert records.addr["XD1"].used is False
+        assert records.addr["XD0u"].used is None
+
+    def test_keeps_only_rows_with_content(self, tmp_path):
+        csv_path = self.write(
+            tmp_path,
+            "33554433,C,1,0,,0,1,0,",
+            "33554434,C,2,0,,0,0,1,",
+            "33554435,C,3,0,,1,0,0,",
+        )
+
+        records = read_mdb_csv(csv_path)
+
+        assert sorted((r.address, r.initial_value, r.retentive) for r in records.values()) == [
+            (1, "1", False),
+            (2, "0", True),
+        ]
+
+    def test_skips_unknown_rows(self, tmp_path):
+        csv_path = self.write(
+            tmp_path,
+            "1,ZZ,1,0,BadType,1,0,0,Bad",
+            "2,X,NotInt,0,BadAddr,1,0,0,Bad",
+            "17,X,17,0,NoSlot,1,0,0,Bad",
+            "3,DS,1,1,Good,1,123,1,Good row",
+        )
+
+        records = read_mdb_csv(csv_path)
+
+        assert [r.display_address for r in records.values()] == ["DS1"]
 
 
 class TestRoundTrip:

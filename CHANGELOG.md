@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `read_mdb_csv` reads CLICK's `Address.csv`, the nickname table CLICK keeps beside an open project's database.
+- `format_csv` returns the nickname CSV text `write_csv` writes, for a caller that writes the file itself.
+- `read_csv(path, required=...)` sets which columns the file must have, and the result's `columns` lists the ones it had.
+- `BankConfig.display_max_addr` is the highest address CLICK shows: 8 for XD and YD, whose `max_addr` is the MDB address 16; `max_addr` for every other bank.
+
+### Behaviour changes
+
+- `parse_address` and `normalize_address` refuse what CLICK refuses: a `u` suffix on anything but `XD0u`/`YD0u` (`DS1u` was read as `DS1`), and non-ASCII digits and letters (`DS١` was `DS1`, `ſC1` was `SC1`).
+  - Fix any stored address with a stray `u`. Leading zeros and surrounding spaces are still accepted.
+- `read_csv` raises `ValueError` with the file name and line for a row whose Address isn't a CLICK address (it skipped the row).
+  - Fix the row, or catch `ValueError`. A row with every cell blank is still skipped.
+- `read_csv` raises `ValueError` with the file name and line for a Data Type that isn't one CLICK writes (it used the bank's type). A blank Data Type still takes the bank's type.
+  - Fix the cell to BIT, INT, INT2, FLOAT, HEX or TEXT, or leave it blank.
+- `read_csv` no longer raises on a nickname used twice; looking it up through `.tag` raises instead.
+  - Check for repeats with `.tag` if you relied on the read failing.
+- `read_csv` keeps Nickname and Address Comment as written, spaces included (it stripped them).
+  - Strip them yourself if you compare against trimmed names.
+- `read_csv` reads Retentive `True` and `1` as on, as well as `Yes` (anything else was off).
+- `read_csv` raises `ValueError` naming the file for a file that isn't UTF-8 or isn't CSV (it raised `UnicodeDecodeError` or `csv.Error`).
+- `read_csv` gives `data_type` as a `DataType`, as `make_address_record` does (it was a plain int of equal value).
+
 ## 0.5.2 - 2026-11-14
 
 ### Fixed

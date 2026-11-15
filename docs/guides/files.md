@@ -24,6 +24,8 @@ print(tag.display_address)  # DS1
 
 `read_csv` returns an `AddressRecordMap` with `.addr` and `.tag` lookup dicts.
 
+A row whose Address isn't a CLICK address raises `ValueError` naming the file and line. A nickname used twice still loads; looking it up through `.tag` raises.
+
 ### Write
 
 ```python
@@ -52,6 +54,17 @@ record = make_address_record("DS1", nickname="TankTemp")
 ```
 
 Address normalization, data type inference, and default values are handled automatically.
+
+### CLICK's Address.csv
+
+CLICK keeps an `Address.csv` beside its open project's database. It holds the same nicknames in database form. `read_mdb_csv` reads it into the same `AddressRecordMap`, with `used` taken from its Use column:
+
+```python
+from pyclickplc import read_mdb_csv
+
+records = read_mdb_csv("Address.csv")
+print(records.addr["DS1"].used)  # True
+```
 
 ## DataView CDV
 

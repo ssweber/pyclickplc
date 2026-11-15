@@ -150,6 +150,40 @@ class TestParseAddress:
         with pytest.raises(ValueError):
             parse_address("X017")  # In gap between slots
 
+    @pytest.mark.parametrize(
+        "address",
+        [
+            "DS1u",  # u suffix only on XD0u/YD0u
+            "X001U",
+            "TXT1u",
+            "XD9",  # past XD8
+            "DS١",  # Arabic-Indic digit one
+            "DS１",  # fullwidth digit one
+            "DS\U0001d7cf",  # mathematical bold digit one
+            "ſC1",  # long s, which uppercases to S
+            "ＤＳ1",  # fullwidth letters
+            "DS 1",
+            "DS+1",
+        ],
+    )
+    def test_refuses_what_click_refuses(self, address):
+        with pytest.raises(ValueError):
+            parse_address(address)
+
+    @pytest.mark.parametrize(
+        ("address", "expected"),
+        [
+            # Kept until CLICK's own handling of these is checked
+            ("DS0001", ("DS", 1)),
+            ("X0001", ("X", 1)),
+            ("XD01", ("XD", 2)),
+            (" DS1 ", ("DS", 1)),
+            ("\tx1\n", ("X", 1)),
+        ],
+    )
+    def test_accepts_leading_zeros_and_surrounding_space(self, address, expected):
+        assert parse_address(address) == expected
+
 
 # ==============================================================================
 # normalize_address

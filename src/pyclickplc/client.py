@@ -497,7 +497,8 @@ class AddressAccessor(Generic[TValue_co]):
 class DisplayAddressAccessor(Generic[TValue_co]):
     """Display-indexed accessor for XD/YD banks.
 
-    Uses display index range ``0..8`` and excludes hidden odd MDB slots.
+    Uses display index range ``0..display_max_addr`` (``0..8``) and excludes
+    hidden odd MDB slots.
     """
 
     def __init__(self, plc: ClickClient, bank: str) -> None:
@@ -506,10 +507,11 @@ class DisplayAddressAccessor(Generic[TValue_co]):
         self._plc = plc
         self._bank = bank
         self._raw = cast(AddressAccessor[TValue_co], plc._get_accessor(bank))
+        self._max = BANKS[bank].display_max_addr
 
     def _validate_display_index(self, index: int) -> None:
-        if index < 0 or index > 8:
-            raise ValueError(f"{self._bank} must be in [0, 8]")
+        if index < 0 or index > self._max:
+            raise ValueError(f"{self._bank} must be in [0, {self._max}]")
 
     @staticmethod
     def _display_to_mdb(index: int) -> int:
@@ -555,7 +557,7 @@ class DisplayAddressAccessor(Generic[TValue_co]):
         return self._read_single_display(key)
 
     def __repr__(self) -> str:
-        return f"<DisplayAddressAccessor({self._bank}, max=8)>"
+        return f"<DisplayAddressAccessor({self._bank}, max={self._max})>"
 
 
 class FixedAddressAccessor(Generic[TValue_co]):

@@ -56,6 +56,14 @@ class TestBankConfig:
     def test_all_16_banks_defined(self):
         assert len(BANKS) == 16
 
+    def test_display_max_addr(self):
+        # XD/YD MDB addresses run 0-16; CLICK shows XD0-XD8
+        assert (BANKS["XD"].max_addr, BANKS["XD"].display_max_addr) == (16, 8)
+        assert (BANKS["YD"].max_addr, BANKS["YD"].display_max_addr) == (16, 8)
+        for name, bank in BANKS.items():
+            if name not in ("XD", "YD"):
+                assert bank.display_max_addr == bank.max_addr, name
+
     def test_bank_names(self):
         expected = {
             "X",
