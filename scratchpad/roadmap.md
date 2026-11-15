@@ -36,10 +36,9 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   quoted comment spans lines (it raises today).
 - Does a "Read Data from PLC" dump give X/Y expansion rows more than 16 cells? `read_plc_data` skips cells
   past a bank's addresses. If it does, check what those cells hold before skipping them stays the rule.
-- The PLC name in Project.ini. The fixtures answer where a named project keeps it in CLICK 3 and CLICK 4,
-  and show that CLICK 4 writes an empty `[Sec20] Key1=` for a project with no name. Still owed:
-  - What does CLICK 3 write for a project with no name? If it leaves out `[PLCName]`, `write_plc_name` adds
-    the section at the end of the file: does CLICK accept a section added there?
+- The PLC name in Project.ini. The fixtures show that CLICK 3 (`[PLCName] PLCName=`) and CLICK 4
+  (`[Sec20] Key1=`) always write the name line, empty for a project with no name, so `write_plc_name` never
+  adds a section to a file CLICK wrote. Still owed:
   - Does CLICK 4 read a `[PLCName]` section another tool added, and which wins when `[Sec20]` is there too?
     pyclickplc reads and writes `[Sec20]`.
   - Does CLICK match section names regardless of case? `write_plc_name` refuses a header that differs from

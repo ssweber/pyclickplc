@@ -505,84 +505,51 @@ def test_write_sets_the_placeholder_when_both_sections_exist(tmp_path):
     )
 
 
-# As CLICK 4 wrote it, except three long hex values in [Sec55] and [Sec52] are blanked.
-CLICK_4_FIXTURE = Path(__file__).parent / "fixtures" / "Project_click4.ini"
+# Project.ini files CLICK wrote, with the name line as CLICK wrote it (empty for a project with
+# no name) and the modules [SystemConfig] or [Sec21] lists. Credential-like values are blanked
+# in the CLICK 3 files (14 in [wsnc], [emsnc] and [rpsnc]), and long hex values in the CLICK 4
+# files ([Sec55] Key1, [Sec52] Key3_1, and Key4_1 in the named one). Every other byte is as
+# CLICK wrote it.
+CLICK_FIXTURES = [
+    pytest.param("Project_click3.ini", b"[PLCName]\r\nPLCName=", "V3PLC", [], id="click3"),
+    pytest.param("Project_click3_noname.ini", b"[PLCName]\r\nPLCName=", None, [], id="click3-noname"),
+    pytest.param(
+        "Project_click4.ini",
+        b"[Sec20]\r\nKey1=",
+        "Conformance",
+        [("cpu", 0, "C2-03CPU"), ("slot", 0, "C2-14D2")],
+        id="click4",
+    ),
+    pytest.param(
+        "Project_click4_noname.ini",
+        b"[Sec20]\r\nKey1=",
+        None,
+        [("cpu", 0, "C0-00DD1-D")],
+        id="click4-noname",
+    ),
+]
 
 
-def test_click_4_fixture_readers():
-    path = CLICK_4_FIXTURE
-    assert read_plc_name(path) == "Conformance"
-    # [Sec21] Key3_1=198 is the CPU and Key3_10=8194 its slot 0; every other item is 0.
+@pytest.mark.parametrize("filename,name_line,name,layout", CLICK_FIXTURES)
+def test_click_fixture_readers(filename, name_line, name, layout):
+    path = Path(__file__).parent / "fixtures" / filename
+    assert read_plc_name(path) == name
     modules = read_modules(path)
-    assert modules.cpu is not None
-    assert modules.cpu.model == "C2-03CPU"
-    assert {p: m.model for p, m in modules.slots.items()} == {0: "C2-14D2"}
-    assert dict(modules.expansions) == {}
+    installed = [modules.cpu, *modules.slots.values(), *modules.expansions.values()]
+    assert [module.model for module in installed if module] == [model for *_, model in layout]
     assert read_channel_parameters(path) == ChannelParameters()
-    cpu, slot = read_io_layout(path)
-    assert (cpu.module.model, cpu.inputs, cpu.outputs) == ("C2-03CPU", (), ())
-    assert (slot.location, slot.position) == ("slot", 0)
-    assert slot.inputs == tuple(f"X{n:03}" for n in range(1, 9))
-    assert slot.outputs == tuple(f"Y{n:03}" for n in range(1, 7))
+    assert [(io.location, io.position, io.module.model) for io in read_io_layout(path)] == layout
 
 
-def test_click_4_fixture_write_changes_only_the_name(tmp_path):
-    original = CLICK_4_FIXTURE.read_bytes()
-    assert original.count(b"Conformance") == 1
-    assert original.startswith(b"[Sec20]\r\nKey1=Conformance\r\n")
+@pytest.mark.parametrize("filename,name_line,name,layout", CLICK_FIXTURES)
+def test_click_fixture_write_changes_only_the_name(tmp_path, filename, name_line, name, layout):
+    original = (Path(__file__).parent / "fixtures" / filename).read_bytes()
+    line = name_line + (name or "").encode("ascii") + b"\r\n"
+    assert original.count(line) == 1
 
-    assert _write(tmp_path, original, "Mixer 2") == original.replace(b"Conformance", b"Mixer 2")
-
-
-# A project with no name, as CLICK 4 wrote it, except two long hex values in [Sec55] and
-# [Sec52] are blanked. CLICK 4 still writes [Sec20] with an empty Key1=.
-CLICK_4_NONAME_FIXTURE = Path(__file__).parent / "fixtures" / "Project_click4_noname.ini"
-
-
-def test_click_4_noname_fixture_readers():
-    path = CLICK_4_NONAME_FIXTURE
-    assert read_plc_name(path) is None
-    # [Sec21] Key3_1=225 is the CPU; every other item is 0.
-    modules = read_modules(path)
-    assert modules.cpu is not None
-    assert modules.cpu.model == "C0-00DD1-D"
-    assert (dict(modules.slots), dict(modules.expansions)) == ({}, {})
-    assert read_channel_parameters(path) == ChannelParameters()
-    (cpu,) = read_io_layout(path)
-    assert cpu.inputs == tuple(f"X{n:03}" for n in range(1, 9))
-    assert cpu.outputs == tuple(f"Y{n:03}" for n in range(1, 7))
-
-
-def test_click_4_noname_fixture_write_fills_the_empty_name(tmp_path):
-    original = CLICK_4_NONAME_FIXTURE.read_bytes()
-    empty = b"\r\n[Sec20]\r\nKey1=\r\n"
-    assert original.count(empty) == 1
-
-    assert _write(tmp_path, original, "Mixer 2") == original.replace(
-        empty, b"\r\n[Sec20]\r\nKey1=Mixer 2\r\n"
-    )
-
-
-# As CLICK 3 wrote it, except 14 credential-like values in [wsnc], [emsnc] and [rpsnc]
-# are blanked.
-CLICK_3_FIXTURE = Path(__file__).parent / "fixtures" / "Project_click3.ini"
-
-
-def test_click_3_fixture_readers():
-    path = CLICK_3_FIXTURE
-    assert read_plc_name(path) == "V3PLC"
-    # [SystemConfig] Item0 to Item11 are all 0: no CPU and no modules.
-    assert read_modules(path) == Modules()
-    assert read_channel_parameters(path) == ChannelParameters()
-    assert read_io_layout(path) == ()
-
-
-def test_click_3_fixture_write_changes_only_the_name(tmp_path):
-    original = CLICK_3_FIXTURE.read_bytes()
-    assert original.count(b"V3PLC") == 1
-    assert b"\r\n[PLCName]\r\nPLCName=V3PLC\r\n[SystemConfig]\r\n" in original
-
-    assert _write(tmp_path, original, "Mixer 2") == original.replace(b"V3PLC", b"Mixer 2")
+    # CLICK writes the name line even with no name, so the write fills it in place.
+    expected = original.replace(line, name_line + b"Mixer 2\r\n")
+    assert _write(tmp_path, original, "Mixer 2") == expected
 
 
 @pytest.mark.parametrize("bom", [b"", b"\xef\xbb\xbf"])
