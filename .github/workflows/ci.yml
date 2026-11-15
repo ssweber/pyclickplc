@@ -64,3 +64,11 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+  ci:
+    # The one required check: it fails unless every test job passed.
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.build.result }}" = "success"
