@@ -55,6 +55,18 @@ upper = await plc.xd0u.read()     # {"XD0u": 0}
 
 `XD0u` and `YD0u` are the only `u` addresses, and a range read cannot include them.
 
+## Every address
+
+`iter_address_slots()` yields `(memory_type, address)` for every slot CLICK shows, bank by bank. Pass each pair to `format_address_display` for its name:
+
+```python
+from pyclickplc import format_address_display, iter_address_slots
+
+names = [format_address_display(bank, addr) for bank, addr in iter_address_slots()]
+```
+
+X and Y yield only their valid slots, and XD and YD skip the slots CLICK hides.
+
 ## See also
 
 - [Types & values](types.md) — what Python type each bank returns

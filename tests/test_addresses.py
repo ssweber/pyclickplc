@@ -11,6 +11,7 @@ from pyclickplc.addresses import (
     get_addr_key,
     is_xd_yd_hidden_slot,
     is_xd_yd_upper_byte,
+    iter_address_slots,
     make_address_record,
     normalize_address,
     parse_addr_key,
@@ -352,3 +353,50 @@ class TestAddressRecord:
             "AddressRecord(address='DS1', data_type='INT', nickname='Temp', "
             "comment='Tank', initial_value='5', retentive=False, used=True)"
         )
+
+
+# ==============================================================================
+# iter_address_slots
+# ==============================================================================
+
+
+class TestIterAddressSlots:
+    def test_round_trips_through_display_and_parse(self):
+        for memory_type, address in iter_address_slots():
+            assert parse_address(format_address_display(memory_type, address)) == (
+                memory_type,
+                address,
+            )
+
+    def test_banks_in_order_without_repeats(self):
+        slots = list(iter_address_slots())
+        assert len(slots) == len(set(slots))
+        banks = [m for m, _ in slots]
+        assert list(dict.fromkeys(banks)) == list(BANKS)
+        assert banks == sorted(banks, key=list(BANKS).index)
+
+    @pytest.mark.parametrize("bank", ["X", "Y"])
+    def test_sparse_banks_yield_exactly_valid_ranges(self, bank):
+        valid_ranges = BANKS[bank].valid_ranges
+        assert valid_ranges is not None
+        expected = [a for lo, hi in valid_ranges for a in range(lo, hi + 1)]
+        assert [a for m, a in iter_address_slots() if m == bank] == expected
+
+    @pytest.mark.parametrize("bank", ["XD", "YD"])
+    def test_xd_yd_yield_the_slots_click_shows(self, bank):
+        names = [format_address_display(m, a) for m, a in iter_address_slots() if m == bank]
+        assert names == [f"{bank}0", f"{bank}0u", *(f"{bank}{n}" for n in range(1, 9))]
+        assert not any(is_xd_yd_hidden_slot(m, a) for m, a in iter_address_slots() if m == bank)
+
+    def test_counts_match_banks(self):
+        counts: dict[str, int] = {}
+        for memory_type, _ in iter_address_slots():
+            counts[memory_type] = counts.get(memory_type, 0) + 1
+        for name, bank in BANKS.items():
+            if bank.valid_ranges is not None:
+                expected = sum(hi - lo + 1 for lo, hi in bank.valid_ranges)
+            elif name in ("XD", "YD"):
+                expected = 10
+            else:
+                expected = bank.max_addr - bank.min_addr + 1
+            assert counts[name] == expected, name

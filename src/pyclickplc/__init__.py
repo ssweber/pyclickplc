@@ -3,6 +3,7 @@
 from .addresses import (
     AddressRecord,
     format_address_display,
+    iter_address_slots,
     make_address_record,
     normalize_address,
     parse_address,
@@ -76,6 +77,7 @@ __all__ = [
     "AddressRecord",
     "make_address_record",
     "format_address_display",
+    "iter_address_slots",
     "parse_address",
     "normalize_address",
     "ClickClient",
