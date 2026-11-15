@@ -255,9 +255,12 @@ def write_plc_data(
         data: Dict mapping normalized address strings (e.g. ``"X001"``,
               ``"DS1"``) to native Python values — the same format
               :func:`read_plc_data` returns.
-        banks: Bank names to include (e.g. ``["DS", "DF"]``).  *None*
-              (default) writes every bank present in *data*.  Pass
-              :data:`ALL_BANKS` to force a full dump with defaults.
+        banks: Bank names to include, written in the order given (e.g.
+              ``["DS", "DF"]``).  *None* (default) writes every bank present
+              in *data*, in CLICK's order.  For a full dump, with defaults
+              where *data* has no value, pass all twelve in CLICK's order:
+              ``["X", "Y", "C", "T", "CT", "DS", "DD", "DH", "DF", "TD",
+              "CTD", "TXT"]``.
 
     Raises:
         ValueError: Naming the address, for a DF value that isn't a number
