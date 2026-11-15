@@ -7,6 +7,7 @@ and the AddressRecord frozen dataclass for representing PLC addresses.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from .banks import (
@@ -124,6 +125,24 @@ def format_address_display(memory_type: str, mdb_address: int) -> str:
     if memory_type in ("X", "Y"):
         return f"{memory_type}{mdb_address:03d}"
     return f"{memory_type}{mdb_address}"
+
+
+def iter_address_slots() -> Iterator[tuple[str, int]]:
+    """Yield ``(memory_type, mdb_address)`` for every slot CLICK shows, bank by bank.
+
+    Banks come in ``BANKS`` order. X/Y use their valid ranges, other banks run
+    ``min_addr`` to ``max_addr``, and the hidden XD/YD slots are skipped. Pass a pair to
+    ``format_address_display`` for the name CLICK shows.
+    """
+    for memory_type, bank in BANKS.items():
+        if bank.valid_ranges is not None:
+            ranges = bank.valid_ranges
+        else:
+            ranges = ((bank.min_addr, bank.max_addr),)
+        for lo, hi in ranges:
+            for address in range(lo, hi + 1):
+                if not is_xd_yd_hidden_slot(memory_type, address):
+                    yield memory_type, address
 
 
 _ADDRESS_PATTERN = re.compile(r"([A-Za-z]+)([0-9]+)([uU]?)")

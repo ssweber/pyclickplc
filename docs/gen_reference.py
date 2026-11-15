@@ -86,6 +86,7 @@ PAGES: tuple[ReferencePage, ...] = (
             "parse_address",
             "normalize_address",
             "format_address_display",
+            "iter_address_slots",
         ),
     ),
     ReferencePage(

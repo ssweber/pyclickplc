@@ -19,8 +19,6 @@ Needs: nothing for the code; the API names are settled with the ClickNick sessio
 - **Take `read_plc_name` and `write_plc_name`** into `pyclickplc.project`. Its knowledge of CLICK 4's
   placeholder sections (`[Sec20] Key1=` for `[PLCName] PLCName=`) joins `project.py`'s `_restore_names`
   instead of living twice. `write_plc_name` keeps the rest of Project.ini byte for byte.
-- **Take `iter_address_slots`** (every editable slot in display order: X/Y valid ranges, XD/YD hidden slots
-  skipped) into `addresses.py`. pyrung's tag map and ClickNick's view builder loop over banks the same way.
 - **Leave the unassigned I/O slot titles in ClickNick** ("Option slot N - unassigned" and the like). They are
   ClickNick's wording, not a CLICK fact; pyclickplc's `ModuleIO` already gives the location and position.
   Revisit if CLICK itself shows these names.
