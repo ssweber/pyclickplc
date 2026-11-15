@@ -12,12 +12,11 @@ import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from .addresses import format_address_display
-from .banks import BANKS, DataType
+from .addresses import format_address_display, parse_address
+from .banks import BANKS, DataType, is_valid_address
 
 _SECTION_START = re.compile(r"^<(\w+)=START>$")
 _SECTION_END = re.compile(r"^</(\w+)=END>$")
-_ROW_ADDR = re.compile(r"^([A-Z]+)(\d+)$")
 
 # Section order matches Click Programming Software export
 _SECTION_ORDER: tuple[str, ...] = (
@@ -130,18 +129,19 @@ def read_plc_data(
             col_offsets = [int(x) for x in parts[1:] if x.strip()]
             continue
 
-        # Data row
-        m = _ROW_ADDR.match(parts[0])
-        if not m:
+        # Data row: its first address, then one cell per header offset
+        try:
+            prefix, start_num = parse_address(parts[0])
+        except ValueError:
             continue
-
-        prefix = m.group(1)
-        start_num = int(m.group(2))
         values = parts[1:]
 
         for i, raw in enumerate(values):
             if i >= len(col_offsets):
                 break
+            addr_num = start_num + col_offsets[i] - 1
+            if not is_valid_address(prefix, addr_num):
+                continue
             raw = raw.strip()
             if not raw:
                 if data_type == DataType.TXT:
@@ -154,9 +154,7 @@ def read_plc_data(
             if skip_default and value == _DEFAULTS.get(data_type):
                 continue
 
-            addr_num = start_num + col_offsets[i] - 1
-            address = format_address_display(prefix, addr_num)
-            result[address] = value
+            result[format_address_display(prefix, addr_num)] = value
 
     return result
 
@@ -200,14 +198,11 @@ def write_plc_data(
         selected = []
         seen: set[str] = set()
         for addr in data:
-            m = _ROW_ADDR.match(addr.split()[0] if " " in addr else addr)
-            if not m:
-                # Normalised X/Y addresses like "X001" — strip digits
-                prefix = re.match(r"^([A-Z]+)", addr)
-                bank = prefix.group(1) if prefix else None
-            else:
-                bank = m.group(1)
-            if bank and bank in BANKS and bank not in seen:
+            try:
+                bank, _ = parse_address(addr)
+            except ValueError:
+                continue
+            if bank not in seen:
                 seen.add(bank)
                 selected.append(bank)
         # Sort to match canonical section order

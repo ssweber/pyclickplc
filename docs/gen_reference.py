@@ -52,6 +52,8 @@ PAGES: tuple[ReferencePage, ...] = (
         symbols=(
             "read_csv",
             "write_csv",
+            "format_csv",
+            "read_mdb_csv",
             "AddressRecordMap",
             "make_address_record",
             "read_cdv",

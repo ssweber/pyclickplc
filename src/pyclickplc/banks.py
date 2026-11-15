@@ -68,7 +68,12 @@ _SPARSE_RANGES: tuple[tuple[int, int], ...] = (
 
 @dataclass(frozen=True)
 class BankConfig:
-    """Configuration for a single PLC memory bank."""
+    """Configuration for a single PLC memory bank.
+
+    ``min_addr`` and ``max_addr`` are MDB addresses. They equal the display
+    numbers except for XD/YD, whose MDB addresses run 0-16 while CLICK shows
+    XD0-XD8 (plus XD0u). ``display_max_addr`` is the highest display number.
+    """
 
     name: str
     min_addr: int
@@ -76,6 +81,13 @@ class BankConfig:
     data_type: DataType
     valid_ranges: tuple[tuple[int, int], ...] | None = None  # None = contiguous
     interleaved_with: str | None = None
+
+    @property
+    def display_max_addr(self) -> int:
+        """The highest address CLICK shows: 8 for XD/YD (MDB 16 is XD8), else ``max_addr``."""
+        if self.name in ("XD", "YD"):
+            return self.max_addr // 2
+        return self.max_addr
 
 
 BANKS: dict[str, BankConfig] = {

@@ -126,10 +126,16 @@ def format_address_display(memory_type: str, mdb_address: int) -> str:
     return f"{memory_type}{mdb_address}"
 
 
+_ADDRESS_PATTERN = re.compile(r"([A-Za-z]+)([0-9]+)([uU]?)")
+
+
 def parse_address(address_str: str) -> tuple[str, int]:
     """Parse a display address string to (memory_type, mdb_address).
 
-    Strict: raises ValueError on invalid input.
+    Strict: raises ValueError on invalid input. Any letter case is accepted
+    (``x1`` is ``X001``), as are leading zeros and surrounding whitespace.
+    The ``u`` suffix is only for ``XD0u`` and ``YD0u``. Letters and digits
+    are ASCII only.
     For XD/YD, returns MDB address: "XD1" -> ("XD", 2), "XD0u" -> ("XD", 1).
 
     Args:
@@ -144,15 +150,14 @@ def parse_address(address_str: str) -> tuple[str, int]:
     if not address_str or not address_str.strip():
         raise ValueError(f"Empty address: {address_str!r}")
 
-    address_str = address_str.strip().upper()
-
-    match = re.match(r"^([A-Z]+)(\d+)(U?)$", address_str)
+    text = address_str.strip()
+    match = _ADDRESS_PATTERN.fullmatch(text)
     if not match:
         raise ValueError(f"Invalid address format: {address_str!r}")
 
-    memory_type = match.group(1)
+    memory_type = match.group(1).upper()
     display_addr = int(match.group(2))
-    is_upper = match.group(3) == "U"
+    is_upper = match.group(3) != ""
 
     if memory_type not in MEMORY_TYPE_BASES:
         raise ValueError(f"Unknown bank: {memory_type!r}")
@@ -160,10 +165,12 @@ def parse_address(address_str: str) -> tuple[str, int]:
     if memory_type in ("XD", "YD"):
         if is_upper and display_addr != 0:
             raise ValueError(f"Invalid upper byte address: {address_str!r}")
-        mdb = xd_yd_display_to_mdb(display_addr, is_upper)
-        if mdb < BANKS[memory_type].min_addr or mdb > BANKS[memory_type].max_addr:
+        if display_addr > BANKS[memory_type].display_max_addr:
             raise ValueError(f"Address out of range: {address_str!r}")
-        return memory_type, mdb
+        return memory_type, xd_yd_display_to_mdb(display_addr, is_upper)
+
+    if is_upper:
+        raise ValueError(f"Only XD0u and YD0u take a 'u' suffix: {address_str!r}")
 
     if not is_valid_address(memory_type, display_addr):
         raise ValueError(f"Address out of range: {address_str!r}")

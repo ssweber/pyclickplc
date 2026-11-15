@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `read_mdb_csv` reads CLICK's `Address.csv`, the nickname table CLICK keeps beside an open project's database.
+- `format_csv` returns the nickname CSV text `write_csv` writes, for a caller that writes the file itself.
+- `read_csv(path, required=...)` sets which columns the file must have, and the result's `columns` lists the ones it had.
+- `BankConfig.display_max_addr` is the highest address CLICK shows: 8 for XD and YD, whose `max_addr` is the MDB address 16; `max_addr` for every other bank.
+
+### Fixed
+
+- `write_csv` quotes a non-Text initial value that holds a comma, double quote or line break, so it reads back as one value (`1,5` was written bare and split the row). CLICK never writes such a value, so output for CLICK's own files is unchanged.
+- `read_plc_data` skips a row whose first address isn't a CLICK address and a cell past the end of its bank (it returned keys such as `DS0` and `X817`). `write_plc_data` leaves out a bank only named by a key that isn't a CLICK address.
+
+### Behaviour changes
+
+- `parse_address` and `normalize_address` refuse what CLICK refuses: a `u` suffix on anything but `XD0u`/`YD0u` (`DS1u` was read as `DS1`), and non-ASCII digits and letters (`DS١` was `DS1`, `ſC1` was `SC1`). This applies wherever pyclickplc takes an address string: `ClickClient.addr`, `ClickServer`, `ModbusService`, `.addr` lookups, `make_address_record` and the DataView checks.
+  - Fix any stored address with a stray `u`. Leading zeros and surrounding spaces are still accepted.
+- `read_csv` raises `ValueError` with the file name and line for a row whose Address isn't a CLICK address (it skipped the row).
+  - Fix the row, or catch `ValueError`. A row with every cell blank is still skipped.
+- `read_csv` raises `ValueError` with the file name and line for a Data Type that isn't one CLICK writes, or isn't the type of the row's bank (it used the bank's type). CLICK's names are accepted in any letter case; `TXT` is refused. A blank Data Type still takes the bank's type.
+  - Fix the cell to the bank's type (BIT, INT, INT2, FLOAT, HEX or TEXT), or leave it blank.
+- `read_csv` raises `ValueError` with the file name and line for a row with a non-blank cell past the header's columns (it dropped the cell).
+  - Quote a value that holds a comma.
+- `read_csv` no longer raises on a nickname used twice (ignoring case). The file loads and `.addr` works, but every `.tag` lookup then raises `ValueError` naming the repeats, and `ClickClient(tags=...)` still raises.
+  - If you relied on the read failing, look up any nickname through `.tag` after reading.
+- `read_csv` keeps Nickname and Address Comment as written, spaces included (it stripped them).
+  - Strip them yourself if you compare against trimmed names.
+- `read_csv` reads Retentive `True` and `1` as on, as well as `Yes` (anything else was off, and still is).
+  - Check files that say `True` or `1` for an address you meant to be non-retentive.
+- `read_csv`'s message for a missing column names the file (`Nicknames.csv is missing required column(s): Nickname`; it began `CSV is missing`).
+  - Update any check that matches the message text.
+- `read_csv` raises `ValueError` naming the file for a file that isn't UTF-8 or isn't CSV (it raised `UnicodeDecodeError` or `csv.Error`).
+- `read_csv` gives `data_type` as a `DataType`, as `make_address_record` does (it was a plain int of equal value).
+
 ## 0.5.2 - 2026-11-14
 
 ### Fixed

@@ -10,44 +10,20 @@ judgment**. Work that needs nothing is not queued behind work that needs Sam.
 Branches: feature and refactor branches into an always-releasable `main`. Sam squash-merges. Push and open a
 PR only once Sam has said so directly; otherwise stop at "CI green locally, ready to push".
 
-## 1. Address parsing and the nickname CSV reader (one release)
+## 1. Release the address and CSV reader changes (0.6.0)
 
-Needs: nothing. Ships together, so a row that stops parsing is reported, not silently lost. laddercodec's
-parity test waits on this release; pyrung's tag map and ClickNick's Address Editor read through `read_csv`, so
-test against their checkouts before release. Every behaviour change below is a line in the changelog's
-"Behaviour changes" block.
+Needs: Sam (he publishes the release). The changes are on `main` once their PR merges; the changelog's
+Unreleased section lists them. laddercodec's parity test waits on this release, and ClickNick can then move
+onto `read_csv`, `format_csv` and `read_mdb_csv`. pyrung's tag map reads through `read_csv`, so a pyrung CSV
+with a bad address or an unknown Data Type now fails to load instead of losing the row.
 
-1. **Test first:** pin what `parse_address` accepts today. Accepted now and to be refused:
-   - a stray `u` on any bank but XD/YD (`DS1u`, `X001u`, `TXT1u` parse as `DS1`, `X001`, `TXT1`)
-   - non-ASCII digits (`DS١`, `DS１`, `DS𝟏`), because of `\d` and `int()`
-   - non-ASCII letters that uppercase to ASCII (`ſC1` parses as `SC1`), because `.upper()` runs first
-
-   Accepted now and kept until CLICK is checked (item 3): leading zeros (`DS0001`, `XD01`) and surrounding
-   whitespace.
-2. **`parse_address` changes in place.** ASCII letters and digits only; `u` only as `XD0u`/`YD0u`. Lowercase
-   stays. No separate strict mode.
-3. **XD/YD display-unit range:** a new `BankConfig` field beside `max_addr` (XD/YD display 0-8; `max_addr`
-   stays the MDB index 0-16). `client.py`'s `DisplayAddressAccessor` reads it instead of its hard-coded 8.
-4. **`read_csv` behaviour:**
-   - raise `ValueError` on a row whose address does not parse, with the line number (today it skips silently)
-   - keep Nickname and Address Comment as written (today both are stripped)
-   - accept `true` and `1` for Retentive as well as `Yes`
-   - a repeated nickname no longer fails the read; the map's `.tag` view still raises on lookup
-   - report which columns the file had (ClickNick's Import from CSV needs only Address)
-   - an unreadable encoding or malformed CSV raises `ValueError` naming the file and line
-   - `data_type` is a `DataType`, as from `make_address_record`
-5. **Nickname CSV text:** a function that returns the CSV text; `write_csv` writes it. ClickNick keeps its own
-   file writing (it preserves a Hidden file and names Excel when the file is locked).
-6. **`Address.csv` reader:** take in ClickNick's `read_mdb_csv` (CLICK's MDB-format export: AddrKey,
-   MemoryType, Address, DataType, Nickname, Use, InitialValue, Retentive, Comment; UTF-8 with BOM; MDB
-   addresses). Returns `AddressRecord`s, keeping `used` from the Use column.
-
-Open, Sam's judgment: an unknown Data Type string silently becomes the bank's default. Proposal: raise with
-the line number, as for a bad address, in the same release.
+pyrung follow-up (pyrung's, not ours): `read_csv` no longer fails on a repeated nickname, and pyrung's own
+repeat check (`seen_names` in `tag_map/_nickname_io.py`) is case-sensitive, so `Pump` at X001 and `pump` at
+X002 now load as two tags in pyrung, where pyclickplc's `.tag` treats them as one nickname.
 
 ## 2. Smaller items from ClickNick's inventory
 
-Needs: nothing for the code; the API names are settled with the ClickNick session through Sam. After item 1.
+Needs: nothing for the code; the API names are settled with the ClickNick session through Sam.
 
 - **Take `validate_click_name`** (PLC and DataView names: 1-24 of letters, digits, space, `_`, `-`) into
   `pyclickplc.validation`.
@@ -70,6 +46,14 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   If it refuses bare, `write_csv` quotes a space as it quotes a comma or double quote.
 - Does CLICK strip spaces from nicknames and comments on import or export? Decides whether item 1's
   "keep as written" needs a rule on write.
+- Does CLICK import a nickname CSV whose non-Text initial value is quoted (`"1.5"`)? `write_csv` quotes one
+  only when it holds a comma, double quote or line break. If not, `write_csv` refuses such a value instead.
+- Does CLICK ever export a Data Type that isn't the bank's, or the name `TXT`? `read_csv` refuses both, and
+  `read_mdb_csv` ignores Address.csv's DataType column. If it does, `read_csv` accepts what CLICK writes.
+- Can an Address Comment hold a line break? If yes, `read_csv` must requote a bare-comma Text row whose
+  quoted comment spans lines (it raises today).
+- Does a "Read Data from PLC" dump give X/Y expansion rows more than 16 cells? `read_plc_data` skips cells
+  past a bank's addresses. If it does, check what those cells hold before skipping them stays the rule.
 
 ## Unscheduled
 
