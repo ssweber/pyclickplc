@@ -15,7 +15,7 @@
 - `read_plc_data` reads a TXT cell CLICK writes as `$` and a hex code as that character: `$20` is a space, `$D` a carriage return and `$C8` is `"\xc8"` (it returned the cell's text).
 - `write_plc_data` writes a DF value as CLICK does: the float32 value in CLICK's fixed point (`66.7` is `66.69999695`, `3e38` is `300000000549775575800000000000000000000.0`).
 - `write_plc_data` writes a TXT space, control character or character above `~` as CLICK does, as `$` and its hex code, and `"\x00"` as an empty cell.
-- `write_plc_data` writes CRLF line ends and a blank line after the last section on any platform, as CLICK does. A dump CLICK wrote reads and writes back byte for byte, unless it has an `Err-Format` cell.
+- `write_plc_data` writes CRLF line ends and a blank line after the last section on any platform, as CLICK does. A dump CLICK wrote reads and writes back byte for byte, unless it has an `Err-Format` cell or TXT punctuation other than `+`, `-` and `.`.
 
 ### Behaviour changes
 
@@ -23,9 +23,11 @@
   - Strip the value before you validate and store it, or have the user remove the space. `read_csv` still reads such a file as written.
 - `write_csv` and `format_csv` write a Text initial value that is a single space as `" "`, quoted (it was bare, and CLICK imports a bare space as empty).
   - Regenerate any saved output your tests compare against.
-- `write_plc_data` raises `ValueError` naming the address for a DF value that is NaN, infinite or outside the float32 range (it wrote `nan`, `inf` or the full number). A dump with an `Err-Format` cell reads as NaN, so writing it back raises.
+- `write_plc_data` writes CLICK's forms: a DF value as its float32 (`66.7` is `66.69999695`), a TXT space as `$20`, CRLF line ends and a blank line at the end.
+  - Regenerate any saved output your tests compare against.
+- `write_plc_data` raises `ValueError` naming the address for a DF value that is NaN, infinite or outside the float32 range (it wrote `nan`, `inf` or the full number). CLICK's editor can't enter a NaN or an infinity. A dump with an `Err-Format` cell reads as NaN, so writing it back raises.
   - Set such an address to a number before writing.
-- `write_plc_data` raises `ValueError` naming the address for a TXT value that is more than one character, has a code above 255, or is punctuation other than `+`, `-` and `.` (it wrote the text as is). CLICK's form for that punctuation isn't known yet.
+- `write_plc_data` raises `ValueError` naming the address for a TXT value that isn't a string, is more than one character, has a code above 255, or is punctuation other than `+`, `-` and `.` (it wrote the value as is, so `5` was written `5`). CLICK's form for that punctuation isn't known yet.
   - Write one character per TXT address, and leave out that punctuation.
 
 ## 0.6.0 - 2026-11-15
