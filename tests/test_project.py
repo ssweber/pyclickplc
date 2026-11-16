@@ -1,5 +1,10 @@
 """Channel parameters use installed hardware, not every DF token in the file."""
 
+import io
+import random
+from configparser import ConfigParser, DuplicateOptionError, DuplicateSectionError
+from configparser import Error as ConfigParserError
+from contextlib import suppress
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -13,7 +18,15 @@ from pyclickplc import (
     read_plc_name,
     write_plc_name,
 )
-from pyclickplc.project import ChannelParameters, read_channel_parameters
+from pyclickplc.project import (
+    ChannelParameters,
+    _line_roles,
+    _lines,
+    _parse_project,
+    _plc_name,
+    _roles,
+    read_channel_parameters,
+)
 
 
 def _channels(*addresses):
@@ -334,30 +347,32 @@ def test_layout_agrees_with_channel_parameters(tmp_path):
     assert parameters.outputs == {a for io in layout for a in io.analog_outputs if a}
 
 
+# CLICK 4 renames the sections and keys; the values are the same module IDs.
+CLICK_4_LAYOUT = "\n".join(
+    [
+        "[Sec21]",
+        "Key1=1",
+        "Key3_0=1024",
+        "Key3_1=199",
+        "Key3_2=42",
+        "Key3_10=8219",
+        "Key3_11=0",
+        "Key4=0",
+        "[Sec24]",
+        "Key1=199",
+        "[Sec23]",
+        "Key1=199",
+        "Key2=2",
+        "Key3_1=1",
+        "[Sec22]",
+        "Key1_2=",
+        "Key1_10=" + _channels("DF5", None, "DF7", "DF9", "DF10", "DF11"),
+    ]
+)
+
+
 def test_layout_reads_click_4_placeholder_names(tmp_path):
-    # CLICK 4 renames the sections and keys; the values are the same module IDs.
-    text = "\n".join(
-        [
-            "[Sec21]",
-            "Key1=1",
-            "Key3_0=1024",
-            "Key3_1=199",
-            "Key3_2=42",
-            "Key3_10=8219",
-            "Key3_11=0",
-            "Key4=0",
-            "[Sec24]",
-            "Key1=199",
-            "[Sec23]",
-            "Key1=199",
-            "Key2=2",
-            "Key3_1=1",
-            "[Sec22]",
-            "Key1_2=",
-            "Key1_10=" + _channels("DF5", None, "DF7", "DF9", "DF10", "DF11"),
-        ]
-    )
-    cpu, slot, expansion = _layout(tmp_path, text)
+    cpu, slot, expansion = _layout(tmp_path, CLICK_4_LAYOUT)
 
     assert (cpu.module.model, slot.module.model, expansion.module.model) == (
         "C2-01CPU-2",
@@ -367,6 +382,104 @@ def test_layout_reads_click_4_placeholder_names(tmp_path):
     assert (slot.position, expansion.position) == (0, 1)
     assert slot.analog_inputs == ("DF5", None, "DF7", "DF9")
     assert slot.analog_outputs == ("DF10", "DF11")
+
+
+# CLICK 4 matches section and key names regardless of case and takes the first match.
+# ClickNick's runner saw it for [Sec20] Key1 only; the other sections are inferred.
+@pytest.mark.parametrize("spell", [str.lower, str.upper], ids=["lower", "upper"])
+def test_readers_find_sections_and_keys_in_any_case(tmp_path, spell):
+    lines = []
+    for line in CLICK_4_LAYOUT.split("\n"):
+        key, delimiter, value = line.partition("=")
+        lines.append(spell(key) + delimiter + value)
+    canonical, respelled = tmp_path / "canonical.ini", tmp_path / "respelled.ini"
+    canonical.write_text(CLICK_4_LAYOUT)
+    respelled.write_text("\n".join(lines))
+    assert "[Sec21]" not in respelled.read_text()
+
+    assert read_modules(respelled) == read_modules(canonical)
+    assert read_io_layout(respelled) == read_io_layout(canonical)
+    assert read_channel_parameters(respelled) == read_channel_parameters(canonical)
+    assert read_channel_parameters(respelled).inputs == {"DF5", "DF7", "DF9"}
+
+
+def test_click_3_sections_match_regardless_of_case(tmp_path):
+    text = "[systemconfig]\nitem1=241\nITEM2=160\n[CPUBUILD]\nad1=DF1,5,0\n[systemConfigData]\n"
+    cpu, expansion = _layout(tmp_path, text + "Item2=" + _channels("DF5", "DF6", "DF7", "DF8"))
+
+    assert (cpu.module.model, expansion.module.model) == ("C0-02DD1-D", "C0-04AD")
+    assert cpu.analog_inputs == ("DF1", None)
+    assert expansion.analog_inputs == ("DF5", "DF6", "DF7", "DF8")
+
+
+@pytest.mark.parametrize(
+    "text,model",
+    [
+        ("[sec21]\nKey3_1=241\n[Sec21]\nKey3_1=199", "C0-02DD1-D"),
+        ("[Sec21]\nKey3_1=199\n[SEC21]\nKey3_1=241", "C2-01CPU-2"),
+        ("[systemconfig]\nItem1=241\n[SystemConfig]\nItem1=199", "C0-02DD1-D"),
+        # [Sec23] decides the CPU when [Sec21] doesn't, and its first spelling wins.
+        ("[Sec21]\n[sec23]\nKey1=241\n[Sec23]\nKey1=199", "C0-02DD1-D"),
+        # The same spelling twice, and a key repeated in any case.
+        ("[Sec21]\nKey3_1=241\n[Sec21]\nKey3_1=199", "C0-02DD1-D"),
+        ("[SystemConfig]\nItem1=241\n[SystemConfig]\nItem1=199", "C0-02DD1-D"),
+        ("[Sec21]\nKey3_1=241\nKey3_1=199", "C0-02DD1-D"),
+        ("[Sec21]\nKey3_1=241\nKEY3_1=199", "C0-02DD1-D"),
+        ("[Sec21]\n[Sec23]\nKey1=241\nkey1=199", "C0-02DD1-D"),
+        # A repeat is not read, so its value is not checked.
+        ("[Sec21]\nKey3_1=241\nKey3_1=x", "C0-02DD1-D"),
+    ],
+)
+def test_the_first_section_and_key_in_any_case_win(tmp_path, text, model):
+    (cpu,) = _layout(tmp_path, text)
+    assert cpu.module.model == model
+
+
+def test_a_later_section_and_key_are_dropped_whole(tmp_path):
+    # The second [Sec21] adds no expansion; the second Key3_1 and the line continuing it
+    # are dropped, and the Key3_2 after them is read.
+    text = "[Sec21]\nKey3_1=241\nKey3_1=199\n  more\nKey3_2=160\n[sec21]\nKey3_3=160\n"
+    cpu, expansion = _layout(tmp_path, text)
+    assert (cpu.module.model, expansion.module.model, expansion.position) == (
+        "C0-02DD1-D",
+        "C0-04AD",
+        1,
+    )
+
+
+def test_a_dropped_header_leaves_the_next_indented_header_a_header(tmp_path):
+    # "  [Sec22]" follows a header, so it is one; dropping the repeated [sec21] must not put it
+    # under Key3_2.
+    text = "[Sec21]\nKey3_1=241\nKey3_2=160\n[sec21]\n  [Sec22]\nKey1_2="
+    _, expansion = _layout(tmp_path, text + _channels("DF5", "DF6", "DF7", "DF8"))
+    assert expansion.analog_inputs == ("DF5", "DF6", "DF7", "DF8")
+
+
+def test_systemconfig_in_any_case_marks_a_click_3_file(tmp_path):
+    # Its [Sec21] and [Sec20] are not CLICK 4's, for the hardware readers and the PLC name alike.
+    path = _project(tmp_path, b"[SYSTEMCONFIG]\nItem1=241\n[Sec21]\nKey3_1=199\n[Sec20]\nKey1=A")
+    assert [io.module.model for io in read_io_layout(path)] == ["C0-02DD1-D"]
+    assert read_plc_name(path) is None
+
+
+@pytest.mark.parametrize(
+    "text,match",
+    [
+        ("[sec21]\nKey3_1=x", "invalid literal"),
+        ("[sec21]\nKey3_1=7", "Unsupported module ID 7"),
+        ("[sec21]\nKey3_2=160\n[SEC22]\nKey1_2=header\tshort", "Invalid channel count"),
+        ("[sec21]\nKey3_1=241\n[sec23]\nkey9=DS1,5,0", "Invalid channel address at CPUBuild.AD1"),
+        # A line that is not INI is refused, even in a section that a repeat drops.
+        ("[sec21]\nKey3_1=241\n[Sec21]\nnot an option", "Invalid CLICK project"),
+        # So is an option with no name.
+        ("[Sec21]\nKey3_1=241\n[sec21]\n=7\n", "Invalid CLICK project"),
+        ("[Sec21]\nKey3_1=241\n[sec21]\n:7\n", "Invalid CLICK project"),
+        ("[Sec21]\nKey3_1=241\n[sec21]\n  = z\n", "Invalid CLICK project"),
+    ],
+)
+def test_malformed_data_in_any_case_raises(tmp_path, text, match):
+    with pytest.raises(ValueError, match=match):
+        _layout(tmp_path, text)
 
 
 def test_click_4_cpu_analog_channels(tmp_path):
@@ -444,6 +557,9 @@ def test_read_plc_name_errors(tmp_path):
         read_plc_name(_project(tmp_path, b"not an ini file"))
     with pytest.raises(ValueError, match="Invalid CLICK project"):
         read_plc_name(_project(tmp_path, b"[PLCName]\r\nPLCName=\xff\r\n"))
+    # An option with no name, even in a repeated section that is not read.
+    with pytest.raises(ValueError, match="Invalid CLICK project"):
+        read_plc_name(_project(tmp_path, CLICK_4_HEAD + b"[Sec20]\r\nKey1=A\r\n[sec20]\r\n=x\r\n"))
 
 
 def test_placeholder_plc_name_leaves_hardware_readers_alone(tmp_path):
@@ -497,6 +613,36 @@ def test_readers_take_the_placeholder_when_both_sections_exist(tmp_path):
     assert (cpu.analog_inputs, cpu.analog_outputs) == (("DF1", "DF2"), ("DF3", "DF4"))
     assert expansion.analog_inputs == ("DF5", "DF6", "DF7", "DF8")
     assert read_plc_name(path) == "Line 1"
+
+
+@pytest.mark.parametrize("cpubuild", ["CPUBuild", "cpubuild"])
+def test_readers_ignore_every_key_of_a_stray_named_section(tmp_path, cpubuild):
+    # [Sec23] has no AD2 and [Sec22] no Item2, so a stray section's keys must not fill them.
+    text = "\n".join(
+        [
+            "[Sec21]",
+            "Key3_1=241",
+            "Key3_2=160",
+            "[Sec23]",
+            "Key1=241",
+            "Key9=DF1,5,0",
+            f"[{cpubuild}]",
+            "ID=241",
+            "AD2=DF102,5,0",
+            "DA1=DF103,5,0",
+            "[Sec22]",
+            "Key1_3=",
+            "[SystemConfigData]",
+            "Item2=" + _channels("DF105", "DF106", "DF107", "DF108"),
+        ]
+    )
+    cpu, expansion = _layout(tmp_path, text)
+
+    assert (cpu.analog_inputs, cpu.analog_outputs) == (("DF1", None), (None, None))
+    assert expansion.analog_inputs == (None, None, None, None)
+    assert read_channel_parameters(tmp_path / "Project.ini") == ChannelParameters(
+        frozenset({"DF1"}), frozenset()
+    )
 
 
 def test_write_sets_the_placeholder_when_both_sections_exist(tmp_path):
@@ -660,10 +806,44 @@ def test_write_keeps_the_files_spelling_when_adding_a_key(tmp_path):
     )
 
 
+# configparser reads a line indented under an option as part of the option's value; Windows'
+# INI functions likely trim the indent and read a line of its own (inferred). Reads follow
+# configparser, and a write to such a file is refused. CLICK writes no such line.
+def _refused(tmp_path, data, line):
+    path = _project(tmp_path, data)
+    with pytest.raises(ValueError, match=f"line {line} is indented under the line above it, "):
+        write_plc_name(path, "Mixer")
+    assert path.read_bytes() == data
+
+
 def test_a_continuation_line_is_not_an_option(tmp_path):
     data = CLICK_4_HEAD + b"[Sec20]\r\nOther=a\r\n   Key1=b\r\nKey1=Real\r\n"
     assert read_plc_name(_project(tmp_path, data)) == "Real"
-    assert _write(tmp_path, data, "Mixer") == data.replace(b"Key1=Real", b"Key1=Mixer")
+    _refused(tmp_path, data, 5)
+
+
+CONTINUED_HEADERS = [
+    # "  [Next]" continues Key2, so Key1 is still in [Sec20].
+    pytest.param(CLICK_4_HEAD + b"[Sec20]\r\nKey2=x\r\n  [Next]\r\nKey1=Real\r\n", "Real", 5),
+    # "  [Sec20]" continues [Other]'s A, so the file has no [Sec20] and no name.
+    pytest.param(CLICK_4_HEAD + b"[Other]\r\nA=1\r\n  [Sec20]\r\nKey1=Old\r\n", None, 5),
+    # A comment or blank line between keeps it under the option.
+    pytest.param(CLICK_4_HEAD + b"[Sec20]\r\nKey1=A\r\nKey2=x\r\n;c\r\n\r\n\t[Next]\r\n", "A", 8),
+]
+
+
+@pytest.mark.parametrize("data,name,line", CONTINUED_HEADERS)
+def test_an_indented_header_under_an_option_continues_it(tmp_path, data, name, line):
+    assert read_plc_name(_project(tmp_path, data)) == name
+    _refused(tmp_path, data, line)
+
+
+def test_an_indented_header_after_a_header_is_a_header(tmp_path):
+    # No option comes before it, so configparser reads a section header, as Windows' INI
+    # functions likely do (inferred).
+    data = CLICK_4_HEAD + b"[Other]\r\n  [Sec20]\r\nKey1=Old\r\n"
+    assert read_plc_name(_project(tmp_path, data)) == "Old"
+    assert _write(tmp_path, data, "Mixer") == data.replace(b"=Old", b"=Mixer")
 
 
 def test_the_click_4_marker_matches_regardless_of_case(tmp_path):
@@ -706,8 +886,10 @@ def test_write_strips_the_name(tmp_path):
         (CLICK_3, "Línea", "Use only letters"),
         (b"not an ini file", "Mixer", "Invalid CLICK project"),
         (b"\xff[PLCName]\r\n", "Mixer", "Invalid CLICK project"),
-        # The edited line would not read back as the name alone.
-        (b"[PLCName]\r\nPLCName=Old\r\n  more\r\n", "Mixer", "Cannot set the PLC name"),
+        # The name's value goes on to a second line.
+        (b"[PLCName]\r\nPLCName=Old\r\n  more\r\n", "Mixer", "line 3 is indented under the"),
+        # An option with no name is malformed, even in a repeated section that is not read.
+        (CLICK_4_HEAD + b"[Sec20]\r\nKey1=A\r\n[sec20]\r\n=x\r\n", "Mixer", "Invalid CLICK"),
     ],
 )
 def test_write_refuses_and_leaves_the_file(tmp_path, data, name, match):
@@ -754,3 +936,164 @@ def test_write_replaces_in_one_step(tmp_path, monkeypatch):
     assert replaced == [(tmp_path, CLICK_3.replace(b"Line 1", b"Mixer"), path)]
     assert path.read_bytes() == CLICK_3
     assert [p.name for p in tmp_path.iterdir()] == ["Project.ini"]
+
+
+# ==============================================================================
+# The line reading against configparser
+# ==============================================================================
+#
+# pyclickplc classes each line itself (_roles) to take the first of repeated sections and keys
+# and to find the PLC name's line. These checks compare it with configparser on random files.
+
+
+class _HeaderRecorder:
+    """A SECTCRE stand-in that records every line configparser tries as a section header.
+
+    configparser tries every line that is not blank, a comment or a continuation, so the
+    lines it never tries are its continuations. SECTCRE is documented for overriding.
+    """
+
+    def __init__(self):
+        self.tried = []
+
+    def match(self, value):
+        self.tried.append(value)
+        return ConfigParser.SECTCRE.match(value)
+
+
+def _configparser_roles(lines):
+    """Each line's role and lowercase name, as configparser reads the file."""
+    parser = ConfigParser(interpolation=None, strict=False)
+    recorder = parser.SECTCRE = _HeaderRecorder()  # ty: ignore[invalid-assignment]
+    with suppress(ConfigParserError):  # A parsing error is raised after every line is read.
+        parser.read_file(lines)
+    tried = set(recorder.tried)
+    assert len(tried) == len(recorder.tried), "the lines tried must be unique"
+    roles = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", ";")):
+            roles.append(("blank", ""))
+        elif stripped not in tried:
+            roles.append(("continuation", ""))
+        elif (match := ConfigParser.SECTCRE.match(stripped)) is not None:
+            roles.append(("section", match["header"].lower()))
+        else:
+            # Whether a tried line is an option depends on the line alone.
+            alone = ConfigParser(interpolation=None)
+            try:
+                alone.read_string("[s]\n" + stripped)
+            except ConfigParserError:
+                roles.append(("other", ""))
+            else:
+                roles.append(("option", alone.options("s")[0]))
+    return roles
+
+
+def _first_wins(lines, roles):
+    """The sections and values with the first of each repeat, from configparser's roles."""
+    if any(role == "other" for role, _ in roles):
+        return None
+    sections = {}
+    current = None
+    for index, (role, name) in enumerate(roles):
+        if role == "section":
+            current = None if name in sections else sections.setdefault(name, {})
+        elif role == "option" and current is not None and name not in current:
+            end = index + 1
+            while end < len(roles) and roles[end][0] in ("continuation", "blank"):
+                end += 1
+            alone = ConfigParser(interpolation=None)
+            alone.read_string("[s]\n" + "".join(lines[index:end]))
+            current[name] = alone.get("s", name)
+    return sections
+
+
+def _sections(parser):
+    return {section.lower(): dict(parser.items(section, raw=True)) for section in parser.sections()}
+
+
+def _random_project(rng):
+    """A CLICK 4 file of a few lines. Each line that is not blank is unique, so the lines
+    configparser tries can be told apart."""
+    lines = ["[Sec21]"]
+    for number in range(rng.randint(1, 9)):
+        indent = rng.choice(["", "", "", " ", "  ", "\t"])
+        kind = rng.random()
+        if kind < 0.25:
+            line = rng.choice(["[Sec20]", "[sec20]", "[SEC20]", "[A]", "[a]"]) + f" h{number}"
+        elif kind < 0.7:
+            names = ["Key1=", "KEY1 = ", "key1:", "Key2=", "k=", "=", ":", " = ", "[x]="]
+            line = rng.choice(names) + f"v{number}"
+        elif kind < 0.8:
+            line = rng.choice(["junk", "[", "[]"]) + str(number)
+        else:
+            line = rng.choice(["", " ", ";c", "#c"])
+        lines.append(indent + line)
+    return "".join(line + rng.choice(["\n", "\r\n", "\r"]) for line in lines)
+
+
+def test_line_reading_matches_configparser(tmp_path):
+    rng = random.Random(0)
+    path = tmp_path / "Project.ini"
+    for number in range(2000):
+        text = _random_project(rng)
+        data = text.encode()
+        lines = io.StringIO(text, newline=None).readlines()
+        roles = _configparser_roles(lines)
+
+        # Each line is classed as configparser reads it, from text and from bytes.
+        assert _roles(lines) == roles, text
+        assert _line_roles(_lines(data)[1]) == roles, text
+
+        # The first of each repeat is read, and a file configparser refuses is refused.
+        expected = _first_wins(lines, roles)
+        try:
+            actual = _sections(_parse_project(data, path, restore=False))
+        except ValueError:
+            actual = None
+        assert actual == expected, text
+
+        # Without repeats, configparser's own reading is unchanged.
+        plain = ConfigParser(interpolation=None)
+        try:
+            plain.read_file(lines)
+        except (DuplicateSectionError, DuplicateOptionError):
+            pass
+        except ConfigParserError:
+            assert actual is None, text
+        else:
+            if len(_sections(plain)) == len(plain.sections()):
+                assert actual == _sections(plain), text
+
+        # read_plc_name gives configparser's first [Sec20] Key1. Its body is called on the
+        # bytes, as opening thousands of files is slow on Windows.
+        if expected is None:
+            continue
+        value = expected.get("sec20", {}).get("key1")
+        name = _plc_name(_lines(data)[1], _parse_project(data, path, restore=False))
+        assert name == (value.strip() or None if value is not None else None), text
+
+        # write_plc_name refuses a continuation line, and otherwise sets the name read back.
+        if number % 8:
+            continue
+        path.write_bytes(data)
+        assert read_plc_name(path) == name
+        if any(role == "continuation" for role, _ in roles):
+            with pytest.raises(ValueError, match="is indented under the line above it"):
+                write_plc_name(path, "Mixer")
+            continue
+        try:
+            write_plc_name(path, "Mixer")
+        except ValueError:
+            # A line added at the margin can put an indented line after it under it; the
+            # check after the edit refuses that, and the file is unchanged.
+            indented = [
+                line
+                for line, (role, _) in zip(lines, roles, strict=True)
+                if role in ("section", "option") and line[:1].isspace()
+            ]
+            assert indented and path.read_bytes() == data, text
+            continue
+        after = io.StringIO(path.read_bytes().decode(), newline=None).readlines()
+        assert _first_wins(after, _configparser_roles(after))["sec20"]["key1"] == "Mixer", text
