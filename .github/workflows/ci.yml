@@ -64,10 +64,45 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
+  pymodbus-floor:
+    # The suite on pymodbus 3.12.0, the lowest that pyproject.toml allows; uv.lock holds the newest.
+    runs-on: ubuntu-latest
+    env:
+      PYMODBUS_FLOOR: "3.12.0"
+
+    steps:
+      - name: Checkout (official GitHub action)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install uv (official Astral action)
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.13.8"
+          enable-cache: auto
+          python-version: "3.11"
+
+      - name: Set up Python (using uv)
+        run: uv python install
+
+      - name: Install all dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Install the pymodbus floor over the lock
+        run: uv pip install "pymodbus==${PYMODBUS_FLOOR}"
+
+      - name: Check the pymodbus version
+        run: uv run --no-sync python -c "import os, pymodbus; print('pymodbus', pymodbus.__version__); assert pymodbus.__version__ == os.environ['PYMODBUS_FLOOR']"
+
+      - name: Run tests
+        run: uv run --no-sync pytest
+
   ci:
     # The one required check: it fails unless every test job passed.
     if: always()
-    needs: [build]
+    needs: [build, pymodbus-floor]
     runs-on: ubuntu-latest
     steps:
       - run: test "${{ needs.build.result }}" = "success"
+      - run: test "${{ needs.pymodbus-floor.result }}" = "success"

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- pyclickplc works with pymodbus 3.12 through 3.16.2, except 3.15, 3.16.0 and 3.16.1. A project that pins pymodbus 3.12 needs no change.
+
+### Behaviour changes
+
+- Installing or upgrading pyclickplc now brings pymodbus 3.16 unless something else pins pymodbus.
+  - If your own pymodbus code needs 3.12, pin `pymodbus<3.13`.
+- `ClickServer` answers exception 03 and stores nothing when a write of several coils or registers (function code 15 or 16) has a byte count that disagrees with the count or with the data sent; it stored what the data held.
+  - Send a byte count of (count + 7) // 8 for coils and 2 × count for registers, followed by that many data bytes.
+- Function codes 20 and 21 (file records) get exception 01; before, FC20 got a malformed reply and FC21 was answered as if written. A request too short for its function code gets exception 03; before, it got no answer and the connection stopped answering.
+  - Treat exception 01 as "not supported"; a client sending complete requests for function codes 1-6, 15 and 16 sees no change.
+- With pymodbus 3.16, a function code the server does not know gets exception 01; with 3.12 it got a reply with transaction id 0 that a client could not match.
+  - Treat exception 01 as "not supported".
+
 ## 0.8.0 - 2026-11-16
 
 ### Fixed

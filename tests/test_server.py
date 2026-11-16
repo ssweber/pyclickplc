@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import math
-from typing import cast
+import struct
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
+from pymodbus.pdu import DecodePDU, ExceptionResponse, ModbusPDU
 from pymodbus.server import ModbusTcpServer
 
 from pyclickplc.banks import DataType
@@ -15,7 +17,11 @@ from pyclickplc.server import (
     ClickServer,
     MemoryDataProvider,
     _ClickDeviceContext,
+    _ClickRequest,
 )
+
+if TYPE_CHECKING:
+    from pymodbus.datastore import ModbusServerContext
 
 
 def _as_float(value: object) -> float:
@@ -554,6 +560,127 @@ class TestClickServerConstruction:
         s = ClickServer(p, host="0.0.0.0", port=5020)
         assert s.host == "0.0.0.0"
         assert s.port == 5020
+
+
+# ==============================================================================
+# Request classes
+# ==============================================================================
+
+OUR_FUNCTION_CODES = {1, 2, 3, 4, 5, 6, 15, 16, 20, 21, 22, 23}
+# pymodbus answers these itself, without its datastore. What a CLICK answers for them is an
+# open question in scratchpad/roadmap.md.
+LEFT_TO_PYMODBUS = {7, 8, 11, 12, 17, 24, 43}
+
+
+class _RecordingContext:
+    """A datastore that records each attribute a request asks it for, then raises."""
+
+    def __init__(self) -> None:
+        self.used: list[str] = []
+
+    def __getattr__(self, name: str) -> object:
+        self.used.append(name)
+        raise AttributeError(name)
+
+
+# Request fields that pass every check pymodbus makes before it uses the datastore.
+_PASSING_FIELDS = {
+    "address": 0,
+    "count": 1,
+    "bits": [False],
+    "registers": [0],
+    "read_count": 1,
+    "write_count": 1,
+    "write_registers": [0],
+    "write_byte_count": 2,
+    "and_mask": 0xFFFF,
+    "or_mask": 0,
+}
+
+
+async def _uses_datastore(request_class: type[ModbusPDU]) -> bool:
+    """True when the stock request's datastore_update touches the datastore it is given."""
+    request = request_class()
+    for name, value in _PASSING_FIELDS.items():
+        try:
+            setattr(request, name, value)
+        except AttributeError:
+            pass
+    context = _RecordingContext()
+    try:
+        await request.datastore_update(cast("ModbusServerContext", context), 1)
+    except Exception:
+        pass
+    return bool(context.used)
+
+
+def _stock_requests() -> list[type[ModbusPDU]]:
+    """Every request class in pymodbus's server decoder tables, sub-tables included."""
+    classes = [pair[0] for pair in DecodePDU.pdu_table.values()]
+    for table in DecodePDU.pdu_sub_table.values():
+        classes += [pair[0] for pair in table.values()]
+    return classes
+
+
+async def _server_decoder(provider: MemoryDataProvider) -> DecodePDU:
+    server = ClickServer(provider)._make_server()
+    await server.shutdown()
+    return server.decoder
+
+
+def _is_ours(decoder: DecodePDU, code: int) -> bool:
+    return issubclass(decoder.pdu_table[code][0], _ClickRequest)
+
+
+async def _answer(request: ModbusPDU | None) -> ModbusPDU:
+    assert isinstance(request, _ClickRequest)
+    return await request.datastore_update(cast("ModbusServerContext", None), 1)
+
+
+class TestRequestCoverage:
+    async def test_every_request_that_uses_the_datastore_is_ours(self):
+        decoder = await _server_decoder(MemoryDataProvider())
+        using = {cls.function_code for cls in _stock_requests() if await _uses_datastore(cls)}
+        # Shows the recording datastore sees pymodbus's reads and writes.
+        assert using >= {1, 2, 3, 4, 5, 6, 15, 16, 22, 23}
+        assert sorted(code for code in using if not _is_ours(decoder, code)) == []
+
+    async def test_every_function_code_is_ours_or_left_to_pymodbus(self):
+        decoder = await _server_decoder(MemoryDataProvider())
+        ours = {code for code in decoder.pdu_table if _is_ours(decoder, code)}
+        assert ours == OUR_FUNCTION_CODES
+        assert set(decoder.pdu_table) - ours <= LEFT_TO_PYMODBUS
+
+    @pytest.mark.parametrize("code", sorted(OUR_FUNCTION_CODES))
+    async def test_decode_never_raises_and_every_request_gets_an_answer(self, code):
+        decoder = await _server_decoder(MemoryDataProvider())
+        for length in range(12):
+            for fill in (0x00, 0x01, 0xFF):
+                response = await _answer(decoder.decode(bytes([code, *[fill] * length])))
+                assert response.function_code in (code, code | 0x80)
+
+
+C1_COIL = plc_to_modbus("C", 1)[0]
+
+
+class TestWriteCoilValue:
+    @pytest.mark.parametrize("value", [0x0001, 0x00FF, 0x1234, 0xFF01, 0xFFFF])
+    async def test_value_other_than_0000_or_ff00_answers_03_and_stores_nothing(self, value):
+        provider = MemoryDataProvider()
+        decoder = await _server_decoder(provider)
+        response = await _answer(decoder.decode(struct.pack(">BHH", 5, C1_COIL, value)))
+        assert isinstance(response, ExceptionResponse)
+        assert response.exception_code == 3
+        assert provider.get("C1") is False
+
+    @pytest.mark.parametrize(("value", "stored"), [(0xFF00, True), (0x0000, False)])
+    async def test_0000_and_ff00_are_stored(self, value, stored):
+        provider = MemoryDataProvider()
+        provider.set("C1", not stored)
+        decoder = await _server_decoder(provider)
+        response = await _answer(decoder.decode(struct.pack(">BHH", 5, C1_COIL, value)))
+        assert not response.isError()
+        assert provider.get("C1") is stored
 
 
 # ==============================================================================

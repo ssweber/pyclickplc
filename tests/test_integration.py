@@ -7,8 +7,10 @@ Tests the full stack: driver -> pymodbus client -> TCP -> pymodbus server
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import struct
+import warnings
 
 import pytest
 
@@ -347,6 +349,31 @@ class TestRangeSplitting:
 
 
 C1 = plc_to_modbus("C", 1)[0]
+C2000 = plc_to_modbus("C", 2000)[0]
+DS1 = plc_to_modbus("DS", 1)[0]
+DS4500 = plc_to_modbus("DS", 4500)[0]
+
+
+def _write_coils(
+    count: int, *, start: int = C1, byte_count: int | None = None, data: bytes | None = None
+) -> bytes:
+    """An FC15 PDU setting every coil; byte_count and data default to what count needs."""
+    if data is None:
+        data = b"\xff" * ((count + 7) // 8)
+    if byte_count is None:
+        byte_count = (count + 7) // 8
+    return struct.pack(">BHHB", 15, start, count, byte_count) + data
+
+
+def _write_registers(
+    count: int, *, start: int = DS1, byte_count: int | None = None, data: bytes | None = None
+) -> bytes:
+    """An FC16 PDU writing 7 to every register; byte_count and data default to what count needs."""
+    if data is None:
+        data = b"\x00\x07" * count
+    if byte_count is None:
+        byte_count = 2 * count
+    return struct.pack(">BHHB", 16, start, count, byte_count) + data
 
 
 class TestRawRequestLimits:
@@ -382,10 +409,124 @@ class TestRawRequestLimits:
         async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 4):
             await asyncio.sleep(0.1)
             bad = await self._raw(TEST_PORT + 4, struct.pack(">BHH", 5, C1, 0x1234))
+            stored_after_bad = provider.get("C1")
             good = await self._raw(TEST_PORT + 4, struct.pack(">BHH", 5, C1, 0xFF00))
         assert bad == bytes([0x85, 3])
+        assert stored_after_bad is False
         assert provider.get("C1") is True
         assert good[0] == 5
+
+    @staticmethod
+    async def _exchange(port: int, pdus: list[bytes]) -> list[bytes]:
+        """Send each PDU on one connection and return each reply's PDU."""
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        replies = []
+        try:
+            for tid, pdu in enumerate(pdus, start=1):
+                writer.write(struct.pack(">HHHB", tid, 0, len(pdu) + 1, 1) + pdu)
+                await writer.drain()
+                data = await asyncio.wait_for(reader.read(512), 2)
+                assert struct.unpack(">H", data[:2])[0] == tid
+                replies.append(data[7:])
+        finally:
+            writer.close()
+        return replies
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "pdu",
+        [
+            pytest.param(_write_coils(0), id="fc15 count 0"),
+            pytest.param(_write_coils(1969), id="fc15 count 1969"),
+            pytest.param(_write_coils(2001), id="fc15 count 2001"),
+            pytest.param(_write_coils(8, byte_count=2), id="fc15 byte count over count"),
+            pytest.param(_write_coils(16, byte_count=1), id="fc15 byte count under count"),
+            pytest.param(_write_coils(8, data=b"\xff\xff"), id="fc15 more data than byte count"),
+            pytest.param(_write_coils(16, data=b"\xff"), id="fc15 less data than byte count"),
+            pytest.param(_write_registers(0), id="fc16 count 0"),
+            pytest.param(_write_registers(124), id="fc16 count 124"),
+            pytest.param(_write_registers(2, byte_count=6), id="fc16 byte count over count"),
+            pytest.param(_write_registers(2, byte_count=2), id="fc16 byte count under count"),
+            pytest.param(
+                _write_registers(2, data=b"\x00\x07" * 3), id="fc16 more data than byte count"
+            ),
+            pytest.param(
+                _write_registers(2, data=b"\x00\x07"), id="fc16 less data than byte count"
+            ),
+        ],
+    )
+    async def test_bad_count_or_byte_count_gets_exception_03_and_stores_nothing(self, pdu):
+        provider = MemoryDataProvider()
+        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+            await asyncio.sleep(0.1)
+            reply = await self._raw(TEST_PORT + 3, pdu)
+        assert reply == bytes([pdu[0] | 0x80, 3])
+        assert provider._data == {}
+
+    @pytest.mark.asyncio
+    async def test_coil_and_register_write_edges_are_stored(self):
+        provider = MemoryDataProvider()
+        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+            await asyncio.sleep(0.1)
+            replies = await self._exchange(
+                TEST_PORT + 3,
+                [
+                    _write_coils(1, start=C2000),
+                    _write_coils(1968),
+                    _write_registers(1, start=DS4500),
+                    _write_registers(123),
+                ],
+            )
+        assert replies == [
+            struct.pack(">BHH", 15, C2000, 1),
+            struct.pack(">BHH", 15, C1, 1968),
+            struct.pack(">BHH", 16, DS4500, 1),
+            struct.pack(">BHH", 16, DS1, 123),
+        ]
+        assert provider.get("C1968") is True
+        assert provider.get("C1969") is False
+        assert provider.get("C2000") is True
+        assert provider.get("DS123") == 7
+        assert provider.get("DS124") == 0
+        assert provider.get("DS4500") == 7
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("code", [1, 2, 3, 4, 5, 6, 15, 16])
+    async def test_request_too_short_gets_exception_03_and_the_connection_still_answers(self, code):
+        provider = MemoryDataProvider()
+        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+            await asyncio.sleep(0.1)
+            short, read = await self._exchange(
+                TEST_PORT + 3, [struct.pack(">BH", code, 0), struct.pack(">BHH", 3, DS1, 1)]
+            )
+        assert short == bytes([code | 0x80, 3])
+        assert read == bytes([3, 2, 0, 0])
+        assert provider._data == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "pdu",
+        [
+            pytest.param(struct.pack(">BBBHHH", 20, 7, 6, 1, 0, 1), id="fc20 odd record length"),
+            pytest.param(struct.pack(">BBBHHH", 20, 7, 6, 1, 0, 2), id="fc20"),
+            pytest.param(struct.pack(">BBBHHHH", 21, 9, 6, 1, 0, 1, 5), id="fc21"),
+            pytest.param(struct.pack(">BHHH", 22, DS1, 0x0F, 0), id="fc22"),
+            pytest.param(struct.pack(">BHHHHBH", 23, DS1, 1, DS1, 1, 2, 5), id="fc23"),
+            pytest.param(struct.pack(">BHHHHB", 23, DS1, 1, DS1, 0, 0), id="fc23 write count 0"),
+        ],
+    )
+    async def test_refused_function_code_gets_exception_01_and_the_connection_still_answers(
+        self, pdu
+    ):
+        provider = MemoryDataProvider()
+        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+            await asyncio.sleep(0.1)
+            refused, read = await self._exchange(
+                TEST_PORT + 3, [pdu, struct.pack(">BHH", 3, DS1, 1)]
+            )
+        assert refused == bytes([pdu[0] | 0x80, 1])
+        assert read == bytes([3, 2, 0, 0])
+        assert provider._data == {}
 
 
 class TestRawAnswers:
@@ -427,3 +568,49 @@ class TestRawAnswers:
         assert response.isError()
         assert response.exception_code == 1
         assert provider.get("DS1") == 0x00FF
+
+
+class TestTwoServers:
+    async def test_each_server_answers_from_its_own_provider(self):
+        first, second = MemoryDataProvider(), MemoryDataProvider()
+        first.set("DS1", 1)
+        second.set("DS1", 2)
+        async with (
+            ClickServer(first, port=TEST_PORT + 5),
+            ClickServer(second, port=TEST_PORT + 6),
+        ):
+            await asyncio.sleep(0.1)
+            async with (
+                ClickClient("localhost", TEST_PORT + 5) as one,
+                ClickClient("localhost", TEST_PORT + 6) as two,
+            ):
+                assert await one.ds.read(1) == {"DS1": 1}
+                assert await two.ds.read(1) == {"DS1": 2}
+
+
+class TestServerLifecycle:
+    async def test_start_and_stop_log_and_warn_nothing(self, caplog):
+        caplog.set_level(logging.DEBUG, logger="pymodbus")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            async with ClickServer(MemoryDataProvider(), host="127.0.0.1", port=TEST_PORT + 7):
+                await asyncio.sleep(0.05)
+        pymodbus_warnings = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name.startswith("pymodbus") and record.levelno >= logging.WARNING
+        ]
+        assert pymodbus_warnings == []
+        assert [str(warning.message) for warning in caught] == []
+
+    async def test_bound_socket_is_reachable_through_the_server(self):
+        # pyrung reads the port bound for port 0 through ClickServer._server.transport.
+        server = ClickServer(MemoryDataProvider(), host="127.0.0.1", port=0)
+        async with server:
+            assert server._server is not None
+            transport = server._server.transport
+            assert isinstance(transport, asyncio.Server)
+            port = transport.sockets[0].getsockname()[1]
+            assert port != 0
+            async with ClickClient("127.0.0.1", port) as plc:
+                assert await plc.ds.read(1) == {"DS1": 0}

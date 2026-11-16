@@ -9,13 +9,27 @@ from __future__ import annotations
 import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from pymodbus.constants import ExcCodes
-from pymodbus.datastore import ModbusDeviceContext, ModbusServerContext
 from pymodbus.pdu import ExceptionResponse, ModbusPDU
-from pymodbus.pdu.bit_message import WriteSingleCoilRequest
+from pymodbus.pdu.bit_message import (
+    ReadCoilsResponse,
+    ReadDiscreteInputsResponse,
+    WriteMultipleCoilsResponse,
+    WriteSingleCoilResponse,
+)
+from pymodbus.pdu.register_message import (
+    ReadHoldingRegistersResponse,
+    ReadInputRegistersResponse,
+    WriteMultipleRegistersResponse,
+    WriteSingleRegisterResponse,
+)
 from pymodbus.server import ModbusTcpServer
+from pymodbus.simulator import SimData, SimDevice
+
+if TYPE_CHECKING:
+    from pymodbus.datastore import ModbusServerContext
 
 from .addresses import AddressNormalizerMixin, format_address_display, parse_address
 from .banks import BANKS, DataType
@@ -138,53 +152,262 @@ def _is_unnamed_word(bank: str, index: int) -> bool:
     return bank in ("XD", "YD") and index >= 3 and index % 2 == 1
 
 
-# pymodbus also serves FC22 and FC23 through the datastore, which a CLICK refuses.
-# FC23 writes before it reads, so it could store and then answer an exception.
+# The function codes a CLICK answers from its memory; the context refuses any other with 01.
 _CLICK_FUNCTION_CODES = frozenset({1, 2, 3, 4, 5, 6, 15, 16})
 
 # A store is a provider address and its value, or a spare word's Modbus address and its value.
 _Store = tuple[str | int, PlcValue]
 
 
-class _StrictWriteCoilRequest(WriteSingleCoilRequest):
-    """FC 05 that refuses a value other than 0x0000 or 0xFF00.
+def _unpack(fmt: str, data: bytes) -> tuple[int, ...] | None:
+    """Unpack the fixed fields at the start of a request, or None if it is too short."""
+    if len(data) < struct.calcsize(fmt):
+        return None
+    return struct.unpack_from(fmt, data)
 
-    pymodbus turns any non-zero value into True before the datastore sees it.
+
+class _ClickRequest(ModbusPDU):
+    """A request the server decodes itself and answers from ``click_context``.
+
+    pymodbus's own request classes reject some requests in their decode, or raise there,
+    before the server builds an answer, and which requests they reject changes between
+    pymodbus versions. ``parse`` here never raises: a request too short for its function
+    code, or with a bad value, gets an exception answer from ``answer``. pymodbus's
+    datastore is never used.
     """
 
-    raw_value = 0
+    click_context: _ClickDeviceContext
+    # Set by parse when the request gets exception 03 whatever it addresses.
+    malformed = False
 
     def decode(self, data: bytes) -> None:
-        super().decode(data)
-        self.raw_value = struct.unpack(">H", data[2:4])[0]
+        """Decode on pymodbus 3.12 to 3.16.1."""
+        self.parse(data)
+
+    def x_decode(self, data: bytes) -> None:
+        """Decode on pymodbus 3.16.2, which calls ``x_decode``, not ``decode``."""
+        self.parse(data)
+
+    def parse(self, data: bytes) -> None:
+        """Read the fields after the function code. Never raises."""
+
+    def answer(self) -> ModbusPDU:
+        """Build the response from ``click_context``."""
+        raise NotImplementedError
+
+    def refuse(self, code: ExcCodes) -> ExceptionResponse:
+        return ExceptionResponse(self.function_code, code)
 
     async def datastore_update(self, context: ModbusServerContext, device_id: int) -> ModbusPDU:
-        if self.raw_value not in (0x0000, 0xFF00):
-            return ExceptionResponse(self.function_code, ExcCodes.ILLEGAL_VALUE)
-        return await super().datastore_update(context, device_id)
+        del context  # pymodbus's datastore is never used.
+        del device_id  # A CLICK answers every unit id.
+        return self.answer()
 
 
-class _ClickDeviceContext(ModbusDeviceContext):
-    """Custom pymodbus context routing Modbus requests to a DataProvider."""
+class _RefusedRequest(_ClickRequest):
+    """A function code a CLICK refuses: every request gets exception 01."""
+
+    def answer(self) -> ModbusPDU:
+        return self.refuse(ExcCodes.ILLEGAL_FUNCTION)
+
+
+class _ReadRequest(_ClickRequest):
+    """FC 1 to 4: read ``count`` coils or registers from ``address``."""
+
+    response: type[ModbusPDU]
+
+    def parse(self, data: bytes) -> None:
+        fields = _unpack(">HH", data)
+        if fields is None:
+            self.malformed = True
+            return
+        self.address, self.count = fields
+
+    def answer(self) -> ModbusPDU:
+        if self.malformed:
+            return self.refuse(ExcCodes.ILLEGAL_VALUE)
+        values = self.click_context.getValues(self.function_code, self.address, self.count)
+        if isinstance(values, ExcCodes):
+            return self.refuse(values)
+        if self.function_code in (1, 2):
+            return self.response(bits=cast("list[bool]", values))
+        return self.response(registers=cast("list[int]", values))
+
+
+class _ReadCoils(_ReadRequest):
+    function_code = 1
+    response = ReadCoilsResponse
+
+
+class _ReadDiscreteInputs(_ReadRequest):
+    function_code = 2
+    response = ReadDiscreteInputsResponse
+
+
+class _ReadHoldingRegisters(_ReadRequest):
+    function_code = 3
+    response = ReadHoldingRegistersResponse
+
+
+class _ReadInputRegisters(_ReadRequest):
+    function_code = 4
+    response = ReadInputRegistersResponse
+
+
+class _WriteCoil(_ClickRequest):
+    """FC 05. A value other than 0x0000 or 0xFF00 gets exception 03 and stores nothing."""
+
+    function_code = 5
+    value = 0
+
+    def parse(self, data: bytes) -> None:
+        fields = _unpack(">HH", data)
+        if fields is None:
+            self.malformed = True
+            return
+        self.address, self.value = fields
+        self.malformed = self.value not in (0x0000, 0xFF00)
+
+    def answer(self) -> ModbusPDU:
+        if self.malformed:
+            return self.refuse(ExcCodes.ILLEGAL_VALUE)
+        context = self.click_context
+        if (rc := context.setValues(5, self.address, [self.value == 0xFF00])) is not None:
+            return self.refuse(rc)
+        values = context.getValues(5, self.address, 1)
+        if isinstance(values, ExcCodes):
+            return self.refuse(values)
+        return WriteSingleCoilResponse(address=self.address, bits=cast("list[bool]", values))
+
+
+class _WriteRegister(_ClickRequest):
+    """FC 06."""
+
+    function_code = 6
+    value = 0
+
+    def parse(self, data: bytes) -> None:
+        fields = _unpack(">HH", data)
+        if fields is None:
+            self.malformed = True
+            return
+        self.address, self.value = fields
+
+    def answer(self) -> ModbusPDU:
+        if self.malformed:
+            return self.refuse(ExcCodes.ILLEGAL_VALUE)
+        context = self.click_context
+        if (rc := context.setValues(6, self.address, [self.value])) is not None:
+            return self.refuse(rc)
+        values = context.getValues(6, self.address, 1)
+        if isinstance(values, ExcCodes):
+            return self.refuse(values)
+        return WriteSingleRegisterResponse(
+            address=self.address, registers=cast("list[int]", values)
+        )
+
+
+class _WriteCoils(_ClickRequest):
+    """FC 15. A byte count that disagrees with the count or with the data gets exception 03.
+
+    The context refuses a count outside 1 to 1968 with 03, so every bad request stores nothing.
+    """
+
+    function_code = 15
+    values: tuple[bool, ...] = ()
+
+    def parse(self, data: bytes) -> None:
+        fields = _unpack(">HHB", data)
+        if fields is None:
+            self.malformed = True
+            return
+        self.address, self.count, byte_count = fields
+        payload = data[5:]
+        if byte_count != (self.count + 7) // 8 or len(payload) != byte_count:
+            self.malformed = True
+            return
+        self.values = tuple(bool(payload[i // 8] >> (i % 8) & 1) for i in range(self.count))
+
+    def answer(self) -> ModbusPDU:
+        if self.malformed:
+            return self.refuse(ExcCodes.ILLEGAL_VALUE)
+        if (rc := self.click_context.setValues(15, self.address, list(self.values))) is not None:
+            return self.refuse(rc)
+        return WriteMultipleCoilsResponse(address=self.address, count=self.count)
+
+
+class _WriteRegisters(_ClickRequest):
+    """FC 16. A byte count that disagrees with the count or with the data gets exception 03.
+
+    The context refuses a count outside 1 to 123 with 03, so every bad request stores nothing.
+    """
+
+    function_code = 16
+    values: tuple[int, ...] = ()
+
+    def parse(self, data: bytes) -> None:
+        fields = _unpack(">HHB", data)
+        if fields is None:
+            self.malformed = True
+            return
+        self.address, self.count, byte_count = fields
+        payload = data[5:]
+        if byte_count != 2 * self.count or len(payload) != byte_count:
+            self.malformed = True
+            return
+        self.values = struct.unpack(f">{self.count}H", payload)
+
+    def answer(self) -> ModbusPDU:
+        if self.malformed:
+            return self.refuse(ExcCodes.ILLEGAL_VALUE)
+        if (rc := self.click_context.setValues(16, self.address, list(self.values))) is not None:
+            return self.refuse(rc)
+        return WriteMultipleRegistersResponse(address=self.address, count=self.count)
+
+
+# Every function code pymodbus serves from its datastore (1 to 6, 15, 16, 22, 23), and the
+# file records (20, 21), whose pymodbus 3.16.2 decode can raise and stall the connection. A
+# CLICK refuses 22 and 23; the server refuses 20 to 23 with exception 01.
+# tests/test_server.py checks this list against pymodbus's server decoder.
+_CLICK_REQUESTS: tuple[type[_ClickRequest], ...] = (
+    _ReadCoils,
+    _ReadDiscreteInputs,
+    _ReadHoldingRegisters,
+    _ReadInputRegisters,
+    _WriteCoil,
+    _WriteRegister,
+    _WriteCoils,
+    _WriteRegisters,
+    *(
+        type(f"_Refused{code}", (_RefusedRequest,), {"function_code": code})
+        for code in (20, 21, 22, 23)
+    ),
+)
+
+
+def _click_requests(context: _ClickDeviceContext) -> list[type[ModbusPDU]]:
+    """The request classes for one server, each bound to its context."""
+    return [type(cls.__name__, (cls,), {"click_context": context}) for cls in _CLICK_REQUESTS]
+
+
+def _unused_datastore() -> SimDevice:
+    """The datastore pymodbus requires; no request reaches it, and every address is invalid."""
+    return SimDevice(0, simdata=SimData(0))
+
+
+class _ClickDeviceContext:
+    """Routes Modbus requests to a DataProvider."""
 
     def __init__(self, provider: DataProvider, spare_words: dict[int, int] | None = None) -> None:
         self.provider = provider
         # The unnamed YD registers keep what a client writes to them, by Modbus address.
         self.spare_words: dict[int, int] = {} if spare_words is None else spare_words
-        super().__init__()
-
-    def reset(self) -> None:
-        """Required by base class."""
-
-    def validate(self, func_code: int, address: int, count: int = 1) -> bool:  # noqa: ARG002
-        """Accept all addresses; get/setValues answer the exceptions."""
-        return True
 
     def getValues(
         self, func_code: int, address: int, count: int = 1
     ) -> list[int] | list[bool] | ExcCodes:
         """Read values from the DataProvider."""
-        # pymodbus 3.12 never calls validate(), so each request is checked here.
+        # Each request is checked here: no pymodbus datastore sees it first.
         if func_code not in _CLICK_FUNCTION_CODES:
             return ExcCodes.ILLEGAL_FUNCTION
         if func_code in (1, 2) and not 1 <= count <= MAX_READ_COILS:
@@ -482,15 +705,17 @@ class ClickServer:
             connection.close()
         return len(active)
 
+    def _make_server(self) -> ModbusTcpServer:
+        context = _ClickDeviceContext(self.provider, self._spare_words)
+        return ModbusTcpServer(
+            context=_unused_datastore(),
+            address=(self.host, self.port),
+            custom_pdu=_click_requests(context),
+        )
+
     async def start(self) -> None:
         """Start the Modbus TCP server."""
-        context = _ClickDeviceContext(self.provider, self._spare_words)
-        server_context = ModbusServerContext(devices=context, single=True)
-        self._server = ModbusTcpServer(
-            context=server_context,
-            address=(self.host, self.port),
-            custom_pdu=[_StrictWriteCoilRequest],
-        )
+        self._server = self._make_server()
         await self._server.serve_forever(background=True)
 
     async def stop(self) -> None:
@@ -501,13 +726,7 @@ class ClickServer:
 
     async def serve_forever(self) -> None:
         """Start the server and block until stopped."""
-        context = _ClickDeviceContext(self.provider, self._spare_words)
-        server_context = ModbusServerContext(devices=context, single=True)
-        self._server = ModbusTcpServer(
-            context=server_context,
-            address=(self.host, self.port),
-            custom_pdu=[_StrictWriteCoilRequest],
-        )
+        self._server = self._make_server()
         await self._server.serve_forever(background=False)
 
     async def __aenter__(self) -> ClickServer:
