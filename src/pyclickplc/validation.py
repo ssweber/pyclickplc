@@ -70,6 +70,13 @@ FLOAT_MAX = 3.4028235e38
 
 _EDGE_WHITESPACE_ERROR = "Cannot start or end with a space"
 
+# Types whose initial value Python's int() or float() parses, underscores and all.
+_NUMBER_TYPES: frozenset[int] = frozenset(
+    {DataType.INT, DataType.INT2, DataType.FLOAT, DataType.HEX}
+)
+# int(value, 16) takes a 0x prefix, after a sign too; CLICK refuses "0x1F".
+_HEX_PREFIX = re.compile(r"[+-]?0[xX]")
+
 
 def _has_edge_whitespace(text: str) -> bool:
     """True if *text* starts or ends with a space, tab or other code up to 0x20.
@@ -206,6 +213,12 @@ def validate_initial_value(
     character up to 0x20 is invalid: CLICK refuses it quoted and strips it bare.
     A Text value may be a space or a tab.
 
+    Some INT, INT2, FLOAT and HEX forms that Python's ``int()`` and ``float()``
+    take are invalid because CLICK's import refuses them: a non-ASCII
+    character (an Arabic-Indic or fullwidth digit, a no-break space), an
+    underscore (``1_000``) and a ``0x`` prefix on a hex value. CLICK takes
+    ``+5``, and ``1e3`` and ``.5`` as a float.
+
     Args:
         initial_value: The initial value string to validate
         data_type: The DataType number (0=bit, 1=int, 2=int2, 3=float, 4=hex, 6=txt)
@@ -215,14 +228,25 @@ def validate_initial_value(
     """
     if data_type != DataType.TXT and _has_edge_whitespace(initial_value):
         return False, _EDGE_WHITESPACE_ERROR
-    return _validate_typed_value(initial_value, data_type)
+    valid, error = _validate_typed_value(initial_value, data_type)
+    if not valid or data_type not in _NUMBER_TYPES:
+        return valid, error
+    if not initial_value.isascii():
+        return False, "Must be ASCII"
+    if "_" in initial_value:
+        return False, "Cannot contain _"
+    if data_type == DataType.HEX and _HEX_PREFIX.match(initial_value):
+        return False, "Cannot start with 0x"
+    return True, ""
 
 
 def _validate_typed_value(initial_value: str, data_type: int) -> tuple[bool, str]:
-    """Check a value's text against its data type, without the edge-whitespace rule.
+    """Check a value's text against its data type, without the import rules.
 
-    A DataView new value is parsed to a number, not written as text, so it
-    takes this check alone.
+    The import rules are the ones ``validate_initial_value`` adds for CLICK's
+    nickname import: edge whitespace, and non-ASCII, underscores and a hex
+    ``0x`` prefix in a number. A DataView new value is parsed to a number,
+    not written as text, so it takes this check alone.
     """
     if initial_value == "":
         return True, ""  # Empty is valid (means no initial value set)

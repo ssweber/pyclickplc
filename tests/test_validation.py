@@ -303,6 +303,82 @@ class TestValidateInitialValue:
             "Cannot start or end with a space",
         )
 
+    # --- Number forms in CLICK's import ---
+    # Seen in CLICK: the INT and FLOAT cases except 1_0.5, and HEX 0x1F and 1F.
+    # Inferred: INT2, 1_0.5 and the other HEX cases.
+    @pytest.mark.parametrize(
+        ("value", "data_type"),
+        [
+            ("+5", DataType.INT),
+            ("+5", DataType.INT2),
+            ("+5", DataType.FLOAT),
+            ("1e3", DataType.FLOAT),
+            (".5", DataType.FLOAT),
+            ("1F", DataType.HEX),
+        ],
+    )
+    def test_number_forms_click_takes(self, value, data_type):
+        assert validate_initial_value(value, data_type) == (True, "")
+
+    @pytest.mark.parametrize("value", ["1e3", ".5"])
+    def test_int_refuses_exponent_and_bare_decimal(self, value):
+        # CLICK refuses these as INT and takes them as FLOAT
+        assert validate_initial_value(value, DataType.INT) == (False, "Must be integer")
+        assert validate_initial_value(value, DataType.INT2) == (False, "Must be integer")
+
+    @pytest.mark.parametrize(
+        ("value", "data_type"),
+        [
+            ("1_000", DataType.INT),
+            ("1_000", DataType.INT2),
+            ("1_000", DataType.FLOAT),
+            ("1_0.5", DataType.FLOAT),
+            ("1_F", DataType.HEX),
+        ],
+    )
+    def test_underscore_invalid(self, value, data_type):
+        # int() and float() take digit-group underscores; CLICK refuses them
+        assert validate_initial_value(value, data_type) == (False, "Cannot contain _")
+
+    @pytest.mark.parametrize("value", ["0x1F", "0X1F", "0x1", "+0x1"])
+    def test_hex_prefix_invalid(self, value):
+        # int("0x1F", 16) takes the prefix; CLICK refuses it
+        assert validate_initial_value(value, DataType.HEX) == (False, "Cannot start with 0x")
+
+    @pytest.mark.parametrize(
+        ("value", "data_type"),
+        [
+            ("\xa05", DataType.INT),
+            ("5\xa0", DataType.INT),
+            ("\xa01.5", DataType.FLOAT),
+            ("　5", DataType.INT),
+            ("5　", DataType.INT2),
+            ("٥", DataType.INT),
+            ("５", DataType.INT),
+            ("٥", DataType.FLOAT),
+            ("５", DataType.FLOAT),
+            ("１F", DataType.HEX),
+        ],
+    )
+    def test_number_with_non_ascii_invalid(self, value, data_type):
+        # int() and float() take Unicode digits and strip Unicode spaces;
+        # CLICK refuses them from a file without a BOM, which write_csv writes
+        assert validate_initial_value(value, data_type) == (False, "Must be ASCII")
+
+    @pytest.mark.parametrize(
+        ("value", "data_type", "error"),
+        [
+            ("١", DataType.BIT, "Must be 0 or 1"),
+            ("é", DataType.INT, "Must be integer"),
+            ("_1", DataType.INT, "Must be integer"),
+            ("1_", DataType.FLOAT, "Must be number"),
+            ("0x1FF", DataType.HEX, "Max 4 hex digits"),
+        ],
+    )
+    def test_already_invalid_keeps_its_message(self, value, data_type, error):
+        # The import-only checks run only on a value the type check takes
+        assert validate_initial_value(value, data_type) == (False, error)
+
     def test_txt_too_long(self):
         valid, error = validate_initial_value("AB", DataType.TXT)
         assert valid is False
