@@ -532,6 +532,21 @@ class TestValidateNewValue:
     def test_valid_int(self):
         assert validate_new_value("100", DataType.INT) == (True, "")
 
+    @pytest.mark.parametrize(
+        ("display", "data_type"),
+        [
+            (" 5", DataType.INT),
+            ("5\t", DataType.INT2),
+            (" 1.5", DataType.FLOAT),
+            (" FF", DataType.HEX),
+        ],
+    )
+    def test_edge_whitespace_still_valid(self, display, data_type):
+        """A new value is parsed to a number, so the nickname CSV's edge rule doesn't apply."""
+        assert validate_new_value(display, data_type) == (True, "")
+        row = DataViewRecord(address="DS1", data_type=data_type)
+        assert DataViewFile.validate_row_display(row, display) == (True, "")
+
 
 class TestDataViewFileDisplayHelpers:
     def test_value_to_display(self):

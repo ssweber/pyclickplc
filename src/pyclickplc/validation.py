@@ -68,6 +68,21 @@ INT2_MAX = 2147483647
 FLOAT_MIN = -3.4028235e38
 FLOAT_MAX = 3.4028235e38
 
+_EDGE_WHITESPACE_ERROR = "Cannot start or end with a space"
+
+
+def _has_edge_whitespace(text: str) -> bool:
+    """True if *text* starts or ends with a space, tab or other code up to 0x20.
+
+    What CLICK was seen to do on import: it drops a leading or trailing space
+    or tab from a nickname or comment, even quoted; it drops a space, tab, VT
+    or FF at the ends of a bare Text value; it refuses a quoted number with an
+    edge space or tab, and strips an edge space from a bare one. The rest of
+    the range up to 0x20 is inferred: CLICK looks like a Delphi program, and
+    Delphi's ``Trim`` drops every code up to 0x20.
+    """
+    return bool(text) and (text[0] <= " " or text[-1] <= " ")
+
 
 # ==============================================================================
 # Validation Functions
@@ -77,9 +92,9 @@ FLOAT_MAX = 3.4028235e38
 def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple[bool, str]:
     """Validate nickname format (length, characters, reserved words).
 
-    A leading or trailing space is invalid: CLICK strips it, so "Pump " and
-    "Pump" would be one nickname. Does NOT check uniqueness -- that is
-    application-specific.
+    A leading or trailing space, tab or other character up to 0x20 is
+    invalid: CLICK strips it, so "Pump " and "Pump" would be one nickname.
+    Does NOT check uniqueness -- that is application-specific.
 
     Args:
         nickname: The nickname to validate
@@ -97,8 +112,8 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
     if len(nickname) > NICKNAME_MAX_LENGTH:
         return False, f"Too long ({len(nickname)}/24)"
 
-    if nickname != nickname.strip(" "):
-        return False, "Cannot start or end with a space"
+    if _has_edge_whitespace(nickname):
+        return False, _EDGE_WHITESPACE_ERROR
 
     def _forbidden_char_error() -> str:
         invalid_chars = set(nickname) & FORBIDDEN_CHARS
@@ -134,7 +149,10 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
 
 
 def validate_comment(comment: str) -> tuple[bool, str]:
-    """Validate comment length and edge spaces.
+    """Validate comment length and edge whitespace.
+
+    A leading or trailing space, tab or other character up to 0x20 is
+    invalid: CLICK strips it. A tab inside the comment is kept.
 
     Does NOT check block tag uniqueness -- that requires blocks.py context.
 
@@ -150,8 +168,8 @@ def validate_comment(comment: str) -> tuple[bool, str]:
     if len(comment) > COMMENT_MAX_LENGTH:
         return False, f"Too long ({len(comment)}/128)"
 
-    if comment != comment.strip(" "):
-        return False, "Cannot start or end with a space"
+    if _has_edge_whitespace(comment):
+        return False, _EDGE_WHITESPACE_ERROR
 
     return True, ""
 
@@ -184,12 +202,27 @@ def validate_initial_value(
 ) -> tuple[bool, str]:
     """Validate an initial value against the data type rules.
 
+    A value of any type but Text that starts or ends with a space, tab or other
+    character up to 0x20 is invalid: CLICK refuses it quoted and strips it bare.
+    A Text value may be a space or a tab.
+
     Args:
         initial_value: The initial value string to validate
         data_type: The DataType number (0=bit, 1=int, 2=int2, 3=float, 4=hex, 6=txt)
 
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
+    """
+    if data_type != DataType.TXT and _has_edge_whitespace(initial_value):
+        return False, _EDGE_WHITESPACE_ERROR
+    return _validate_typed_value(initial_value, data_type)
+
+
+def _validate_typed_value(initial_value: str, data_type: int) -> tuple[bool, str]:
+    """Check a value's text against its data type, without the edge-whitespace rule.
+
+    A DataView new value is parsed to a number, not written as text, so it
+    takes this check alone.
     """
     if initial_value == "":
         return True, ""  # Empty is valid (means no initial value set)

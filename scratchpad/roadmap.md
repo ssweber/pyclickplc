@@ -24,9 +24,10 @@ Needs: nothing for the code; the API names are settled with the ClickNick sessio
 
 Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's behaviour until answered.
 
-- Does CLICK accept spaces around an address? `parse_address` accepts them. If not, it refuses them.
-- Does CLICK strip a tab (or other whitespace) at the edge of a nickname or comment, and does it import a bare
-  tab as a Text initial value? Today only spaces are rejected (nickname, comment) or quoted (Text value).
+- Does CLICK import these number initial values, which Python's `int()` and `float()` accept and
+  `validate_initial_value` accepts today? `1_000`, `+5`, `1e3`, `.5`, HEX `0x1F`; a value with `\xa0` or another
+  Unicode space at an edge; non-ASCII digits such as `٥` and fullwidth `５`. The next import test answers them.
+  A likely fix is to refuse non-ASCII for every type but TXT.
 - Data dumps ("Read Data from PLC", `tests/fixtures/PlcDataDump.csv`). Owed:
   - How does CLICK write a TXT `,`, `$`, `"` and the other punctuation besides `+`, `-` and `.`?
     `write_plc_data` raises for them until a dump shows each form.

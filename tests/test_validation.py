@@ -37,10 +37,24 @@ class TestValidateNickname:
         assert valid is False
         assert "Too long" in error
 
-    @pytest.mark.parametrize("name", [" Pump", "Pump ", "  Spaced Nick  ", " "])
-    def test_leading_or_trailing_space_invalid(self, name):
+    @pytest.mark.parametrize(
+        "name",
+        [" Pump", "Pump ", "  Spaced Nick  ", " ", "\tPump", "Pump\t", "Pump\x0b", "\x0cPump"],
+    )
+    def test_leading_or_trailing_whitespace_invalid(self, name):
         # CLICK strips them, so "Pump " and "Pump" would be one nickname
         assert validate_nickname(name) == (False, "Cannot start or end with a space")
+
+    @pytest.mark.parametrize("char", [chr(code) for code in range(0x21)])
+    def test_any_edge_code_up_to_0x20_invalid(self, char):
+        assert validate_nickname(char + "Pump") == (
+            False,
+            "Cannot start or end with a space",
+        )
+        assert validate_nickname("Pump" + char) == (
+            False,
+            "Cannot start or end with a space",
+        )
 
     def test_inner_spaces_valid(self):
         assert validate_nickname("Inner  Two") == (True, "")
@@ -135,9 +149,16 @@ class TestValidateComment:
         assert valid is False
         assert "Too long" in error
 
-    @pytest.mark.parametrize("comment", [" note", "note ", "  spaced comment  "])
-    def test_leading_or_trailing_space_invalid(self, comment):
+    @pytest.mark.parametrize(
+        "comment",
+        [" note", "note ", "  spaced comment  ", "\tnote", "note\t", "\x0bnote", "note\x0c"],
+    )
+    def test_leading_or_trailing_whitespace_invalid(self, comment):
         assert validate_comment(comment) == (False, "Cannot start or end with a space")
+
+    def test_inner_tab_valid(self):
+        # CLICK keeps a tab inside a comment
+        assert validate_comment("inner\ttab") == (True, "")
 
     def test_inner_spaces_valid(self):
         assert validate_comment("two  words") == (True, "")
@@ -254,9 +275,33 @@ class TestValidateInitialValue:
         assert "hex" in error
 
     # --- TXT ---
-    def test_txt_valid(self):
-        assert validate_initial_value("A", DataType.TXT) == (True, "")
-        assert validate_initial_value(" ", DataType.TXT) == (True, "")
+    @pytest.mark.parametrize("char", ["A", " ", "\t", "\x0b", "\x0c"])
+    def test_txt_valid(self, char):
+        # A Text space or tab is a value; write_csv quotes it so CLICK keeps it
+        assert validate_initial_value(char, DataType.TXT) == (True, "")
+
+    @pytest.mark.parametrize(
+        ("value", "data_type"),
+        [
+            (" 5", DataType.INT),
+            ("5 ", DataType.INT),
+            ("\t5", DataType.INT),
+            (" 5 ", DataType.INT2),
+            (" 1.5", DataType.FLOAT),
+            ("1.5\t", DataType.FLOAT),
+            (" FF", DataType.HEX),
+            ("1 ", DataType.BIT),
+            ("5\x0c", DataType.INT),
+            ("\x0b5", DataType.INT),
+            (" ", DataType.INT),
+        ],
+    )
+    def test_number_with_edge_whitespace_invalid(self, value, data_type):
+        # CLICK refuses " 5" quoted and strips it bare, though int(" 5") takes it
+        assert validate_initial_value(value, data_type) == (
+            False,
+            "Cannot start or end with a space",
+        )
 
     def test_txt_too_long(self):
         valid, error = validate_initial_value("AB", DataType.TXT)

@@ -678,7 +678,7 @@ class TestCsvFormat:
         assert raw.count(b"\r\n") == 2
         assert raw.count(b"\n") == 2
 
-    @pytest.mark.parametrize("initial", [",", '"', 'a,"b"', "a b", " "])
+    @pytest.mark.parametrize("initial", [",", '"', 'a,"b"', "a b", " ", "\t", "\x0b", "\x0c"])
     def test_txt_initial_value_round_trips(self, tmp_path, initial):
         csv_path = tmp_path / "txt.csv"
         record = AddressRecord(
@@ -695,10 +695,22 @@ class TestCsvFormat:
 
     @pytest.mark.parametrize(
         ("initial", "cell"),
-        [("A", b"A"), (" ", b'" "'), ("", b""), (",", b'","'), ('"', b'""""')],
+        [
+            ("A", b"A"),
+            (" ", b'" "'),
+            ("\t", b'"\t"'),
+            ("\x0b", b'"\x0b"'),
+            ("\x0c", b'"\x0c"'),
+            ("\x01", b'"\x01"'),
+            ("", b""),
+            (",", b'","'),
+            ('"', b'""""'),
+            ("!", b"!"),
+        ],
     )
-    def test_txt_initial_value_bare_unless_space_comma_or_quote(self, tmp_path, initial, cell):
-        """CLICK writes Text bare, but imports a space, comma or double quote only quoted."""
+    def test_txt_initial_value_bare_unless_whitespace_comma_or_quote(self, tmp_path, initial, cell):
+        """CLICK writes Text bare, but imports a space, tab, VT, FF, comma or double quote
+        only quoted: bare, it stores an edge space, tab, VT or FF as no value."""
         csv_path = tmp_path / "txt.csv"
         record = AddressRecord(
             memory_type="TXT",
@@ -710,6 +722,48 @@ class TestCsvFormat:
         )
         write_csv(csv_path, [record])
         assert csv_path.read_bytes().splitlines()[1] == b'TXT1,TEXT,"Msg",' + cell + b',Yes,""'
+
+    @pytest.mark.parametrize(
+        ("initial", "data_type", "memory_type"),
+        [
+            (" 5", DataType.INT, "DS"),
+            ("5 ", DataType.INT, "DS"),
+            ("\t5", DataType.INT, "DS"),
+            (" 1.5", DataType.FLOAT, "DF"),
+        ],
+    )
+    def test_number_with_edge_whitespace_is_written_bare(
+        self, tmp_path, initial, data_type, memory_type
+    ):
+        """CLICK refuses a quoted number with an edge space or tab, and strips it bare."""
+        csv_path = tmp_path / "num.csv"
+        record = AddressRecord(
+            memory_type=memory_type,
+            address=1,
+            nickname="Num",
+            initial_value=initial,
+            data_type=data_type,
+        )
+        write_csv(csv_path, [record])
+        cell = csv_path.read_bytes().decode("utf-8").splitlines()[1].split(",")[3]
+        assert cell == initial
+
+    @pytest.mark.parametrize(
+        ("memory_type", "address", "data_type"),
+        [("X", 1, DataType.BIT), ("DS", 1, DataType.INT), ("TXT", 1, DataType.TXT)],
+    )
+    def test_address_is_never_quoted(self, memory_type, address, data_type):
+        """CLICK refuses a quoted address with an edge space and writes the row over the last."""
+        record = AddressRecord(
+            memory_type=memory_type,
+            address=address,
+            nickname=" ",
+            initial_value=" ",
+            data_type=data_type,
+            comment=" ",
+        )
+        row = format_csv([record]).splitlines()[1]
+        assert row.startswith(record.display_address + ",")
 
     def test_every_text_character_round_trips(self, tmp_path):
         csv_path = tmp_path / "txt.csv"

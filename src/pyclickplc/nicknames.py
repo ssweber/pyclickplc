@@ -407,9 +407,15 @@ def _format_csv(
         # A defaulted numeric is written "0", as CLICK does; Text's default is empty
         if record.initial_value:
             initial_value_str = str(record.initial_value)
-            # Bare as CLICK writes it, unless it would not read back as written: CLICK imports a
-            # bare space as empty, and a comma, double quote or line break splits the cell
-            if initial_value_str == " " or any(char in initial_value_str for char in ',"\r\n'):
+            # Bare as CLICK writes it, unless it would not read back as written: a comma, double
+            # quote or line break splits the cell, and CLICK strips a space, tab, VT or FF at
+            # the ends of a bare Text value. That it strips every code up to 0x20 is inferred
+            # (a Delphi Trim does); only those four were tried. CLICK refuses a quoted number
+            # with an edge space, so only Text is quoted for that.
+            edge_whitespace = initial_value_str[0] <= " " or initial_value_str[-1] <= " "
+            if (record.data_type == DataType.TXT and edge_whitespace) or any(
+                char in initial_value_str for char in ',"\r\n'
+            ):
                 initial_value_str = format_quoted(initial_value_str)
         elif record.data_type == DataType.TXT:
             initial_value_str = ""
@@ -450,8 +456,9 @@ def write_csv(
     Only records with content (nickname, comment, non-default initial value
     or retentive) are written. Records are sorted by memory type order then
     address. Lines end in CRLF and an initial value is bare, as in CLICK's
-    export. An initial value that is a space, or holds a comma, double quote or
-    line break, is quoted: CLICK exports a Text space, comma or double quote bare
+    export. An initial value that holds a comma, double quote or line break is
+    quoted, as is a Text value that starts or ends with a space, tab or other
+    character up to 0x20: CLICK exports a Text space, comma or double quote bare
     but can only import it quoted.
 
     Args:
