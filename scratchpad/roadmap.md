@@ -44,6 +44,13 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   (`[Sec20] Key1=`) always write the name line, empty for a project with no name, so `write_plc_name` never
   adds a section to a file CLICK wrote. Still owed: does CLICK match section names regardless of case?
   `write_plc_name` refuses a header that differs from the name's section only in case.
+- System nicknames. CLICK 4's `PLCType.ini` shows two things `pyclickplc` does not do. Both need Sam's judgment,
+  since refusing more nicknames would also affect CLICK 3 projects.
+  - `[NGWORD]` lists `MAX MIN MDN AVG RAND ABS` on top of the 3.x list that `RESERVED_NICKNAMES` matches, and its
+    `All =` list of forbidden characters has `,`, which `FORBIDDEN_CHARS` lacks. Does CLICK 4 refuse these
+    nicknames, case-insensitively, on import and in its editor?
+  - `[DATAVIEW_RW0]` has `SC50 = R` (and `SC51 = R` in 4.00), while `dataview.WRITABLE_SC` includes 50 and 51.
+    What does `R` mean there? A Data View New Value on SC50 and SC51 would show it.
 
 ## Unscheduled
 

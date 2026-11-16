@@ -1,7 +1,12 @@
 """Canonical AutomationDirect CLICK system nicknames.
 
+The names follow CLICK Programming Software 4.00's ``PLCType.ini``, section
+``[SYSTEM0]``, which is what CLICK writes for a system address. SD71, SD72,
+SD75 and SD76 are the exception: 4.00 does not list them, so they keep the
+AutomationDirect help page's names and ``source``.
+
 CLICK project databases can retain stale system nicknames after software and
-firmware updates. This catalog records the current vendor value by address, but
+firmware updates. This catalog records the current CLICK name by address, but
 repairs remain deliberately narrow: a value is changed only when it is an
 explicitly recorded stale alias. Unfamiliar values, including blanks unless a
 specific incident justifies filling them, are preserved so newer vendor data is
@@ -13,13 +18,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE = (
-    "https://cdn.automationdirect.com/static/helpfiles/click/Content/109.htm"
-)
-AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE = (
-    "https://cdn.automationdirect.com/static/helpfiles/click/Content/110.htm"
-)
-AUTOMATIONDIRECT_SYSTEM_NICKNAME_REVIEWED_ON = date(2026, 9, 2)
+AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE = "CLICK 4.00 PLCType.ini [SYSTEM0]"
+AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE = "CLICK 4.00 PLCType.ini [SYSTEM0]"
+# SD71, SD72, SD75 and SD76 are not in [SYSTEM0]; their source is the help page.
+_HELP_PAGE_SOURCE = "https://cdn.automationdirect.com/static/helpfiles/click/Content/110.htm"
+_NOT_IN_PLCTYPE_INI = frozenset({("SD", 71), ("SD", 72), ("SD", 75), ("SD", 76)})
+AUTOMATIONDIRECT_SYSTEM_NICKNAME_REVIEWED_ON = date(2026, 11, 16)
 
 
 @dataclass(frozen=True)
@@ -32,14 +36,15 @@ class SystemNicknameGuidance:
     reviewed_on: date
 
 
-# Transcribed from AutomationDirect CLICK help topics CL109 and CL110.
+# Names as CLICK 4.00 writes them (PLCType.ini, [SYSTEM0]); CLICK 3.71 and 3.92
+# agree. Where the help pages differ from CLICK, CLICK wins.
 #
 # Omitted intentionally:
 # - SD73/SD74 have two documented names selected by CPU type.
-# - SD150 is shown without the leading underscore required by the same help
-#   topic's system-nickname rules, so it is not safe to treat as canonical.
+# - SD150, SC160-SC171 and SD160-SD163 are in 4.00 but not in this catalog.
+# - SD71, SD72, SD75 and SD76 are kept from the help pages; 4.00 does not list them.
 _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
-    # System Control Relays (CL109)
+    # System Control Relays
     ("SC", 1): "_Always_ON",
     ("SC", 2): "_1st_SCAN",
     ("SC", 3): "_SCAN_Clock",
@@ -51,17 +56,17 @@ _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
     ("SC", 9): "_1hour_Clock",
     ("SC", 10): "_Mode_Switch",
     ("SC", 11): "_PLC_Mode",
-    ("SC", 19): "_PLC_Error",
-    ("SC", 20): "_I/O_BUS_Error",
-    ("SC", 21): "_System_Config_Error",
-    ("SC", 22): "_I/O_Module_Error",
-    ("SC", 23): "_Flash_Memory Error",
-    ("SC", 24): "_Project_File_Error",
-    ("SC", 25): "_Project_File_Ver_Error",
-    ("SC", 26): "_Watchdog_Timer_ Error",
-    ("SC", 27): "_Lost_SDRAM_Data",
-    ("SC", 28): "_Battery_Low_Voltage",
-    ("SC", 29): "_Battery_Replacement",
+    ("SC", 19): "_PLC Error",
+    ("SC", 20): "_I/O Module Error",
+    ("SC", 21): "_System Config Error",
+    ("SC", 22): "_I/O Config Error",
+    ("SC", 23): "_Memory Check Error",
+    ("SC", 24): "_Project File Error",
+    ("SC", 25): "_Firmware Version Error",
+    ("SC", 26): "_Watchdog Timer Error",
+    ("SC", 27): "_Lost SDRAM Data",
+    ("SC", 28): "_Battery Low Voltage",
+    ("SC", 29): "_Battery Replacement",
     ("SC", 30): "_Run Edit Project Error",
     ("SC", 31): "_Sub_CPU_FW_Ver_Error",
     ("SC", 32): "_C2INT_FW_Ver_Error",
@@ -80,7 +85,7 @@ _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
     ("SC", 61): "_BT_Activate_Pairing",
     ("SC", 62): "_BT_Paired_Devices",
     ("SC", 63): "_BT_Pairing_SW_State",
-    ("SC", 64): "_RemotPLC_Enabled",
+    ("SC", 64): "_RemotePLC_Enabled",
     ("SC", 65): "_SD_Eject",
     ("SC", 66): "_SD_Delete_All",
     ("SC", 67): "_SD_Copy_System",
@@ -161,9 +166,9 @@ _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
     ("SC", 329): "_S1INT_IP_Resolved",
     ("SC", 330): "_S1INT_Link_Flag",
     ("SC", 331): "_S1INT_100M_Bit_Flag",
-    ("SC", 332): "_S1INT_DHCP_ Enabled",
+    ("SC", 332): "_S1INT_DHCP_Enabled",
     ("SC", 335): "_S1INT_Application_Flag",
-    # System Data Registers (CL110)
+    # System Data Registers
     ("SD", 1): "_PLC_Error_Code",
     ("SD", 5): "_Firmware_Version_L",
     ("SD", 6): "_Firmware_Version_H",
@@ -175,14 +180,14 @@ _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
     ("SD", 12): "_Maximum_Scan_Time",
     ("SD", 13): "_Fixed_Scan_Time_Setup",
     ("SD", 14): "_Interrupt_Scan_Time",
-    ("SD", 19): "_RTC_Year (4 digits)",
-    ("SD", 20): "_RTC_Year (2 digits)",
-    ("SD", 21): "_RTC_Month (1-12)",
-    ("SD", 22): "_RTC_Day (1-31)",
-    ("SD", 23): "_RTC_Day_of_the_Week",
-    ("SD", 24): "_RTC_Hour (0-23)",
-    ("SD", 25): "_RTC_Minute (0-59)",
-    ("SD", 26): "_RTC_Second (0-59)",
+    ("SD", 19): "_RTC_Year(4 digits)",
+    ("SD", 20): "_RTC_Year(2 digits)",
+    ("SD", 21): "_RTC_Month",
+    ("SD", 22): "_RTC_Day",
+    ("SD", 23): "_RTC_Day_of_The_Week",
+    ("SD", 24): "_RTC_Hour",
+    ("SD", 25): "_RTC_Minute",
+    ("SD", 26): "_RTC_Second",
     ("SD", 29): "_RTC_New_Year(4 digits)",
     ("SD", 31): "_RTC_New_Month",
     ("SD", 32): "_RTC_New_Day",
@@ -274,7 +279,7 @@ _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
     ("SD", 211): "_WLAN_Default_Gateway4",
     ("SD", 212): "_WLAN_Signal_Strength",
     ("SD", 213): "_WLAN_Connection_Status",
-    ("SD", 214): "_WLAN_No_Com_Time",
+    ("SD", 214): "_WLAN_No_Comm_Time",
     ("SD", 215): "_WLAN_Rcv_Pkt_High_Cnt",
     ("SD", 216): "_WLAN_Connected_Channel",
     ("SD", 217): "_WLAN_Country_Code",
@@ -396,7 +401,10 @@ _KNOWN_STALE_NICKNAMES: dict[tuple[str, int], frozenset[str]] = {
 _NO_AUTOMATIC_REPAIR = frozenset()
 
 
-def _source_for(memory_type: str) -> str:
+def _source_for(key: tuple[str, int]) -> str:
+    memory_type = key[0]
+    if key in _NOT_IN_PLCTYPE_INI:
+        return _HELP_PAGE_SOURCE
     if memory_type == "SC":
         return AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE
     return AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE
@@ -406,7 +414,7 @@ AUTOMATIONDIRECT_SYSTEM_NICKNAMES: dict[tuple[str, int], SystemNicknameGuidance]
     key: SystemNicknameGuidance(
         nickname=nickname,
         repair_from=_KNOWN_STALE_NICKNAMES.get(key, _NO_AUTOMATIC_REPAIR),
-        source=_source_for(key[0]),
+        source=_source_for(key),
         reviewed_on=AUTOMATIONDIRECT_SYSTEM_NICKNAME_REVIEWED_ON,
     )
     for key, nickname in _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES.items()
