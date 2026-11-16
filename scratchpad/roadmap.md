@@ -31,8 +31,10 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 - The PLC name in Project.ini. The fixtures show that CLICK 3 (`[PLCName] PLCName=`) and CLICK 4
   (`[Sec20] Key1=`) always write the name line, empty for a project with no name, so `write_plc_name` never
   adds a section to a file CLICK wrote. `read_plc_name` reads `[PLCName]` alone in a CLICK 4 file, where
-  CLICK 4.00 shows no name (C2 p11). A key in a second section that matches the first only in case is not
-  searched (inferred from Windows' INI functions, not tested in CLICK): does CLICK read it?
+  CLICK 4.00 shows no name (C2 p11). CLICK 4.00 was seen to match `[Sec20] Key1` regardless of case and
+  take the first match. Two parts are inferred, not tested in CLICK: that CLICK 3 reads `[PLCName]` the same
+  way, and that a key in a second section matching the first only in case is not searched (Windows' INI
+  functions). Does CLICK 3 read `[PLCName]` so, and does CLICK 4 search a key in a second matching section?
 - The hardware sections in Project.ini. `read_modules` and the channel readers match `[Sec21]` to `[Sec23]`
   and CLICK 3's sections regardless of case, take the first of a repeated section or key, and in a CLICK 4
   file ignore a named section beside its placeholder (`[CPUBuild]` beside `[Sec23]`). CLICK 4.00 was seen
@@ -55,4 +57,3 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 - **CLICK's digits for a large DF value follow no rule found** (ClickNick's run D2), so `write_plc_data`
   matches CLICK's cell for some large values and not for others. Not pursued: both forms read back as the
   same float32.
-- The docs site's old `/releases/v0.2.0/` page disappears at the next docs deploy; the changelog replaces it.

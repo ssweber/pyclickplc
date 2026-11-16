@@ -126,7 +126,7 @@ write_plc_data("output.csv", data, banks=["DS", "DF"])  # specific banks
 
 Unspecified addresses within included banks get bank defaults. Banks not in `banks` (or not present in data keys when `banks` is omitted) are excluded from the file.
 
-**CLICK's Write Data into PLC writes every address in each section of the file**, so an address the file leaves blank is cleared in the PLC. CLICK asks before it overwrites the PLC's data. To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes, as in [Modify and write back](#modify-and-write-back).
+**CLICK's Write Data into PLC writes every address of each memory type in the file** (seen for Text), so an address the file leaves blank is cleared in the PLC. CLICK asks before it overwrites the PLC's data. To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes, as in [Modify and write back](#modify-and-write-back).
 
 A DF value is written as the float32 the PLC holds, in CLICK's fixed-point form (`66.7` is written `66.69999695`). For some values above about 1e19, CLICK's last digits differ from pyclickplc's; both read back as the same value. CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` refuses them (a program or a Modbus write can still put one in the PLC). It raises `ValueError` naming the address for such a DF value, and for a TXT comma, because the file couldn't be read back.
 

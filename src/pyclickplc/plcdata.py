@@ -53,8 +53,8 @@ _STD_HEADER_OFFSETS = list(range(1, _STD_STRIDE + 1))
 _DF_ERROR = "Err-Format"
 
 # CLICK writes a DF value in fixed point with 8 decimals, and with no more than 40 digits
-# in all (3e38 has one decimal). For a large value it keeps 19 or 20 leading digits and
-# writes zeros after them, but which follows no rule found. In ClickNick's run D2, near
+# in all (3e38 has one decimal). For a large value it writes 19 or 20 significant digits
+# and zeros after them, but which follows no rule found. In ClickNick's run D2, near
 # 1e30 the switch falls between the float32 values 0x7154FFFF (20 kept) and 0x71550000
 # (19), yet 1.0548e35 and 1.0548e38 keep 20 and 1.0546e25 keeps 19, so no one limit on
 # the first 20 digits fits; and 1.07e30 is written with a last digit that neither rounding
@@ -281,8 +281,9 @@ def write_plc_data(
     """Write a Click PLC data CSV to load via PLC > Write Data into PLC > File Select.
 
     Warning:
-        CLICK's Write Data into PLC writes every address in each section of
-        the file, so an address the file leaves blank is cleared in the PLC.
+        CLICK's Write Data into PLC writes every address of each memory type
+        in the file (seen for Text), so an address the file leaves blank is
+        cleared in the PLC.
         Each bank written holds every one of its addresses, with the bank's
         default where *data* has no value. To change some addresses and keep
         the rest, read the PLC's data first, then write it back with your
