@@ -2,26 +2,25 @@
 
 from __future__ import annotations
 
+import ast
 import math
 import struct
-from typing import TYPE_CHECKING, cast
-from unittest.mock import MagicMock
+from pathlib import Path
+from typing import cast
 
 import pytest
-from pymodbus.pdu import DecodePDU, ExceptionResponse, ModbusPDU
-from pymodbus.server import ModbusTcpServer
 
+import pyclickplc
 from pyclickplc.banks import DataType
 from pyclickplc.modbus import modbus_to_plc_register, pack_value, plc_to_modbus
 from pyclickplc.server import (
+    _CLICK_FUNCTION_CODES,
+    _HANDLERS,
     ClickServer,
     MemoryDataProvider,
+    _answer,
     _ClickDeviceContext,
-    _ClickRequest,
 )
-
-if TYPE_CHECKING:
-    from pymodbus.datastore import ModbusServerContext
 
 
 def _as_float(value: object) -> float:
@@ -42,11 +41,10 @@ class _FailingProvider(MemoryDataProvider):
 class TestGetValuesFailure:
     @pytest.mark.parametrize("func_code", [1, 2, 3, 4])
     def test_provider_failure_is_device_failure(self, func_code):
-        from pymodbus.constants import ExcCodes
 
         ctx = _ClickDeviceContext(_FailingProvider())
         address = 0 if func_code in (1, 2) else 28672
-        assert ctx.getValues(func_code, address, 1) == ExcCodes.DEVICE_FAILURE
+        assert ctx.getValues(func_code, address, 1) == 4
 
 
 class TestMemoryDataProvider:
@@ -285,12 +283,11 @@ class TestContextCoilReads:
         assert result == [True]
 
     def test_read_unmapped_coil(self):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.getValues(1, 10000, 1)
-        assert result == ExcCodes.ILLEGAL_ADDRESS
+        assert result == 2
 
     def test_read_sparse_gap(self):
         """Coil 48 is a sparse gap -> False."""
@@ -344,12 +341,11 @@ class TestContextRegisterReads:
         assert result == [0xABCD]
 
     def test_read_unmapped_register(self):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.getValues(3, 5000, 1)
-        assert result == ExcCodes.ILLEGAL_ADDRESS
+        assert result == 2
 
     def test_read_ds_negative(self):
         p = MemoryDataProvider()
@@ -404,18 +400,16 @@ class TestContextCoilWrites:
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.setValues(5, 10000, [True])
-        from pymodbus.constants import ExcCodes
 
-        assert result == ExcCodes.ILLEGAL_ADDRESS
+        assert result == 2
 
     def test_write_non_writable_sc(self):
         """SC1 is not Modbus-writable."""
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.setValues(5, 61440, [True])
-        from pymodbus.constants import ExcCodes
 
-        assert result == ExcCodes.ILLEGAL_ADDRESS
+        assert result == 2
 
     def test_write_writable_sc53(self):
         """SC53 is writable."""
@@ -431,9 +425,8 @@ class TestContextCoilWrites:
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.setValues(5, 0, [True])
-        from pymodbus.constants import ExcCodes
 
-        assert result == ExcCodes.ILLEGAL_ADDRESS
+        assert result == 2
 
 
 # ==============================================================================
@@ -490,18 +483,16 @@ class TestContextRegisterWrites:
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.setValues(6, 5000, [42])
-        from pymodbus.constants import ExcCodes
 
-        assert result == ExcCodes.ILLEGAL_ADDRESS
+        assert result == 2
 
     def test_fc06_write_non_writable_sd(self):
         """SD1 is not writable."""
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         result = ctx.setValues(6, 61440, [42])
-        from pymodbus.constants import ExcCodes
 
-        assert result == ExcCodes.ILLEGAL_ADDRESS
+        assert result == 2
 
     def test_fc06_write_writable_sd29(self):
         """SD29 is writable."""
@@ -563,154 +554,99 @@ class TestClickServerConstruction:
 
 
 # ==============================================================================
-# Request classes
+# Answers
 # ==============================================================================
 
-OUR_FUNCTION_CODES = {1, 2, 3, 4, 5, 6, 15, 16, 20, 21, 22, 23}
-# pymodbus answers these itself, without its datastore. What a CLICK answers for them is an
-# open question in scratchpad/roadmap.md.
-LEFT_TO_PYMODBUS = {7, 8, 11, 12, 17, 24, 43}
+# The function codes a CLICK answers from its memory. Every other code gets exception 01.
+CLICK_FUNCTION_CODES = {1, 2, 3, 4, 5, 6, 15, 16}
+C1_COIL = plc_to_modbus("C", 1)[0]
 
 
-class _RecordingContext:
-    """A datastore that records each attribute a request asks it for, then raises."""
+class _BrokenContext(_ClickDeviceContext):
+    def getValues(self, func_code, address, count=1):
+        raise RuntimeError("context bug")
 
-    def __init__(self) -> None:
-        self.used: list[str] = []
-
-    def __getattr__(self, name: str) -> object:
-        self.used.append(name)
-        raise AttributeError(name)
+    def setValues(self, func_code, address, values):
+        raise RuntimeError("context bug")
 
 
-# Request fields that pass every check pymodbus makes before it uses the datastore.
-_PASSING_FIELDS = {
-    "address": 0,
-    "count": 1,
-    "bits": [False],
-    "registers": [0],
-    "read_count": 1,
-    "write_count": 1,
-    "write_registers": [0],
-    "write_byte_count": 2,
-    "and_mask": 0xFFFF,
-    "or_mask": 0,
+# A well-formed request for each function code a CLICK answers from its memory.
+WELL_FORMED = {
+    1: struct.pack(">BHH", 1, 0, 1),
+    2: struct.pack(">BHH", 2, 0, 1),
+    3: struct.pack(">BHH", 3, 0, 1),
+    4: struct.pack(">BHH", 4, 0, 1),
+    5: struct.pack(">BHH", 5, C1_COIL, 0xFF00),
+    6: struct.pack(">BHH", 6, 0, 1),
+    15: struct.pack(">BHHBB", 15, C1_COIL, 1, 1, 1),
+    16: struct.pack(">BHHBH", 16, 0, 1, 2, 5),
 }
 
 
-async def _uses_datastore(request_class: type[ModbusPDU]) -> bool:
-    """True when the stock request's datastore_update touches the datastore it is given."""
-    request = request_class()
-    for name, value in _PASSING_FIELDS.items():
-        try:
-            setattr(request, name, value)
-        except AttributeError:
-            pass
-    context = _RecordingContext()
-    try:
-        await request.datastore_update(cast("ModbusServerContext", context), 1)
-    except Exception:
-        pass
-    return bool(context.used)
+class TestAnswer:
+    def test_the_context_and_the_answers_serve_the_same_function_codes(self):
+        assert set(_HANDLERS) == set(_CLICK_FUNCTION_CODES) == CLICK_FUNCTION_CODES
 
+    def test_every_function_code_gets_an_answer_and_nothing_raises(self):
+        context = _ClickDeviceContext(MemoryDataProvider())
+        for code in range(256):
+            for length in range(12):
+                for fill in (0x00, 0x01, 0xFF):
+                    response = _answer(context, bytes([code, *[fill] * length]))
+                    assert response[0] in (code, code | 0x80)
 
-def _stock_requests() -> list[type[ModbusPDU]]:
-    """Every request class in pymodbus's server decoder tables, sub-tables included."""
-    classes = [pair[0] for pair in DecodePDU.pdu_table.values()]
-    for table in DecodePDU.pdu_sub_table.values():
-        classes += [pair[0] for pair in table.values()]
-    return classes
+    @pytest.mark.parametrize(
+        "code", sorted(set(range(256)) - CLICK_FUNCTION_CODES), ids=lambda code: f"fc{code}"
+    )
+    def test_any_other_function_code_gets_exception_01_and_stores_nothing(self, code):
+        provider = MemoryDataProvider()
+        for data in (b"", struct.pack(">HHH", 0, 1, 5), struct.pack(">HHHHB", 0, 1, 0, 1, 2)):
+            assert _answer(_ClickDeviceContext(provider), bytes([code]) + data) == bytes(
+                [code | 0x80, 1]
+            )
+        assert provider._data == {}
 
+    @pytest.mark.parametrize("code", sorted(CLICK_FUNCTION_CODES))
+    def test_an_error_nothing_else_caught_gets_exception_04(self, code):
+        response = _answer(_BrokenContext(MemoryDataProvider()), WELL_FORMED[code])
+        assert response == bytes([code | 0x80, 4])
 
-async def _server_decoder(provider: MemoryDataProvider) -> DecodePDU:
-    server = ClickServer(provider)._make_server()
-    await server.shutdown()
-    return server.decoder
+    @pytest.mark.parametrize("code", sorted(CLICK_FUNCTION_CODES))
+    def test_well_formed_request_is_answered(self, code):
+        response = _answer(_ClickDeviceContext(MemoryDataProvider()), WELL_FORMED[code])
+        assert response[0] == code
 
-
-def _is_ours(decoder: DecodePDU, code: int) -> bool:
-    return issubclass(decoder.pdu_table[code][0], _ClickRequest)
-
-
-async def _answer(request: ModbusPDU | None) -> ModbusPDU:
-    assert isinstance(request, _ClickRequest)
-    return await request.datastore_update(cast("ModbusServerContext", None), 1)
-
-
-class TestRequestCoverage:
-    async def test_every_request_that_uses_the_datastore_is_ours(self):
-        decoder = await _server_decoder(MemoryDataProvider())
-        using = {cls.function_code for cls in _stock_requests() if await _uses_datastore(cls)}
-        # Shows the recording datastore sees pymodbus's reads and writes.
-        assert using >= {1, 2, 3, 4, 5, 6, 15, 16, 22, 23}
-        assert sorted(code for code in using if not _is_ours(decoder, code)) == []
-
-    async def test_every_function_code_is_ours_or_left_to_pymodbus(self):
-        decoder = await _server_decoder(MemoryDataProvider())
-        ours = {code for code in decoder.pdu_table if _is_ours(decoder, code)}
-        assert ours == OUR_FUNCTION_CODES
-        assert set(decoder.pdu_table) - ours <= LEFT_TO_PYMODBUS
-
-    @pytest.mark.parametrize("code", sorted(OUR_FUNCTION_CODES))
-    async def test_decode_never_raises_and_every_request_gets_an_answer(self, code):
-        decoder = await _server_decoder(MemoryDataProvider())
-        for length in range(12):
-            for fill in (0x00, 0x01, 0xFF):
-                response = await _answer(decoder.decode(bytes([code, *[fill] * length])))
-                assert response.function_code in (code, code | 0x80)
-
-
-C1_COIL = plc_to_modbus("C", 1)[0]
+    def test_reads_answer_byte_count_then_data(self):
+        provider = MemoryDataProvider()
+        provider.bulk_set({"C1": True, "C3": True, "C9": True, "DS1": -2, "DS2": 7})
+        context = _ClickDeviceContext(provider)
+        assert _answer(context, struct.pack(">BHH", 1, C1_COIL, 9)) == bytes([1, 2, 0x05, 0x01])
+        ds1 = plc_to_modbus("DS", 1)[0]
+        assert _answer(context, struct.pack(">BHH", 3, ds1, 2)) == bytes(
+            [3, 4, 0xFF, 0xFE, 0x00, 0x07]
+        )
 
 
 class TestWriteCoilValue:
     @pytest.mark.parametrize("value", [0x0001, 0x00FF, 0x1234, 0xFF01, 0xFFFF])
-    async def test_value_other_than_0000_or_ff00_answers_03_and_stores_nothing(self, value):
+    def test_value_other_than_0000_or_ff00_answers_03_and_stores_nothing(self, value):
         provider = MemoryDataProvider()
-        decoder = await _server_decoder(provider)
-        response = await _answer(decoder.decode(struct.pack(">BHH", 5, C1_COIL, value)))
-        assert isinstance(response, ExceptionResponse)
-        assert response.exception_code == 3
+        response = _answer(_ClickDeviceContext(provider), struct.pack(">BHH", 5, C1_COIL, value))
+        assert response == bytes([0x85, 3])
         assert provider.get("C1") is False
 
     @pytest.mark.parametrize(("value", "stored"), [(0xFF00, True), (0x0000, False)])
-    async def test_0000_and_ff00_are_stored(self, value, stored):
+    def test_0000_and_ff00_are_stored(self, value, stored):
         provider = MemoryDataProvider()
         provider.set("C1", not stored)
-        decoder = await _server_decoder(provider)
-        response = await _answer(decoder.decode(struct.pack(">BHH", 5, C1_COIL, value)))
-        assert not response.isError()
+        pdu = struct.pack(">BHH", 5, C1_COIL, value)
+        assert _answer(_ClickDeviceContext(provider), pdu) == pdu
         assert provider.get("C1") is stored
 
 
 # ==============================================================================
-# ClickServer runtime controls
+# ClickServer runtime controls (the rest, over sockets, in test_integration.py)
 # ==============================================================================
-
-
-class _FakeServer:
-    def __init__(self, *, active: bool = True) -> None:
-        self._active = active
-        self.active_connections: dict[str, object] = {}
-
-    def is_active(self) -> bool:
-        return self._active
-
-
-class _FakeTransport:
-    def __init__(self, peername: object = None) -> None:
-        self._peername = peername
-
-    def get_extra_info(self, key: str) -> object:
-        if key == "peername":
-            return self._peername
-        return None
-
-
-class _FakeConnection:
-    def __init__(self, peername: object = None) -> None:
-        self.transport = _FakeTransport(peername)
-        self.close = MagicMock()
 
 
 class TestClickServerRuntimeControls:
@@ -718,86 +654,50 @@ class TestClickServerRuntimeControls:
         server = ClickServer(MemoryDataProvider())
         assert server.is_running() is False
 
-    def test_is_running_true_when_server_active(self):
-        server = ClickServer(MemoryDataProvider())
-        server._server = cast(ModbusTcpServer, _FakeServer(active=True))
-        assert server.is_running() is True
-
-    def test_is_running_false_when_server_inactive(self):
-        server = ClickServer(MemoryDataProvider())
-        server._server = cast(ModbusTcpServer, _FakeServer(active=False))
-        assert server.is_running() is False
-
     def test_list_clients_empty_when_not_started(self):
         server = ClickServer(MemoryDataProvider())
         assert server.list_clients() == []
+        assert server.disconnect_client("1") is False
+        assert server.disconnect_all_clients() == 0
 
-    def test_list_clients_includes_peer(self):
-        server = ClickServer(MemoryDataProvider())
-        fake = _FakeServer(active=True)
-        fake.active_connections["abc"] = _FakeConnection(("127.0.0.1", 5020))
-        fake.active_connections["def"] = _FakeConnection(None)
-        server._server = cast(ModbusTcpServer, fake)
+    def test_bound_port_is_none_when_not_started(self):
+        assert ClickServer(MemoryDataProvider(), port=0).bound_port is None
 
-        clients = server.list_clients()
-        assert len(clients) == 2
-        assert clients[0].client_id == "abc"
-        assert clients[0].peer == "127.0.0.1:5020"
-        assert clients[1].client_id == "def"
-        assert clients[1].peer == "unknown"
 
-    def test_disconnect_client_unknown_returns_false(self):
-        server = ClickServer(MemoryDataProvider())
-        fake = _FakeServer(active=True)
-        server._server = cast(ModbusTcpServer, fake)
-        assert server.disconnect_client("missing") is False
-
-    def test_disconnect_client_known_returns_true(self):
-        server = ClickServer(MemoryDataProvider())
-        fake = _FakeServer(active=True)
-        connection = _FakeConnection(("127.0.0.1", 1234))
-        fake.active_connections["known"] = connection
-        server._server = cast(ModbusTcpServer, fake)
-
-        assert server.disconnect_client("known") is True
-        connection.close.assert_called_once_with()
-
-    def test_disconnect_all_clients(self):
-        server = ClickServer(MemoryDataProvider())
-        fake = _FakeServer(active=True)
-        c1 = _FakeConnection(("127.0.0.1", 1111))
-        c2 = _FakeConnection(("127.0.0.1", 2222))
-        fake.active_connections["a"] = c1
-        fake.active_connections["b"] = c2
-        server._server = cast(ModbusTcpServer, fake)
-
-        count = server.disconnect_all_clients()
-        assert count == 2
-        c1.close.assert_called_once_with()
-        c2.close.assert_called_once_with()
+@pytest.mark.parametrize("module", ["server.py", "server_tui.py"])
+def test_server_does_not_import_pymodbus(module):
+    tree = ast.parse((Path(pyclickplc.__file__).parent / module).read_text(encoding="utf-8"))
+    imported = [
+        name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for name in (
+            [alias.name for alias in node.names]
+            if isinstance(node, ast.Import)
+            else [node.module or ""]
+        )
+    ]
+    assert [name for name in imported if name.split(".")[0] == "pymodbus"] == []
 
 
 class TestAtomicWrites:
     def test_fc16_past_the_last_register_stores_nothing(self):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         addr, _ = plc_to_modbus("DS", 4500)
-        assert ctx.setValues(16, addr, [7, 8]) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.setValues(16, addr, [7, 8]) == 2
         assert p.get("DS4500") == 0
 
     def test_fc15_into_a_read_only_coil_stores_nothing(self):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         addr, _ = plc_to_modbus("SC", 53)
-        assert ctx.setValues(15, addr, [True, True]) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.setValues(15, addr, [True, True]) == 2
         assert p.get("SC53") is False
 
     def test_provider_failure_midway_restores_earlier_stores(self):
-        from pymodbus.constants import ExcCodes
 
         class Flaky(MemoryDataProvider):
             def write(self, address: str, value):
@@ -808,7 +708,7 @@ class TestAtomicWrites:
         p = Flaky()
         ctx = _ClickDeviceContext(p)
         addr, _ = plc_to_modbus("DS", 1)
-        assert ctx.setValues(16, addr, [5, 6]) == ExcCodes.DEVICE_FAILURE
+        assert ctx.setValues(16, addr, [5, 6]) == 4
         assert p.get("DS1") == 0
 
 
@@ -817,10 +717,9 @@ class TestRequestLimits:
         ("func_code", "count"), [(1, 0), (1, 2001), (2, 2001), (3, 0), (3, 126), (4, 200)]
     )
     def test_read_count_out_of_range_is_illegal_value(self, func_code, count):
-        from pymodbus.constants import ExcCodes
 
         ctx = _ClickDeviceContext(MemoryDataProvider())
-        assert ctx.getValues(func_code, 0, count) == ExcCodes.ILLEGAL_VALUE
+        assert ctx.getValues(func_code, 0, count) == 3
 
     def test_read_counts_at_the_limits_are_served(self):
         ctx = _ClickDeviceContext(MemoryDataProvider())
@@ -828,20 +727,18 @@ class TestRequestLimits:
         assert len(cast(list, ctx.getValues(1, 16384, 2000))) == 2000
 
     def test_fc15_over_1968_coils_is_illegal_value(self):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
-        assert ctx.setValues(15, 0, [True] * 1969) == ExcCodes.ILLEGAL_VALUE
+        assert ctx.setValues(15, 0, [True] * 1969) == 3
         assert p.get("C1") is False
 
     def test_fc16_over_123_registers_is_illegal_value(self):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         addr, _ = plc_to_modbus("DS", 1)
-        assert ctx.setValues(16, addr, [1] * 124) == ExcCodes.ILLEGAL_VALUE
+        assert ctx.setValues(16, addr, [1] * 124) == 3
         assert p.get("DS1") == 0
 
 
@@ -858,10 +755,9 @@ class TestAnswersAsAClick:
         ],
     )
     def test_read_past_a_bank_is_illegal_address(self, func_code, address, count):
-        from pymodbus.constants import ExcCodes
 
         ctx = _ClickDeviceContext(MemoryDataProvider())
-        assert ctx.getValues(func_code, address, count) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.getValues(func_code, address, count) == 2
 
     def test_read_in_the_y_gap_is_off(self):
         ctx = _ClickDeviceContext(MemoryDataProvider())
@@ -869,12 +765,11 @@ class TestAnswersAsAClick:
         assert ctx.getValues(1, 8192 + 48, 1) == [False]
 
     def test_fc15_across_the_c_end_stores_nothing(self):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         addr, _ = plc_to_modbus("C", 1999)
-        assert ctx.setValues(15, addr, [True] * 4) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.setValues(15, addr, [True] * 4) == 2
         assert p.get("C1999") is False
         assert p.get("C2000") is False
 
@@ -904,17 +799,15 @@ class TestAnswersAsAClick:
         assert ctx.getValues(3, yd_base + 2, 3) == [1, 2, 3]
 
     def test_unnamed_xd_register_reads_0_and_refuses_a_write(self):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         p.set("XD1", 0x1234)
         ctx = _ClickDeviceContext(p)
         xd_base, _ = plc_to_modbus("XD", 0)
         assert ctx.getValues(4, xd_base + 2, 2) == [0x1234, 0]
-        assert ctx.setValues(6, xd_base + 3, [5]) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.setValues(6, xd_base + 3, [5]) == 2
 
     def test_provider_failure_midway_keeps_the_spare_words(self):
-        from pymodbus.constants import ExcCodes
 
         class Flaky(MemoryDataProvider):
             def write(self, address: str, value):
@@ -925,18 +818,17 @@ class TestAnswersAsAClick:
         p = Flaky()
         ctx = _ClickDeviceContext(p)
         yd_base, _ = plc_to_modbus("YD", 0)
-        assert ctx.setValues(16, yd_base + 2, [1, 2, 3]) == ExcCodes.DEVICE_FAILURE
+        assert ctx.setValues(16, yd_base + 2, [1, 2, 3]) == 4
         assert p.get("YD1") == 0
         assert ctx.spare_words == {}
 
     @pytest.mark.parametrize("func_code", [22, 23])
     def test_fc22_and_fc23_are_illegal_function(self, func_code):
-        from pymodbus.constants import ExcCodes
 
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
-        assert ctx.setValues(func_code, 0, [5]) == ExcCodes.ILLEGAL_FUNCTION
-        assert ctx.getValues(func_code, 0, 1) == ExcCodes.ILLEGAL_FUNCTION
+        assert ctx.setValues(func_code, 0, [5]) == 1
+        assert ctx.getValues(func_code, 0, 1) == 1
         assert p.get("DS1") == 0
 
     @pytest.mark.parametrize(("func_code", "base"), [(2, 0), (1, 8192)])
@@ -948,18 +840,16 @@ class TestAnswersAsAClick:
         assert ctx.getValues(func_code, base + 271, 17) == [True] + [False] * 16
 
     def test_coil_past_slot_8_is_illegal_address(self):
-        from pymodbus.constants import ExcCodes
 
         ctx = _ClickDeviceContext(MemoryDataProvider())
-        assert ctx.getValues(1, 8192 + 288, 1) == ExcCodes.ILLEGAL_ADDRESS
-        assert ctx.getValues(1, 8192 + 287, 2) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.getValues(1, 8192 + 288, 1) == 2
+        assert ctx.getValues(1, 8192 + 287, 2) == 2
 
     @pytest.mark.parametrize("offset", [48, 272])
     def test_fc05_to_a_reserved_y_coil_is_illegal_address(self, offset):
-        from pymodbus.constants import ExcCodes
 
         ctx = _ClickDeviceContext(MemoryDataProvider())
-        assert ctx.setValues(5, 8192 + offset, [True]) == ExcCodes.ILLEGAL_ADDRESS
+        assert ctx.setValues(5, 8192 + offset, [True]) == 2
 
     def test_fc15_over_slot_8_reserved_coils_skips_them(self):
         p = MemoryDataProvider()
