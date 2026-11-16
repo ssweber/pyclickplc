@@ -47,13 +47,16 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 - `[DATAVIEW_RW0]` in CLICK 4's `PLCType.ini` has `SC50 = R` (and `SC51 = R` in 4.00), while
   `dataview.WRITABLE_SC` includes 50 and 51. What does `R` mean there? A Data View New Value on SC50 and SC51
   would show it.
+- What does a CLICK answer to Modbus function codes 7, 8, 11, 12, 17, 24 and 43 (exception status,
+  diagnostics, the comm event counter and log, server id, FIFO queue, device identification)? `ClickServer`
+  leaves them to pymodbus, which answers each as a generic Modbus device would; its answer to a function
+  code it does not know also changes between pymodbus versions. On pymodbus 3.12-3.14 a short FC8, FC24 or
+  FC43 request stops that connection answering (0.8.0 does the same), a reason to answer these codes in
+  `ClickServer` once CLICK's answers are known. A raw request of each to a CLICK answers it, and
+  `ClickServer` can then give the same answer.
 
 ## Unscheduled
 
-- **pymodbus is capped below 3.13.** 3.13 routes the server through SimDevice, so `server.py` needs a
-  rewrite to lift it. Revisit when something forces it (a security fix, or a Python version the capped
-  pymodbus does not support). pyrung imports only public names (`DataProvider`, `MemoryDataProvider`,
-  `PlcValue`, `ClickServer`), so the rewrite does not involve pyrung as long as those keep their shape.
 - **CLICK's digits for a large DF value follow no rule found** (ClickNick's run D2), so `write_plc_data`
   matches CLICK's cell for some large values and not for others. Not pursued: both forms read back as the
   same float32.

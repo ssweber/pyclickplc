@@ -37,14 +37,16 @@ classifiers = [
 # ---- Main dependencies ----
 
 dependencies = [
-    # Capped below 3.13: from 3.13.0 pymodbus routes the server through its
-    # SimData/SimDevice datastore and no longer calls ModbusDeviceContext
-    # getValues/setValues, so the _ClickDeviceContext overrides in server.py
-    # become dead code. Unit tests still pass but every request through a real
-    # client returns Modbus exception 2 (tests/test_integration.py catches it).
-    # Moving up means rewriting server.py on SimDevice.action; see
-    # https://pymodbus.readthedocs.io/en/dev/source/upgrade_40.html
-    "pymodbus>=3.12,<3.13",
+    # server.py decodes and answers function codes 1-6, 15, 16 and 20-23 with its own
+    # request classes (custom_pdu), so neither pymodbus's datastore (SimData/SimDevice
+    # from 3.13) nor its request decoding decides an answer. 3.15.0-3.16.1 answer a
+    # function code nobody serves with exception 01 under function code 0x80, and
+    # 3.16.0 is yanked. 3.16.2 changed request decoding in a patch release, so the cap
+    # stops at the version tested. Raise it only after these pass on the new version:
+    # the full suite, the request coverage test in tests/test_server.py and the raw
+    # limit tests in tests/test_integration.py (TestRawRequestLimits). CI runs the
+    # suite on the locked version and on the floor, 3.12.0.
+    "pymodbus>=3.12,!=3.15.*,!=3.16.0,!=3.16.1,<3.16.3",
 ]
 
 
