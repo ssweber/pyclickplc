@@ -242,13 +242,14 @@ class TestTxtBank:
             """\
             <TXT=START>
             Address,1,2,3,
-            TXT1,,,
+            TXT1,,,,
             </TXT=END>
             """,
         )
         data = read_plc_data(p)
         assert data["TXT1"] == ""
         assert data["TXT2"] == ""
+        assert data["TXT3"] == ""
 
     def test_txt_with_values(self, tmp_path: Path) -> None:
         p = _write(
@@ -501,17 +502,17 @@ class TestReadAddresses:
         )
         assert read_plc_data(p) == {"DS11": 3, "DS12": 4}
 
-    def test_cells_past_the_bank_are_skipped(self, tmp_path: Path) -> None:
+    def test_header_columns_past_the_bank_take_no_cell(self, tmp_path: Path) -> None:
         p = _write(
             tmp_path,
             """\
             <X=START>
             Address,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,
-            X801,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
+            X801,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
             </X=END>
 
             <DS=START>
-            Address,1,2,
+            Address,1,2,3,
             DS4499,1,2,
             </DS=END>
             """,
@@ -521,6 +522,20 @@ class TestReadAddresses:
         assert "X817" not in data
         assert data["DS4500"] == 2
         assert "DS4501" not in data
+
+    @pytest.mark.parametrize(
+        ("rows", "message"),
+        [
+            ("<X=START>\nAddress,1,2,17,\nX801,0,0,1,\n", r"^X801 row has 3 cells, not 2\.$"),
+            ("<DS=START>\nAddress,1,2,3,\nDS1,7,8,\n", r"^DS1 row has 2 cells, not 3\.$"),
+            ("<TXT=START>\nAddress,1,2,3,\nTXT11,A,B,\n", r"^TXT11 row has 2 cells, not 3\.$"),
+        ],
+    )
+    def test_row_whose_cells_do_not_match_its_addresses_raises(
+        self, tmp_path: Path, rows: str, message: str
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            read_plc_data(_write(tmp_path, rows))
 
 
 class TestWriteMultipleBanks:
@@ -678,6 +693,74 @@ class TestClickDump:
         assert not out.exists()
 
 
+# CLICK's DF and TXT forms: rows DF251 and TXT961..TXT991 of a dump CLICK v4.00 wrote,
+# with their sections' start, header and end lines.
+CLICK_FORMS = Path(__file__).parent / "fixtures" / "PlcDataDumpForms.csv"
+# CLICK writes TXT972's comma unquoted, so its row has 11 cells.
+COMMA_ROW = "TXT971,*,,,/,:,;,<,=,>,?,@,"
+# The values the PLC held: DF251..DF260, and TXT961..TXT970 and TXT981..TXT1000.
+FORMS_DF = [1.8e30, 1.9e30, 2e30, 1.5e30, 1e35, -3e38, -0.0, 0.001953125, 0.0, 0.0]
+FORMS_TXT = {
+    961: [" ", "!", '"', "#", "$", "%", "&", "'", "(", ")"],
+    981: ["[", "\\", "]", "^", "_", "`", "{", "|", "}", "~"],
+    991: ["\x01", "\x7f", "\xff", "Z", "1", ".", "5", "0", "0", "0"],
+}
+
+
+def _forms_df() -> dict[str, float]:
+    return {f"DF{251 + i}": value for i, value in enumerate(FORMS_DF)}
+
+
+def _forms_txt() -> dict[str, str]:
+    return {f"TXT{s + i}": c for s, chars in FORMS_TXT.items() for i, c in enumerate(chars)}
+
+
+def _forms_lines_without_comma_row() -> list[str]:
+    lines = CLICK_FORMS.read_bytes().decode("ascii").split("\r\n")
+    lines.remove(COMMA_ROW)
+    return lines
+
+
+class TestClickForms:
+    def test_comma_row_raises(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=r"^TXT971 row has 11 cells, not 10: CLICK writes a TXT comma unquoted",
+        ):
+            read_plc_data(CLICK_FORMS)
+
+    def test_reads_the_other_rows(self, tmp_path: Path) -> None:
+        p = tmp_path / "forms.csv"
+        p.write_bytes("\r\n".join(_forms_lines_without_comma_row()).encode("ascii"))
+        data = read_plc_data(p)
+        df = {a: _float32(v) for a, v in _forms_df().items()}
+        # CLICK keeps 8 decimals of 0.001953125, so it reads back as 0.00195312.
+        df["DF258"] = 0.00195312
+        assert data == {**df, **_forms_txt()}
+        assert str(data["DF257"]) == "-0.0"
+
+    def test_write_matches_click_cells_of_comma_row(self, tmp_path: Path) -> None:
+        """The comma row's other nine marks are written as CLICK writes them."""
+        marks = ["*", "/", ":", ";", "<", "=", ">", "?", "@"]
+        addrs = ["TXT971"] + [f"TXT{n}" for n in range(973, 981)]
+        out = tmp_path / "out.csv"
+        write_plc_data(out, dict(zip(addrs, marks, strict=True)), banks=["TXT"])
+        lines = out.read_bytes().decode("ascii").split("\r\n")
+        (row,) = [line for line in lines if line.startswith("TXT971,")]
+        cells = row.split(",")[1:-1]
+        click = COMMA_ROW.split(",")[1:-1]
+        assert len(click) == 11
+        assert [cells[0], *cells[2:]] == [click[0], *click[3:]]
+        assert cells[1] == ""
+
+    def test_write_matches_click_bytes(self, tmp_path: Path) -> None:
+        out = tmp_path / "out.csv"
+        write_plc_data(out, {**_forms_df(), **_forms_txt()}, banks=["DF", "TXT"])
+        written = out.read_bytes().split(b"\r\n")
+        for line in _forms_lines_without_comma_row():
+            assert line.encode("ascii") in written, line
+
+
 class TestWriteDfForm:
     @pytest.mark.parametrize(
         ("value", "cell"),
@@ -693,10 +776,57 @@ class TestWriteDfForm:
             (-1e30, "-1000000015047466219900000000000.00000000"),
             (3e37, "30000001069098037760000000000000000000.00"),
             (3e38, "300000000549775575800000000000000000000.0"),
+            # From CLICK_FORMS
+            (1.8e30, "1800000027085439196000000000000.00000000"),
+            (1.9e30, "1899999953032322092000000000000.00000000"),
+            (2e30, "2000000030094932440000000000000.00000000"),
+            (1.5e30, "1499999947013335604000000000000.00000000"),
+            (1e35, "100000004091847875960000000000000000.0000"),
+            (-3e38, "-300000000549775575800000000000000000000.0"),
+            (-0.0, "-0.00000000"),
+            (0.001953125, "0.00195312"),
         ],
     )
     def test_writes_click_float_form(self, tmp_path: Path, value: float, cell: str) -> None:
+        """The cell matches CLICK's cell for this value."""
         assert _first_cell(tmp_path, {"DF1": value}, "DF") == cell
+
+    # Neighbouring float32 values CLICK wrote with 20 and 19 digits in ClickNick's run D2
+    # (runner-jobs/d2/live-r8 DF251 and live-r6 DF258).
+    @pytest.mark.parametrize(
+        ("bits", "cell"),
+        [
+            (0x7154FFFF, "1054724837913280268300000000000.00000000"),
+            (0x71550000, "1054724913471143994000000000000.00000000"),
+        ],
+    )
+    def test_writes_click_cell_either_side_of_the_limit(
+        self, tmp_path: Path, bits: int, cell: str
+    ) -> None:
+        """The cell matches CLICK's cell for this value."""
+        (value,) = struct.unpack("<f", struct.pack("<I", bits))
+        assert _first_cell(tmp_path, {"DF1": value}, "DF") == cell
+
+    # Cells CLICK wrote in ClickNick's run D2 (runner-jobs/d2/live-r2, live-r6 and live-r8),
+    # with the float32 values written. pyclickplc writes some of them with other last digits.
+    @pytest.mark.parametrize(
+        ("bits", "cell"),
+        [
+            (0x7154FFFF, "1054724837913280268300000000000.00000000"),  # r8 DF251
+            (0x71550000, "1054724913471143994000000000000.00000000"),  # r6 DF258
+            (0x715815B4, "1069999993433429738000000000000.00000000"),  # r2 DF254
+            (0x690B933D, "10546000128175236840000000.00000000"),  # r8 DF254
+            (0x79A28486, "105479998215512625970000000000000000.0000"),  # r8 DF253
+            (0x7E9EB56B, "105479999641619551220000000000000000000.0"),  # r8 DF257
+        ],
+    )
+    def test_reads_click_large_cell_as_float32_written(
+        self, tmp_path: Path, bits: int, cell: str
+    ) -> None:
+        p = tmp_path / "data.csv"
+        p.write_bytes(f"<DF=START>\r\nAddress,1,\r\nDF1,{cell},\r\n</DF=END>\r\n".encode("ascii"))
+        (written,) = struct.unpack("<f", struct.pack("<I", bits))
+        assert read_plc_data(p)["DF1"] == written
 
     @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
     def test_non_finite_raises(self, tmp_path: Path, value: float) -> None:
@@ -744,15 +874,35 @@ class TestTxtForm:
             ("\x7f", "$7F"),
             ("\xc8", "$C8"),
             ("\xff", "$FF"),
+            ('"', '"'),
+            ("$", "$"),
+            ("!", "!"),
+            ("_", "_"),
         ],
     )
     def test_writes_click_text_form(self, tmp_path: Path, value: str, cell: str) -> None:
         assert _first_cell(tmp_path, {"TXT1": value}, "TXT") == cell
 
-    @pytest.mark.parametrize("value", [",", "$", '"', "!", "_"])
-    def test_character_with_unknown_form_raises(self, tmp_path: Path, value: str) -> None:
-        with pytest.raises(ValueError, match="TXT3"):
-            write_plc_data(tmp_path / "out.csv", {"TXT3": value})
+    def test_comma_raises(self, tmp_path: Path) -> None:
+        out = tmp_path / "out.csv"
+        with pytest.raises(ValueError, match=r"^TXT3 value ',': CLICK writes a TXT comma unquoted"):
+            write_plc_data(out, {"TXT3": ","})
+        assert not out.exists()
+
+    def test_punctuation_round_trips(self, tmp_path: Path) -> None:
+        """The 28 marks among CLICK_FORMS's test values, all written plain.
+
+        They are all ASCII punctuation but ``+ , - .``.
+        """
+        punctuation = [
+            chr(c) for c in range(0x21, 0x7F) if not chr(c).isalnum() and chr(c) not in "+,-."
+        ]
+        assert len(punctuation) == 28
+        original = {f"TXT{i}": c for i, c in enumerate(punctuation, start=1)}
+        out = tmp_path / "out.csv"
+        write_plc_data(out, original)
+        data = read_plc_data(out)
+        assert {a: data[a] for a in original} == original
 
     @pytest.mark.parametrize("value", ["AB", "Ā", 5])
     def test_not_one_byte_raises(self, tmp_path: Path, value: str | int) -> None:

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 import re
-import string
 import struct
 from collections.abc import Iterable, Mapping
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
@@ -54,20 +53,26 @@ _STD_HEADER_OFFSETS = list(range(1, _STD_STRIDE + 1))
 _DF_ERROR = "Err-Format"
 
 # CLICK writes a DF value in fixed point with 8 decimals, and with no more than 40 digits
-# in all (3e38 has one decimal). It keeps some leading digits and writes zeros after
-# them: 20 for 1e30, 19 for 3e38. The dump only puts the cut-off between those two;
-# 2**64 (as many digits as fit in an unsigned 64-bit integer) is inferred, and a check
-# in CLICK is owed (scratchpad/roadmap.md).
+# in all (3e38 has one decimal). For a large value it keeps 19 or 20 leading digits and
+# writes zeros after them, but which follows no rule found. In ClickNick's run D2, near
+# 1e30 the switch falls between the float32 values 0x7154FFFF (20 kept) and 0x71550000
+# (19), yet 1.0548e35 and 1.0548e38 keep 20 and 1.0546e25 keeps 19, so no one limit on
+# the first 20 digits fits; and 1.07e30 is written with a last digit that neither rounding
+# of the exact value gives. Here 20 digits are kept while they make a number below
+# _DF_KEPT_LIMIT, and otherwise 19, rounded. The limit lies between the first 20 digits of
+# 0x7154FFFF (kept) and of 0x71550000 (not kept), and gives 70 of the 74 large cells known;
+# the four that differ are 1.0546e25, 1.0548e35, 1.0548e38 and 1.07e30. Most of those cells
+# lie near 1.05e30, where D2 probed. A cell that differs in its last digits reads back as
+# the same float32.
 _DF_DECIMALS = 8
 _DF_MAX_DIGITS = 40
-_DF_KEPT_LIMIT = 2**64
+_DF_KEPT_LIMIT = 10_547_249 * 10**12
 
 # CLICK writes a TXT space, control character or byte above 0x7E as "$" and its code in
-# uppercase hex without leading zeros ("$20", "$D", "$C8"), and other characters plain.
+# uppercase hex without leading zeros ("$20", "$D", "$C8"), and other characters plain,
+# with no quotes: '"' as itself and "$" as a lone "$". A cell holds one character, so "$"
+# with hex digits after it is a code. CLICK writes "," plain too, which splits its row.
 _TXT_ESCAPE = re.compile(r"\$([0-9A-Fa-f]{1,2})")
-# The characters a CLICK dump shows plain. Other printable ASCII (such as "," "$" '"')
-# raises on write until a CLICK dump shows its form.
-_TXT_PLAIN = frozenset(string.ascii_letters + string.digits + "+-.")
 
 # Defaults per data type (used by skip_default)
 _DEFAULTS: dict[DataType, bool | int | float | str] = {
@@ -117,6 +122,12 @@ def read_plc_data(
         a DF value it can't display; it reads as ``float("nan")``. A TXT cell
         CLICK writes as ``$`` and a hex code (``$20``) reads as that character
         (``" "``).
+
+    Raises:
+        ValueError: Naming the row's first address, for a row whose cells
+            don't match the addresses the header gives it. CLICK writes a TXT
+            comma unquoted, so a row holding one has a cell too many and can't
+            be read.
     """
     text = Path(path).read_text()
     lines = text.splitlines()
@@ -164,13 +175,19 @@ def read_plc_data(
         except ValueError:
             continue
         values = parts[1:]
+        addr_nums = [
+            start_num + offset - 1
+            for offset in col_offsets
+            if is_valid_address(prefix, start_num + offset - 1)
+        ]
+        if len(values) != len(addr_nums):
+            row = format_address_display(prefix, start_num)
+            message = f"{row} row has {len(values)} cells, not {len(addr_nums)}"
+            if data_type == DataType.TXT and len(values) > len(addr_nums):
+                message += ": CLICK writes a TXT comma unquoted, so the row can't be read"
+            raise ValueError(f"{message}.")
 
-        for i, raw in enumerate(values):
-            if i >= len(col_offsets):
-                break
-            addr_num = start_num + col_offsets[i] - 1
-            if not is_valid_address(prefix, addr_num):
-                continue
+        for addr_num, raw in zip(addr_nums, values, strict=True):
             raw = raw.strip()
             if not raw:
                 if data_type == DataType.TXT:
@@ -217,14 +234,14 @@ def _format_text(value: bool | int | float | str, addr: str) -> str:
         return ""
     if not isinstance(value, str) or len(value) != 1 or ord(value) > 0xFF:
         raise ValueError(f"{addr} value {value!r} is not a single character with code 0..255.")
-    if value in _TXT_PLAIN:
-        return value
+    if value == ",":
+        raise ValueError(
+            f"{addr} value ',': CLICK writes a TXT comma unquoted, so the row couldn't be read back."
+        )
     code = ord(value)
     if code <= 0x20 or code >= 0x7F:
         return f"${code:X}"
-    raise ValueError(
-        f"{addr} value {value!r}: the form CLICK writes for this character is not known."
-    )
+    return value
 
 
 def _format_value(value: bool | int | float | str, data_type: DataType, addr: str) -> str:
@@ -250,6 +267,14 @@ def write_plc_data(
 ) -> None:
     """Write a Click PLC data CSV to load via PLC > Write Data into PLC > File Select.
 
+    Warning:
+        CLICK's Write Data into PLC writes every address in each section of
+        the file, so an address the file leaves blank is cleared in the PLC.
+        Each bank written holds every one of its addresses, with the bank's
+        default where *data* has no value. To change some addresses and keep
+        the rest, read the PLC's data first, then write it back with your
+        changes.
+
     Args:
         path: Output file path.
         data: Dict mapping normalized address strings (e.g. ``"X001"``,
@@ -265,11 +290,13 @@ def write_plc_data(
     Raises:
         ValueError: Naming the address, for a DF value that isn't a number
             in the float32 range, and for a TXT value that isn't one character
-            with code 0..255 or whose form in CLICK's file isn't known
-            (punctuation other than ``+``, ``-`` and ``.``). CLICK's editor
-            can't enter a NaN or an infinity, so they raise too (a program or a
-            Modbus write can still put one in the PLC). Nothing is written then.
+            with code 0..255 or is a comma (CLICK writes a TXT comma unquoted,
+            so the row can't be read back). CLICK's editor can't enter a NaN or
+            an infinity, so they raise too (a program or a Modbus write can
+            still put one in the PLC). Nothing is written then.
     """
+    # The warning is from ClickNick's Write Data check (run G6): a file holding 28 TXT cells
+    # left every other TXT address blank in the PLC.
     if banks is not None:
         selected = list(banks)
     else:

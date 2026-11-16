@@ -28,6 +28,16 @@
   - Leave out the underscores (`1000`).
 - `validate_initial_value` rejects a HEX value with a `0x` prefix, such as `0x1F` (`Cannot start with 0x`). CLICK was seen to refuse `0x1F`; `0X` and a sign before the prefix are inferred.
   - Leave out the prefix (`1F`).
+- `write_plc_data` writes every TXT punctuation mark but a comma plain, as CLICK does, so `"` is written `"` and `$` is written `$` (it raised `ValueError` for all but `+`, `-` and `.`). A comma still raises: CLICK writes it unquoted, so the row couldn't be read back.
+  - Write the punctuation you left out; keep leaving out a comma.
+- `read_plc_data` raises `ValueError` naming the row's first address for a row whose cells don't match its addresses. CLICK writes a TXT comma unquoted, so such a row has a cell too many (it read the row, with the comma's address and the next one blank and each address after them holding the value of the one before).
+  - Replace the comma in the PLC's TXT data, then read the data from the PLC again.
+- `write_plc_data` writes CLICK's digits for more large DF values, such as 1.5e30 and 1.8e30: `1.8e30` is `1800000027085439196000000000000.00000000` (it was `...1958...`). CLICK's last digits still differ for some large values; `read_plc_data` reads either form as the same value.
+  - Regenerate any saved output your tests compare against.
+
+### Documentation
+
+- The `write_plc_data` docstring and the files guide warn that CLICK's Write Data into PLC writes every address in each section of the file, so an address the file leaves blank is cleared in the PLC. To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes.
 
 ## 0.7.0 - 2026-11-15
 
