@@ -2,8 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- `AUTOMATIONDIRECT_SYSTEM_NICKNAMES` and `canonical_system_nickname` give the names CLICK itself writes for system addresses (`_RTC_Month`, not `_RTC_Month (1-12)`). 22 names changed (SC19-SC29, SC64, SC332, SD19-SD26, SD214).
+
 ### Behaviour changes
 
+- The system nickname catalog's strings changed, for example SD21 from `_RTC_Month (1-12)` to `_RTC_Month` and SC20 from `_I/O_BUS_Error` to `_I/O Module Error`. `is_canonical_system_nickname` is false for the old string, and `canonicalize_system_nickname` leaves it as it was.
+  - Compare against `canonical_system_nickname`, not a saved string. A project that holds a help-page name is not offered a repair.
+- `SystemNicknameGuidance.source`, and `AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE` and `AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE`, are now the text `CLICK 4.00 PLCType.ini [SYSTEM0]`, not help-page URLs. SD71, SD72, SD75 and SD76 keep a help-page URL.
+  - Do not fetch `source` as a URL.
 - `validate_nickname` and `validate_comment` reject a value that starts or ends with a tab or other character up to 0x20, as they did a space, with the same message. CLICK strips them on import, even quoted; CLICK was seen to strip a space and a tab, and the rest is inferred. A tab inside a comment is still valid.
   - Strip the value before you validate and store it.
 - `validate_initial_value` rejects a value of any type but Text that starts or ends with a space, tab or other character up to 0x20 (`" 5"`, `"1.5\t"`), with the message `Cannot start or end with a space`. CLICK was seen to refuse a quoted number with an edge space or tab and to strip an edge space from a bare one; the rest is inferred.
