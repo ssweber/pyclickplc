@@ -31,8 +31,8 @@ CLICK_NAME_PATTERN = re.compile(r"[A-Za-z0-9_\- ]+")
 SYSTEM_NICKNAME_TYPES: frozenset[str] = frozenset({"SC", "SD", "X"})
 
 # Characters forbidden in nicknames
-# Note: Space is allowed, hyphen (-) and period (.) are forbidden
-FORBIDDEN_CHARS: frozenset[str] = frozenset("%\"<>!#$&'()*+-./:;=?@[\\]^`{|}~")
+# Note: Space is allowed; comma (,), hyphen (-) and period (.) are forbidden
+FORBIDDEN_CHARS: frozenset[str] = frozenset(",%\"<>!#$&'()*+-./:;=?@[\\]^`{|}~")
 
 RESERVED_NICKNAMES: frozenset[str] = frozenset(
     {
@@ -57,6 +57,13 @@ RESERVED_NICKNAMES: frozenset[str] = frozenset(
         "rsh",
         "lro",
         "rro",
+        # CLICK 4.00 adds these to its reserved list. They are refused for CLICK 3 too.
+        "max",
+        "min",
+        "mdn",
+        "avg",
+        "rand",
+        "abs",
     }
 )
 
