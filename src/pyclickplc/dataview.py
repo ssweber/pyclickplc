@@ -23,8 +23,8 @@ from .validation import (
     INT2_MIN,
     INT_MAX,
     INT_MIN,
+    _validate_typed_value,
     assert_runtime_value,
-    validate_initial_value,
 )
 
 
@@ -500,7 +500,7 @@ def validate_new_value(display_str: str, data_type: DataType) -> tuple[bool, str
         if ord(display_str) > 0xFF:
             return False, "Must be a character with code 0..255"
         return True, ""
-    return validate_initial_value(display_str, data_type)
+    return _validate_typed_value(display_str, data_type)
 
 
 # =============================================================================

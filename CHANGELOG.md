@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Behaviour changes
+
+- `validate_nickname` and `validate_comment` reject a value that starts or ends with a tab or other character up to 0x20, as they did a space, with the same message. CLICK strips them on import, even quoted; CLICK was seen to strip a space and a tab, and the rest is inferred. A tab inside a comment is still valid.
+  - Strip the value before you validate and store it.
+- `validate_initial_value` rejects a value of any type but Text that starts or ends with a space, tab or other character up to 0x20 (`" 5"`, `"1.5\t"`), with the message `Cannot start or end with a space`. CLICK was seen to refuse a quoted number with an edge space or tab and to strip an edge space from a bare one; the rest is inferred.
+  - Strip the value before you validate and store it.
+- `write_csv` and `format_csv` quote a Text initial value that starts or ends with a space, tab or other character up to 0x20, so ` a` is written `" a"` (only a lone space was quoted). CLICK was seen to strip a bare space, tab, VT or FF at a Text value's ends and keep it quoted; the rest is inferred.
+  - Regenerate any saved output your tests compare against.
+
 ## 0.7.0 - 2026-11-15
 
 ### Added
