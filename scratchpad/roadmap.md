@@ -48,15 +48,21 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   `dataview.WRITABLE_SC` includes 50 and 51. What does `R` mean there? A Data View New Value on SC50 and SC51
   would show it.
 - What does a CLICK answer to Modbus function codes 7, 8, 11, 12, 17, 24 and 43 (exception status,
-  diagnostics, the comm event counter and log, server id, FIFO queue, device identification)? `ClickServer`
-  leaves them to pymodbus, which answers each as a generic Modbus device would; its answer to a function
-  code it does not know also changes between pymodbus versions. On pymodbus 3.12-3.14 a short FC8, FC24 or
-  FC43 request stops that connection answering (0.8.0 does the same), a reason to answer these codes in
-  `ClickServer` once CLICK's answers are known. A raw request of each to a CLICK answers it, and
-  `ClickServer` can then give the same answer.
+  diagnostics, the comm event counter and log, server id, FIFO queue, device identification)?
+  `ClickServer` answers every function code but 1-6, 15 and 16 with exception 01, to be confirmed against
+  a CLICK. A raw request of each to a CLICK answers it, and `ClickServer` can then give the same answer.
 
 ## Unscheduled
 
+- **Drop `ClickServer._server.transport` once pyrung reads `ClickServer.bound_port`.** pyrung's
+  `dap/modbus.py` reads the port bound for port 0 through `server._server.transport.sockets`, so
+  `server.py` keeps that name for it. Needs: pyrung to move to `bound_port` first.
+- **Keep `ClickServer` listening on Windows when a client resets before it is accepted.** On asyncio's
+  Proactor loop (the Windows default), a client that connects and resets before the accept finishes makes
+  asyncio close the listening socket ("Accept failed on a socket"): the server takes no more clients, and
+  `is_running()` gives False until `start()` listens again. A fix accepts connections itself
+  (`loop.sock_accept` on sockets `ClickServer` binds, carrying on after a failed accept) instead of through
+  `loop.create_server`, and keeps `_server.transport.sockets` working for pyrung.
 - **CLICK's digits for a large DF value follow no rule found** (ClickNick's run D2), so `write_plc_data`
   matches CLICK's cell for some large values and not for others. Not pursued: both forms read back as the
   same float32.

@@ -32,7 +32,7 @@ Other modules and their internal imports:
 | `project.py` | modules, channels, I/O layout and PLC name from Project.ini; `write_plc_name` | addresses, `_module_catalog`, validation |
 | `client.py` | `ClickClient` (async, pymodbus) | addresses, banks, modbus, nicknames, validation |
 | `modbus_service.py` | `ModbusService`, a sync wrapper over `ClickClient` for UIs | addresses, banks, client, modbus, validation |
-| `server.py` | `ClickServer`, `DataProvider`, `MemoryDataProvider` | addresses, banks, modbus, validation |
+| `server.py` | `ClickServer` (asyncio, no pymodbus), `DataProvider`, `MemoryDataProvider` | addresses, banks, modbus, validation |
 | `server_tui.py` | terminal UI for `ClickServer` | server |
 | `system/` | CLICK system-address nicknames (SC/SD) | — |
 
@@ -49,7 +49,7 @@ Other modules and their internal imports:
 - File output must match CLICK byte for byte (encoding, BOM, line ends, quoting). Test against a CLICK-written fixture.
 - `DataType` is the single source of truth for PLC types; Modbus properties derive from it.
 - Dataclasses are `frozen=True`, except the editing models `BlockRange`, `BlockTag`, `DataViewRecord` and `DataViewFile`.
-- `pymodbus` runs from 3.12.0 to 3.16.2, minus 3.15.0-3.16.1 (see `pyproject.toml`). `server.py` decodes and answers function codes 1-6, 15, 16 and 20-23 with its own request classes (`custom_pdu`), so neither pymodbus's datastore (SimDevice from 3.13) nor its request decoding, which rejects and raises differently from one version to the next, decides an answer. Each class implements `decode` (called by 3.12 to 3.16.1) and `x_decode` (3.16.2). Raise the cap only after these pass on the new version: the full suite, the request coverage test in `tests/test_server.py` and the raw limit tests in `tests/test_integration.py` (`TestRawRequestLimits`). CI also runs the suite on the floor, 3.12.0.
+- `pymodbus` is for `ClickClient` only, `>=3.12,<4` (see `pyproject.toml`). `server.py` and `server_tui.py` import no pymodbus: `ClickServer` reads and answers Modbus TCP frames itself on asyncio (`tests/test_server.py` checks the imports). CI also runs the suite on the floor, 3.12.0.
 - Tests in `tests/` mirror source modules. pytest also collects from `src/` (`python_files = ["*.py"]`), and async tests need no decorator (`asyncio_mode = "auto"`).
 - src layout; Python 3.11+ (CI runs 3.11-3.14); ruff line length 100.
 - CHANGELOG: write for a user deciding whether to upgrade, one line per item, with a "Behaviour changes" block (what changed, then what to do) for anything a caller could trip on. Leave out internal names and fixes to unreleased work.

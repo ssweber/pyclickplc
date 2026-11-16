@@ -35,11 +35,8 @@ matrix before that.
 
 - AGENTS.md is the contract. `parse_address` and `format_address_display` are the only way to
   parse or format an address. `DataType` is the single source of truth for PLC types.
-  The server decodes and answers through its own `custom_pdu` request classes, never
-  pymodbus's datastore or request decoding. Raise the pymodbus cap only after these pass on
-  the new version: the full suite, the request coverage test in `tests/test_server.py` and
-  the raw limit tests in `tests/test_integration.py`. Keep the suite passing on the floor
-  (3.12.0).
+  `ClickServer` runs on asyncio and imports no pymodbus; pymodbus serves `ClickClient` only.
+  Keep the suite passing on the pymodbus floor (3.12.0).
 - What pyclickplc writes must match CLICK byte for byte (encoding, BOM, line ends, quoting),
   tested against a CLICK-written fixture. A reader and its writer agree: a write followed by a
   read gives back what was written. Where two paths do one job (the client and the server;

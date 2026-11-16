@@ -2,20 +2,39 @@
 
 ## Unreleased
 
+### Added
+
+- `ClickServer.bound_port`: the port the server listens on, or `None` when it is not running. Start a server with `port=0` and read the port the system picked; every address the host resolves to (`127.0.0.1` and `::1` for `localhost`) listens on that port.
+
 ### Changed
 
-- pyclickplc works with pymodbus 3.12 through 3.16.2, except 3.15, 3.16.0 and 3.16.1. A project that pins pymodbus 3.12 needs no change.
+- pyclickplc works with pymodbus 3.12 and any later 3.x. `ClickServer` no longer uses pymodbus, so it answers the same whatever pymodbus is installed. A project that pins pymodbus 3.12 needs no change.
+
+### Fixed
+
+- `ClickServer` answers every request, in order and with its own transaction id, when several arrive together; before, it answered only some of them, and could give a reply the wrong transaction id.
+- On Windows, `ClickServer.is_running()` gives False once the server stops taking clients, which happens when a client resets its connection before the server has accepted it, and `start()` then listens again (if it can't, `serve_forever()` raises `RuntimeError`); before, `is_running()` gave True.
 
 ### Behaviour changes
 
-- Installing or upgrading pyclickplc now brings pymodbus 3.16 unless something else pins pymodbus.
+- Installing or upgrading pyclickplc now brings the newest pymodbus 3 unless something else pins pymodbus.
   - If your own pymodbus code needs 3.12, pin `pymodbus<3.13`.
 - `ClickServer` answers exception 03 and stores nothing when a write of several coils or registers (function code 15 or 16) has a byte count that disagrees with the count or with the data sent; it stored what the data held.
   - Send a byte count of (count + 7) // 8 for coils and 2 × count for registers, followed by that many data bytes.
-- Function codes 20 and 21 (file records) get exception 01; before, FC20 got a malformed reply and FC21 was answered as if written. A request too short for its function code gets exception 03; before, it got no answer and the connection stopped answering.
-  - Treat exception 01 as "not supported"; a client sending complete requests for function codes 1-6, 15 and 16 sees no change.
-- With pymodbus 3.16, a function code the server does not know gets exception 01; with 3.12 it got a reply with transaction id 0 that a client could not match.
+- A request too short for its function code gets exception 03; before, it got no answer and the connection stopped answering.
+  - A client sending complete requests for function codes 1-6, 15 and 16 sees no change.
+- `ClickServer` answers exception 01 to every function code but 1-6, 15 and 16. Before, function code 20 (read file record) got a malformed reply, 21 (write file record) was answered as if written, 7, 8, 11, 12, 17, 24 and 43 got the answers of a generic Modbus device, a short FC8, FC24 or FC43 request stopped the connection answering, and an unknown function code got a reply with transaction id 0 that a client could not match.
   - Treat exception 01 as "not supported".
+- `ClickServer` closes a connection whose frame header gives a length below 2 or above 262; before, a length below 2 could stop the connection answering, and a longer frame got exception 03.
+  - Send the length of the unit id and PDU in the header.
+- `ClickServer` drops a frame whose protocol id is not 0 unanswered, then answers the requests after it; before, such a frame could stop the connection answering.
+  - Send protocol id 0.
+- On Windows, starting a server on a port another server holds raises `RuntimeError`; before, it started and never got clients.
+  - Stop the other server, or start this one on another port.
+- `ClickServer.start()` and `serve_forever()` raise `RuntimeError` when the server is already listening, and the `RuntimeError` for a port it can't listen on now gives the system's reason, with the `OSError` as its cause.
+  - Call `start()` once, or check `is_running()` first.
+- Cancelling `ClickServer.serve_forever()` stops the server and raises `CancelledError`; before, it returned and the server kept listening.
+  - Call `stop()`, or cancel the task, to stop the server.
 
 ## 0.8.0 - 2026-11-16
 
