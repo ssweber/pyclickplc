@@ -306,6 +306,22 @@ class TestReadCsv:
 
         assert read_csv(csv_path).addr["DS1"].nickname == "Speed"
 
+    def test_read_address_with_leading_zeros(self, tmp_path):
+        # CLICK's import stores these rows, bare or quoted, under the plain address
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text(
+            "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
+            'DS030,INT,"Zero One",1,No,""\n'
+            '"DS0032",INT,"Zero Two",3,No,""\n'
+            'X0001,BIT,"X Zero",0,No,""\n',
+            encoding="utf-8",
+        )
+
+        records = read_csv(csv_path)
+        assert records.addr["DS30"].nickname == "Zero One"
+        assert records.addr["DS32"].nickname == "Zero Two"
+        assert records.addr["X1"].nickname == "X Zero"
+
     def test_read_required_as_one_column_name(self, tmp_path):
         csv_path = tmp_path / "test.csv"
         csv_path.write_text("Address,Address Comment\nDS1,Speed\n", encoding="utf-8")

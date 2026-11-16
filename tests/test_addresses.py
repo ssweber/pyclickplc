@@ -175,14 +175,27 @@ class TestParseAddress:
         ("address", "expected"),
         [
             # Kept until CLICK's own handling of these is checked
-            ("DS0001", ("DS", 1)),
-            ("X0001", ("X", 1)),
             ("XD01", ("XD", 2)),
             (" DS1 ", ("DS", 1)),
             ("\tx1\n", ("X", 1)),
         ],
     )
     def test_accepts_leading_zeros_and_surrounding_space(self, address, expected):
+        assert parse_address(address) == expected
+
+    @pytest.mark.parametrize(
+        ("address", "expected"),
+        [
+            ("DS030", ("DS", 30)),
+            ("DS0032", ("DS", 32)),
+            ("X0001", ("X", 1)),
+            ("DS0001", ("DS", 1)),
+            ("ds0001", ("DS", 1)),
+        ],
+    )
+    def test_leading_zeros_as_click_imports_them(self, address, expected):
+        # CLICK's nickname import stores these under DS30, DS32, X001 and DS1
+        # (DS0001 and ds0001 checked by hand in CLICK 4)
         assert parse_address(address) == expected
 
 

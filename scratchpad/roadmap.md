@@ -24,10 +24,10 @@ Needs: nothing for the code; the API names are settled with the ClickNick sessio
 
 Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's behaviour until answered.
 
-- Does CLICK import these number initial values, which Python's `int()` and `float()` accept and
-  `validate_initial_value` accepts today? `1_000`, `+5`, `1e3`, `.5`, HEX `0x1F`; a value with `\xa0` or another
-  Unicode space at an edge; non-ASCII digits such as `٥` and fullwidth `５`. The next import test answers them.
-  A likely fix is to refuse non-ASCII for every type but TXT.
+- What encoding does CLICK use when it exports a nickname CSV with a non-ASCII nickname or comment typed in
+  CLICK? On import CLICK reads a file without a BOM as CP1252, so `write_csv`'s UTF-8 `café` is stored
+  `cafÃ©`, and reads a UTF-8 file with a BOM as UTF-8, then brings it into CP1252 by best fit (`５` becomes
+  `5`). An export from CLICK answers it; until then `write_csv` keeps its encoding.
 - Data dumps ("Read Data from PLC", `tests/fixtures/PlcDataDump.csv`). Owed:
   - How does CLICK write a TXT `,`, `$`, `"` and the other punctuation besides `+`, `-` and `.`?
     `write_plc_data` raises for them until a dump shows each form.

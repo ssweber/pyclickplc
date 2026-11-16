@@ -547,6 +547,19 @@ class TestValidateNewValue:
         row = DataViewRecord(address="DS1", data_type=data_type)
         assert DataViewFile.validate_row_display(row, display) == (True, "")
 
+    @pytest.mark.parametrize(
+        ("display", "data_type"),
+        [
+            ("1_000", DataType.INT),
+            ("1_000", DataType.FLOAT),
+            ("0x1F", DataType.HEX),
+            ("５", DataType.INT),
+        ],
+    )
+    def test_nickname_import_number_rules_do_not_apply(self, display, data_type):
+        """The nickname CSV's underscore, 0x and non-ASCII rules are for CLICK's import only."""
+        assert validate_new_value(display, data_type) == (True, "")
+
 
 class TestDataViewFileDisplayHelpers:
     def test_value_to_display(self):

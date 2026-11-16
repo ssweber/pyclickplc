@@ -10,6 +10,12 @@
   - Strip the value before you validate and store it.
 - `write_csv` and `format_csv` quote a Text initial value that starts or ends with a space, tab or other character up to 0x20, so ` a` is written `" a"` (only a lone space was quoted). CLICK was seen to strip a bare space, tab, VT or FF at a Text value's ends and keep it quoted; the rest is inferred.
   - Regenerate any saved output your tests compare against.
+- `validate_initial_value` rejects an INT, INT2, FLOAT or HEX value holding a non-ASCII character, such as `٥`, fullwidth `５` or a no-break space at an edge (`Must be ASCII`); Python's `int()` and `float()` take them. CLICK was seen to refuse those values as INT and FLOAT from a file without a BOM, which is what `write_csv` writes; INT2, HEX and other non-ASCII characters are inferred.
+  - Use ASCII digits, and remove a no-break space.
+- `validate_initial_value` rejects an INT, INT2, FLOAT or HEX value holding an underscore, such as `1_000` (`Cannot contain _`). CLICK was seen to refuse `1_000` as INT and FLOAT; INT2 and HEX are inferred.
+  - Leave out the underscores (`1000`).
+- `validate_initial_value` rejects a HEX value with a `0x` prefix, such as `0x1F` (`Cannot start with 0x`). CLICK was seen to refuse `0x1F`; `0X` and a sign before the prefix are inferred.
+  - Leave out the prefix (`1F`).
 
 ## 0.7.0 - 2026-11-15
 
