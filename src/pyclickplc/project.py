@@ -608,9 +608,9 @@ def write_plc_name(path: str | Path, name: str) -> None:
     file in the same folder, which then replaces Project.ini in one step.
 
     Raises ValueError for an invalid name, malformed INI data, or a line indented
-    under an option: it is read as part of the option's value, and CLICK likely
-    reads it as a line of its own (inferred). Raises OSError if the file can't be
-    read or replaced. On an error the file is unchanged.
+    under an option: readers may take it as part of the option's value or as a line of
+    its own, so remove it or outdent it first. Raises OSError if the file can't be read
+    or replaced. On an error the file is unchanged.
     """
     is_valid, error = validate_click_name(name)
     if not is_valid:
@@ -627,7 +627,8 @@ def write_plc_name(path: str | Path, name: str) -> None:
         if role == "continuation":
             raise ValueError(
                 f"Cannot set the PLC name in {path}: line {number} is indented under the line"
-                " above it, which CLICK may read differently; remove the indent."
+                " above it, so readers may take it as part of that line's value or as a line"
+                " of its own; remove the indent."
             )
     section, key, _, _ = _plc_name_line(lines, written)
     try:

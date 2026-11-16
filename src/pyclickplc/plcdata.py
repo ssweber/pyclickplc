@@ -281,9 +281,8 @@ def write_plc_data(
     """Write a Click PLC data CSV to load via PLC > Write Data into PLC > File Select.
 
     Warning:
-        CLICK's Write Data into PLC writes every address of each memory type
-        in the file (seen for Text), so an address the file leaves blank is
-        cleared in the PLC.
+        CLICK's Write Data into PLC writes every address of each memory type in
+        the file, so an address the file leaves blank is cleared in the PLC.
         Each bank written holds every one of its addresses, with the bank's
         default where *data* has no value. To change some addresses and keep
         the rest, read the PLC's data first, then write it back with your
