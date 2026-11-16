@@ -205,12 +205,25 @@ def read_plc_data(
     return result
 
 
+def _show(value: object) -> str:
+    """``repr(value)`` for an error message, bounded: it can't raise or run long."""
+    if isinstance(value, int) and not isinstance(value, bool) and value.bit_length() > 133:
+        return f"an integer of {value.bit_length()} bits"
+    try:
+        text = repr(value)
+    except (ValueError, OverflowError):
+        text = type(value).__name__
+    return text if len(text) <= 40 else text[:37] + "..."
+
+
 def _format_float(value: bool | int | float | str, addr: str) -> str:
     """Format a DF value as CLICK does: the float32 value in CLICK's fixed point."""
     try:
         number = float(value)
-    except (OverflowError, TypeError, ValueError):
-        raise ValueError(f"{addr} value {value!r} is not a float32.") from None
+    except OverflowError:
+        raise ValueError(f"{addr} value {_show(value)} is outside the float32 range.") from None
+    except (TypeError, ValueError):
+        raise ValueError(f"{addr} value {_show(value)} is not a float32.") from None
     if not math.isfinite(number):
         raise ValueError(f"{addr} value {number}: CLICK can't enter a NaN or an infinity.")
     try:
@@ -233,7 +246,7 @@ def _format_text(value: bool | int | float | str, addr: str) -> str:
     if value == "" or value == "\x00":
         return ""
     if not isinstance(value, str) or len(value) != 1 or ord(value) > 0xFF:
-        raise ValueError(f"{addr} value {value!r} is not a single character with code 0..255.")
+        raise ValueError(f"{addr} value {_show(value)} is not a single character with code 0..255.")
     if value == ",":
         raise ValueError(
             f"{addr} value ',': CLICK writes a TXT comma unquoted, so the row couldn't be read back."

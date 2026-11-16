@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import struct
+from fractions import Fraction
 from pathlib import Path
 from textwrap import dedent
 from typing import Any
@@ -837,7 +838,42 @@ class TestWriteDfForm:
         with pytest.raises(ValueError, match="DF7.*float32"):
             write_plc_data(tmp_path / "out.csv", {"DF7": 1e39})
 
-    @pytest.mark.parametrize("value", [10**400, "abc", None])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            10**400,
+            10**5000,
+            2**1024 - 1,
+            -(2**1024 - 1),
+            Fraction(10**400),
+            Fraction(10**5000),
+        ],
+        ids=["1e400", "1e5000", "max-int", "min-int", "fraction-1e400", "fraction-1e5000"],
+    )
+    def test_huge_number_raises_a_short_message_with_the_address(
+        self, tmp_path: Path, value: Any
+    ) -> None:
+        with pytest.raises(ValueError, match="DF7") as info:
+            write_plc_data(tmp_path / "out.csv", {"DF7": value})
+        assert len(str(info.value)) < 200
+
+    def test_huge_int_past_float32_says_so(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="DF7.*outside the float32 range"):
+            write_plc_data(tmp_path / "out.csv", {"DF7": 10**5000})
+
+    @pytest.mark.parametrize(
+        "value",
+        [10**300, 10**5000, Fraction(10**5000), "a" * 3000],
+        ids=["1e300", "1e5000", "fraction", "long-str"],
+    )
+    def test_huge_txt_value_raises_a_short_message_with_the_address(
+        self, tmp_path: Path, value: Any
+    ) -> None:
+        with pytest.raises(ValueError, match="TXT7.*single character") as info:
+            write_plc_data(tmp_path / "out.csv", {"TXT7": value})
+        assert len(str(info.value)) < 200
+
+    @pytest.mark.parametrize("value", ["abc", None])
     def test_not_a_number_raises_with_the_address(self, tmp_path: Path, value: Any) -> None:
         with pytest.raises(ValueError, match="DF7"):
             write_plc_data(tmp_path / "out.csv", {"DF7": value})
