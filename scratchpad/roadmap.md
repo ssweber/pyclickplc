@@ -33,6 +33,15 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   adds a section to a file CLICK wrote. `read_plc_name` reads `[PLCName]` alone in a CLICK 4 file, where
   CLICK 4.00 shows no name (C2 p11). A key in a second section that matches the first only in case is not
   searched (inferred from Windows' INI functions, not tested in CLICK): does CLICK read it?
+- The hardware sections in Project.ini. `read_modules` and the channel readers match `[Sec21]` to `[Sec23]`
+  and CLICK 3's sections regardless of case, take the first of a repeated section or key, and in a CLICK 4
+  file ignore a named section beside its placeholder (`[CPUBuild]` beside `[Sec23]`). CLICK 4.00 was seen
+  to do this only for `[Sec20]`: does it read the hardware sections the same way? And is a named section
+  with no placeholder, such as `[CPUBuild]` alone, read in a CLICK 4 file? The readers read it, as
+  `read_plc_name` reads `[PLCName]` alone. A line indented under an option (a continuation line) is read
+  as configparser reads it, as part of that option's value, even `  [Sec20]`; Windows' INI functions
+  likely trim the indent and read a line of its own (inferred), so `write_plc_name` refuses a file with a
+  continuation line. The four Project.ini fixtures have no indented line.
 - `[DATAVIEW_RW0]` in CLICK 4's `PLCType.ini` has `SC50 = R` (and `SC51 = R` in 4.00), while
   `dataview.WRITABLE_SC` includes 50 and 51. What does `R` mean there? A Data View New Value on SC50 and SC51
   would show it.

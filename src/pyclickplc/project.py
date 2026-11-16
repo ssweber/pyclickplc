@@ -12,7 +12,7 @@ import re
 import shutil
 import stat
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from configparser import ConfigParser
 from configparser import Error as ConfigParserError
 from contextlib import suppress
@@ -124,9 +124,105 @@ def _placeholder_key(key: str, names: Mapping[str, str]) -> str | None:
     return None
 
 
-def _uses_placeholder_names(parser: ConfigParser) -> bool:
-    """Whether the file as written uses CLICK 4's placeholder names."""
-    return not parser.has_section("SystemConfig") and parser.has_section("Sec21")
+def _is_click_4(parser: ConfigParser) -> bool:
+    """Whether the file uses CLICK 4's placeholder names; section names match regardless of case."""
+    names = {name.lower() for name in parser.sections()}
+    return "systemconfig" not in names and "sec21" in names
+
+
+# The sections read here by their lowercase name, mapped to the spelling they are read by.
+_SECTIONS = {
+    name.lower(): name
+    for placeholder, (section, _) in _PLACEHOLDER_NAMES.items()
+    for name in (placeholder, section)
+}
+
+
+# A section header and an option's name, matched on the stripped line as configparser
+# matches them.
+_SECTION = re.compile(r"\[(?P<header>.+)\]")
+_OPTION_NAME = re.compile(r"(?P<option>.*?)\s*[=:]")
+_COMMENT_PREFIXES = ("#", ";")
+
+_Role = Literal["blank", "section", "option", "continuation", "other"]
+
+
+def _roles(lines: Sequence[str]) -> list[tuple[_Role, str]]:
+    """How configparser reads each line, with the lowercase name of a section or option.
+
+    A line indented more than the line before it continues the value of the option above
+    it, even one that looks like a section header. A comment counts as blank. A line that
+    is none of these, such as an option with no name (``=7``), is "other": configparser
+    refuses the file. The state follows configparser's own, also after an "other" line.
+    ``test_line_reading_matches_configparser`` checks this against configparser.
+    """
+    roles: list[tuple[_Role, str]] = []
+    in_section = False
+    has_option = False  # configparser's current option: set by a named option, cleared by a header.
+    indent_level = 0  # The indent of the last line that was not blank or a continuation.
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(_COMMENT_PREFIXES):
+            roles.append(("blank", ""))
+            continue
+        indent = len(line) - len(line.lstrip())
+        if has_option and indent > indent_level:
+            roles.append(("continuation", ""))
+            continue
+        indent_level = indent
+        if (match := _SECTION.match(stripped)) is not None:
+            in_section, has_option = True, False
+            roles.append(("section", match["header"].lower()))
+        elif in_section and (match := _OPTION_NAME.match(stripped)) is not None:
+            # An option with no name is an error, and leaves no option to continue.
+            name = match["option"].lower()
+            has_option = bool(name)
+            roles.append(("option", name) if name else ("other", ""))
+        else:
+            roles.append(("other", ""))
+    return roles
+
+
+def _first_matches(lines: list[str]) -> list[str]:
+    """The lines without the sections and options that an earlier one matches.
+
+    Names match regardless of case; a later section is dropped whole, and a later option
+    with the lines that continue it. CLICK 4 was seen to read the PLC name this way. The
+    same rule for every other section and key is inferred from how Windows' INI functions
+    behave. A line configparser refuses is kept, so the file is still refused.
+
+    Every kept line but a continuation loses its indent, which configparser strips from
+    the value anyway, so a dropped line can't make the next one continue the option
+    before it.
+    """
+    kept = []
+    sections: set[str] = set()
+    options: set[str] = set()
+    section_dropped = option_dropped = False
+    for line, (role, name) in zip(lines, _roles(lines), strict=True):
+        if role == "section":
+            section_dropped = name in sections
+            sections.add(name)
+            options = set()
+            option_dropped = False
+        elif role == "option":
+            option_dropped = name in options
+            options.add(name)
+        if role == "other" or not (section_dropped or option_dropped):
+            kept.append(line if role in ("continuation", "blank") else line.lstrip())
+    return kept
+
+
+def _spell_sections(parser: ConfigParser) -> None:
+    """Spell the sections read here as they are looked up, whatever case the file uses."""
+    for section in parser.sections():
+        name = _SECTIONS.get(section.lower(), section)
+        if name != section:
+            values = parser.items(section, raw=True)
+            parser.remove_section(section)
+            parser.add_section(name)
+            for key, value in values:
+                parser.set(name, key, value)
 
 
 def _placeholder_option(section: str, key: str) -> tuple[str, str]:
@@ -141,35 +237,40 @@ def _placeholder_option(section: str, key: str) -> tuple[str, str]:
 
 
 def _restore_names(parser: ConfigParser) -> None:
-    """Rename a CLICK 4 file's placeholder sections and keys to the names read here."""
-    if not _uses_placeholder_names(parser):
+    """Rename a CLICK 4 file's placeholder sections and keys to the names read here.
+
+    Section names must already be spelled as they are read here (``_spell_sections``).
+    """
+    if not _is_click_4(parser):
         return
     for placeholder, (section, names) in _PLACEHOLDER_NAMES.items():
         if not parser.has_section(placeholder):
             continue
-        # A file can hold both, such as a [PLCName] another tool added. The placeholder's
-        # values win over the named section's; checked in CLICK 4, which shows the
-        # [Sec20] name over a stray [PLCName].
-        if not parser.has_section(section):
-            parser.add_section(section)
+        # A file can hold both, such as a [CPUBuild] another tool added. The placeholder
+        # replaces the named section, so none of the named section's keys are read.
+        # CLICK 4 was seen to show the [Sec20] name over a stray [PLCName]; ignoring the
+        # other named sections is inferred.
+        parser.remove_section(section)
+        parser.add_section(section)
         for key, value in parser.items(placeholder):
             name = _placeholder_key(key, names)
             if name is not None:
                 parser.set(section, name, value)
 
 
-def _parse_project(
-    data: bytes, path: str | Path, *, restore: bool = True, strict: bool = True
-) -> ConfigParser:
-    """Parse Project.ini bytes; with *restore*, CLICK 4's placeholder names are mapped back.
+def _parse_project(data: bytes, path: str | Path, *, restore: bool = True) -> ConfigParser:
+    """Parse Project.ini bytes, taking the first of repeated sections and options.
 
-    Unless *strict*, a repeated section or option is accepted (the PLC name takes the first).
+    With *restore*, as the hardware readers need, the sections are spelled as they are
+    looked up and CLICK 4's placeholder names are mapped back.
     """
-    parser = ConfigParser(interpolation=None, strict=strict)
+    parser = ConfigParser(interpolation=None)
     try:
         # newline=None reads \r\n, \r and \n line ends as opening the file in text mode does.
-        parser.read_file(io.StringIO(data.decode("utf-8-sig"), newline=None), source=str(path))
+        lines = io.StringIO(data.decode("utf-8-sig"), newline=None).readlines()
+        parser.read_file(_first_matches(lines), source=str(path))
         if restore:
+            _spell_sections(parser)
             _restore_names(parser)
     except (ConfigParserError, UnicodeError) as exc:
         raise ValueError(f"Invalid CLICK project configuration: {path}") from exc
@@ -340,10 +441,8 @@ def read_io_layout(path: str | Path) -> tuple[ModuleIO, ...]:
 
 _PLC_NAME = ("PLCName", "PLCName")
 
-# A section header and the start of an option line, matched as configparser matches them.
-_SECTION = re.compile(rb"\[(?P<header>.+)\]")
+# An option line up to its value.
 _OPTION = re.compile(rb"\s*(?P<option>.*?)\s*[=:]\s*")
-_COMMENT_PREFIXES = (b"#", b";")
 
 
 def _lines(data: bytes) -> tuple[bytes, list[bytes]]:
@@ -351,41 +450,30 @@ def _lines(data: bytes) -> tuple[bytes, list[bytes]]:
     return bom, data[len(bom) :].splitlines(keepends=True)
 
 
+def _line_roles(lines: list[bytes]) -> list[tuple[_Role, str]]:
+    # A line end never falls inside a UTF-8 character, so each line decodes alone.
+    return _roles([line.decode("utf-8", "replace") for line in lines])
+
+
 def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None, int | None]:
     """Line numbers of the first section named *section* and its first option *key*.
 
     Both match regardless of case, as CLICK matches them. Either is None if missing.
     Only the first matching section is searched for the key, as Windows'
-    GetPrivateProfileString does: inferred, not tested in CLICK.
+    GetPrivateProfileString does: inferred, not tested in CLICK. Lines are read as
+    configparser reads them (``_roles``).
     """
-    header = section.lower().encode("ascii")
-    option = key.lower().encode("ascii")
+    header, option = section.lower(), key.lower()
     start = None
-    option_indent = None
-    for index, line in enumerate(lines):
-        match = _SECTION.match(line.strip())
-        if match is not None:
+    for index, (role, name) in enumerate(_line_roles(lines)):
+        if role == "section":
             if start is not None:
                 return start, None
-            if match["header"].lower() == header:
+            if name == header:
                 start = index
-        elif start is not None and line.strip() and not line.strip().startswith(_COMMENT_PREFIXES):
-            indent = len(line) - len(line.lstrip())
-            if option_indent is not None and indent > option_indent:
-                continue  # A line that continues the option before it, as configparser reads it.
-            found = _OPTION.match(line.rstrip(b"\r\n"))
-            if found is None:
-                continue
-            option_indent = indent
-            if found["option"].lower() == option:
-                return start, index
+        elif role == "option" and start is not None and name == option:
+            return start, index
     return start, None
-
-
-def _is_click_4(parser: ConfigParser) -> bool:
-    """Whether the file uses CLICK 4's placeholder names; section names match regardless of case."""
-    names = {name.lower() for name in parser.sections()}
-    return "systemconfig" not in names and "sec21" in names
 
 
 def _plc_name_line(
@@ -415,16 +503,12 @@ def _plc_name(lines: list[bytes], written: ConfigParser) -> str | None:
     if index is None:
         return None
     # Parse the option's line with the lines that continue its value.
-    indent = len(lines[index]) - len(lines[index].lstrip())
-    snippet = [lines[index]]
-    for line in lines[index + 1 :]:
-        stripped = line.strip()
-        if stripped and not stripped.startswith(_COMMENT_PREFIXES):
-            if len(line) - len(line.lstrip()) <= indent:
-                break
-        snippet.append(line)
-    text = b"[s]\n" + b"".join(snippet)
-    parser = ConfigParser(interpolation=None, strict=False)
+    roles = _line_roles(lines)
+    end = index + 1
+    while end < len(lines) and roles[end][0] in ("continuation", "blank"):
+        end += 1
+    text = b"[s]\n" + b"".join(lines[index:end])
+    parser = ConfigParser(interpolation=None)
     parser.read_file(io.StringIO(text.decode("utf-8"), newline=None))
     return parser.get("s", key, fallback="").strip() or None
 
@@ -441,7 +525,7 @@ def read_plc_name(path: str | Path) -> str | None:
     No CLICK installation is required.
     """
     data = Path(path).read_bytes()
-    written = _parse_project(data, path, restore=False, strict=False)
+    written = _parse_project(data, path, restore=False)
     return _plc_name(_lines(data)[1], written)
 
 
@@ -523,8 +607,10 @@ def write_plc_name(path: str | Path, name: str) -> None:
     written without surrounding whitespace. The new file goes to a temporary
     file in the same folder, which then replaces Project.ini in one step.
 
-    Raises ValueError for an invalid name or malformed INI data, and OSError if
-    the file can't be read or replaced. On an error the file is unchanged.
+    Raises ValueError for an invalid name, malformed INI data, or a line indented
+    under an option: it is read as part of the option's value, and CLICK likely
+    reads it as a line of its own (inferred). Raises OSError if the file can't be
+    read or replaced. On an error the file is unchanged.
     """
     is_valid, error = validate_click_name(name)
     if not is_valid:
@@ -532,15 +618,25 @@ def write_plc_name(path: str | Path, name: str) -> None:
     name = name.strip()
     path = Path(path)
     original = path.read_bytes()
-    written = _parse_project(original, path, restore=False, strict=False)
-    section, key, _, _ = _plc_name_line(_lines(original)[1], written)
+    written = _parse_project(original, path, restore=False)
+    lines = _lines(original)[1]
+    # configparser reads a line indented under an option as part of its value, while
+    # Windows' INI functions likely trim the indent and read a line of its own (inferred).
+    # CLICK writes no such line.
+    for number, (role, _) in enumerate(_line_roles(lines), start=1):
+        if role == "continuation":
+            raise ValueError(
+                f"Cannot set the PLC name in {path}: line {number} is indented under the line"
+                " above it, which CLICK may read differently; remove the indent."
+            )
+    section, key, _, _ = _plc_name_line(lines, written)
     try:
         updated = _set_option(original, section, key, name)
     except ValueError as exc:
         raise ValueError(f"Cannot set the PLC name in {path}: {exc}") from exc
 
     # Check the edit before writing: only the name's line moved and the name reads back.
-    after = _parse_project(updated, path, restore=False, strict=False)
+    after = _parse_project(updated, path, restore=False)
     updated_lines = _lines(updated)[1]
     if (
         _lines(updated)[0] != _lines(original)[0]
