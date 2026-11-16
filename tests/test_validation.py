@@ -116,6 +116,30 @@ class TestValidateNickname:
             assert valid is False, f"{keyword} should be rejected"
             assert "Reserved" in error
 
+    @pytest.mark.parametrize(
+        "name",
+        ["MAX", "Max", "max", "MIN", "ABS", "abs", "RAND", "MDN", "AVG", "LOG", "Log", "log"],
+    )
+    def test_click4_refused_names(self, name):
+        # Source: ClickNick runner RESULTS-F.md (real CLICK 4.00): the Address Picker and the
+        # CSV import refuse these. PLCType.ini [NGWORD] WORD lists MAX MIN MDN AVG RAND ABS
+        # for 4.00 only; refused for CLICK 3 projects too by ruling.
+        assert validate_nickname(name) == (False, "Reserved keyword")
+
+    @pytest.mark.parametrize("name", ["MAXIMUM", "Max_Speed", "Speed"])
+    def test_click4_accepted_names(self, name):
+        # Source: RESULTS-F.md: CLICK 4.00 stores these, so only a whole-name match is refused.
+        assert validate_nickname(name) == (True, "")
+
+    def test_click4_names_refused_for_system_banks(self):
+        # Reserved words are checked after the bank rules, so SC still refuses them.
+        assert validate_nickname("MAX", system_bank="SC") == (False, "Reserved keyword")
+
+    def test_comma_refused(self):
+        # Source: RESULTS-F.md refused `A,B` ("reserved character"); PLCType.ini [NGWORD]
+        # `All =` lists `,` in every CLICK version.
+        assert validate_nickname("A,B") == (False, "Invalid: ,")
+
     def test_forbidden_chars(self):
         for char in FORBIDDEN_CHARS:
             valid, error = validate_nickname(f"test{char}name")

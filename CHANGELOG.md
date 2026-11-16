@@ -8,6 +8,8 @@
 
 ### Behaviour changes
 
+- `validate_nickname` rejects `max`, `min`, `mdn`, `avg`, `rand` and `abs` in any case (`Reserved keyword`), and a nickname holding a comma (`Invalid: ,`). CLICK 4.00 refuses the six names, in any case and on the whole name, in its Address Picker and its CSV import. CLICK 3's `PLCType.ini` does not reserve them, but `validate_nickname` refuses them for every project.
+  - Rename such a nickname (`Max_Speed` and `MAXIMUM` are fine).
 - The system nickname catalog's strings changed, for example SD21 from `_RTC_Month (1-12)` to `_RTC_Month` and SC20 from `_I/O_BUS_Error` to `_I/O Module Error`. `is_canonical_system_nickname` is false for the old string, and `canonicalize_system_nickname` leaves it as it was.
   - Compare against `canonical_system_nickname`, not a saved string. A project that holds a help-page name is not offered a repair.
 - `SystemNicknameGuidance.source`, and `AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE` and `AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE`, are now the text `CLICK 4.00 PLCType.ini [SYSTEM0]`, not help-page URLs. SD71, SD72, SD75 and SD76 keep a help-page URL.
