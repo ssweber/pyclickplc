@@ -158,9 +158,14 @@ def _restore_names(parser: ConfigParser) -> None:
                 parser.set(section, name, value)
 
 
-def _parse_project(data: bytes, path: str | Path, *, restore: bool = True) -> ConfigParser:
-    """Parse Project.ini bytes; with *restore*, CLICK 4's placeholder names are mapped back."""
-    parser = ConfigParser(interpolation=None)
+def _parse_project(
+    data: bytes, path: str | Path, *, restore: bool = True, strict: bool = True
+) -> ConfigParser:
+    """Parse Project.ini bytes; with *restore*, CLICK 4's placeholder names are mapped back.
+
+    Unless *strict*, a repeated section or option is accepted (the PLC name takes the first).
+    """
+    parser = ConfigParser(interpolation=None, strict=strict)
     try:
         # newline=None reads \r\n, \r and \n line ends as opening the file in text mode does.
         parser.read_file(io.StringIO(data.decode("utf-8-sig"), newline=None), source=str(path))
@@ -341,36 +346,103 @@ _OPTION = re.compile(rb"\s*(?P<option>.*?)\s*[=:]\s*")
 _COMMENT_PREFIXES = (b"#", b";")
 
 
-def _plc_name(parser: ConfigParser) -> str | None:
-    return parser.get(*_PLC_NAME, fallback="").strip() or None
+def _lines(data: bytes) -> tuple[bytes, list[bytes]]:
+    bom = codecs.BOM_UTF8 if data.startswith(codecs.BOM_UTF8) else b""
+    return bom, data[len(bom) :].splitlines(keepends=True)
 
 
-def _plc_name_option(written: ConfigParser) -> tuple[str, str]:
-    """The section and key ``read_plc_name`` reads the name from, in the file as written."""
-    if not _uses_placeholder_names(written):
-        return _PLC_NAME
+def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None, int | None]:
+    """Line numbers of the first section named *section* and its first option *key*.
+
+    Both match regardless of case, as CLICK matches them. Either is None if missing.
+    Only the first matching section is searched for the key, as Windows'
+    GetPrivateProfileString does: inferred, not tested in CLICK.
+    """
+    header = section.lower().encode("ascii")
+    option = key.lower().encode("ascii")
+    start = None
+    option_indent = None
+    for index, line in enumerate(lines):
+        match = _SECTION.match(line.strip())
+        if match is not None:
+            if start is not None:
+                return start, None
+            if match["header"].lower() == header:
+                start = index
+        elif start is not None and line.strip() and not line.strip().startswith(_COMMENT_PREFIXES):
+            indent = len(line) - len(line.lstrip())
+            if option_indent is not None and indent > option_indent:
+                continue  # A line that continues the option before it, as configparser reads it.
+            found = _OPTION.match(line.rstrip(b"\r\n"))
+            if found is None:
+                continue
+            option_indent = indent
+            if found["option"].lower() == option:
+                return start, index
+    return start, None
+
+
+def _is_click_4(parser: ConfigParser) -> bool:
+    """Whether the file uses CLICK 4's placeholder names; section names match regardless of case."""
+    names = {name.lower() for name in parser.sections()}
+    return "systemconfig" not in names and "sec21" in names
+
+
+def _plc_name_line(
+    lines: list[bytes], written: ConfigParser
+) -> tuple[str, str, int | None, int | None]:
+    """The section and key the name is read from, and their line numbers if present.
+
+    *written* is the file parsed as written, to tell a CLICK 4 file from a CLICK 3 one.
+    """
+    if not _is_click_4(written):
+        return (*_PLC_NAME, *_find_option(lines, *_PLC_NAME))
     placeholder = _placeholder_option(*_PLC_NAME)
-    if written.has_option(*placeholder):
-        return placeholder
-    if written.has_option(*_PLC_NAME):
-        return _PLC_NAME
+    found = _find_option(lines, *placeholder)
+    if found[1] is not None:
+        return (*placeholder, *found)
+    legacy = _find_option(lines, *_PLC_NAME)
+    if legacy[1] is not None:
+        return (*_PLC_NAME, *legacy)
     # No name yet: use [PLCName] only if it is there and the placeholder section isn't.
-    if written.has_section(_PLC_NAME[0]) and not written.has_section(placeholder[0]):
-        return _PLC_NAME
-    return placeholder
+    if legacy[0] is not None and found[0] is None:
+        return (*_PLC_NAME, *legacy)
+    return (*placeholder, *found)
+
+
+def _plc_name(lines: list[bytes], written: ConfigParser) -> str | None:
+    _, key, _, index = _plc_name_line(lines, written)
+    if index is None:
+        return None
+    # Parse the option's line with the lines that continue its value.
+    indent = len(lines[index]) - len(lines[index].lstrip())
+    snippet = [lines[index]]
+    for line in lines[index + 1 :]:
+        stripped = line.strip()
+        if stripped and not stripped.startswith(_COMMENT_PREFIXES):
+            if len(line) - len(line.lstrip()) <= indent:
+                break
+        snippet.append(line)
+    text = b"[s]\n" + b"".join(snippet)
+    parser = ConfigParser(interpolation=None, strict=False)
+    parser.read_file(io.StringIO(text.decode("utf-8"), newline=None))
+    return parser.get("s", key, fallback="").strip() or None
 
 
 def read_plc_name(path: str | Path) -> str | None:
     """Read the PLC name from a CLICK Project.ini file.
 
     The name is ``[PLCName] PLCName=``, which CLICK 4 writes as ``[Sec20] Key1=``.
-    If a CLICK 4 file has both, ``[Sec20]`` wins, as it does in CLICK 4 itself.
+    Section and key names match regardless of case, and the first match in the
+    file wins, as in CLICK 4. If a CLICK 4 file has both, ``[Sec20]`` wins.
     Returns None if the project has no PLC name.
 
     Raises OSError for unreadable files and ValueError for malformed INI data.
     No CLICK installation is required.
     """
-    return _plc_name(_read_project(path))
+    data = Path(path).read_bytes()
+    written = _parse_project(data, path, restore=False, strict=False)
+    return _plc_name(_lines(data)[1], written)
 
 
 def _line_end(line: bytes) -> bytes:
@@ -380,46 +452,27 @@ def _line_end(line: bytes) -> bytes:
 def _set_option(data: bytes, section: str, key: str, value: str) -> bytes:
     """Set one option in INI bytes, changing only its line, or add it if it's missing.
 
-    The value replaces whatever follows the option's delimiter, and the line keeps
+    The first section matching *section* and its first option matching *key*,
+    regardless of case, are the ones used, and they keep their spelling. The
+    value replaces whatever follows the option's delimiter, and the line keeps
     its own line end. A missing option goes right after its section header; a
     missing section goes at the end, with the line end the file already uses.
     """
-    bom = codecs.BOM_UTF8 if data.startswith(codecs.BOM_UTF8) else b""
-    lines = data[len(bom) :].splitlines(keepends=True)
+    bom, lines = _lines(data)
     newline = next((_line_end(line) for line in lines if _line_end(line)), b"\r\n")
-    header = section.encode("ascii")
-    option = key.lower().encode("ascii")
     encoded = value.encode("ascii")
-
-    start = None
-    end = len(lines)
-    for index, line in enumerate(lines):
-        match = _SECTION.match(line.strip())
-        if match is None:
-            continue
-        if start is not None and end == len(lines):
-            end = index
-        if match["header"] == header:
-            start = index
-        elif match["header"].lower() == header.lower():
-            # configparser tells these apart, but Windows' INI functions don't.
-            spelling = match["header"].decode("ascii", "replace")
-            raise ValueError(f"Section [{spelling}] differs from [{section}] only in case")
+    start, index = _find_option(lines, section, key)
 
     if start is None:
         if lines and not _line_end(lines[-1]):
             lines[-1] += newline
+        header = section.encode("ascii")
         lines += [b"[" + header + b"]" + newline, key.encode("ascii") + b"=" + encoded + newline]
-        return bom + b"".join(lines)
-
-    for index in range(start + 1, end):
+    elif index is not None:
         line = lines[index]
-        if line.strip().startswith(_COMMENT_PREFIXES):
-            continue
         match = _OPTION.match(line.rstrip(b"\r\n"))
-        if match is not None and match["option"].lower() == option:
-            lines[index] = line[: match.end()] + encoded + _line_end(line)
-            break
+        assert match is not None
+        lines[index] = line[: match.end()] + encoded + _line_end(line)
     else:
         if not _line_end(lines[start]):
             lines[start] += newline
@@ -427,8 +480,19 @@ def _set_option(data: bytes, section: str, key: str, value: str) -> bytes:
     return bom + b"".join(lines)
 
 
-def _options(parser: ConfigParser) -> dict[str, dict[str, str]]:
-    return {section: dict(parser.items(section)) for section in parser.sections()}
+def _only_name_changed(before: list[bytes], after: list[bytes]) -> bool:
+    """Whether *after* is *before* with one line changed, one line inserted or two appended.
+
+    Line ends are ignored: adding a line may add the end the line before it lacked.
+    """
+    old = [line.rstrip(b"\r\n") for line in before]
+    new = [line.rstrip(b"\r\n") for line in after]
+    grow = len(new) - len(old)
+    if grow == 0:
+        return any(new[:i] == old[:i] and new[i + 1 :] == old[i + 1 :] for i in range(len(old)))
+    if grow == 1:
+        return any(new[:i] == old[:i] and new[i + 1 :] == old[i:] for i in range(len(old) + 1))
+    return grow == 2 and new[: len(old)] == old
 
 
 def _replace(path: Path, data: bytes) -> None:
@@ -459,8 +523,7 @@ def write_plc_name(path: str | Path, name: str) -> None:
     written without surrounding whitespace. The new file goes to a temporary
     file in the same folder, which then replaces Project.ini in one step.
 
-    Raises ValueError for an invalid name, malformed INI data, or a section
-    header that differs from the name's section only in case, and OSError if
+    Raises ValueError for an invalid name or malformed INI data, and OSError if
     the file can't be read or replaced. On an error the file is unchanged.
     """
     is_valid, error = validate_click_name(name)
@@ -469,19 +532,20 @@ def write_plc_name(path: str | Path, name: str) -> None:
     name = name.strip()
     path = Path(path)
     original = path.read_bytes()
-    written = _parse_project(original, path, restore=False)
-    section, key = _plc_name_option(written)
+    written = _parse_project(original, path, restore=False, strict=False)
+    section, key, _, _ = _plc_name_line(_lines(original)[1], written)
     try:
         updated = _set_option(original, section, key, name)
     except ValueError as exc:
         raise ValueError(f"Cannot set the PLC name in {path}: {exc}") from exc
 
-    # Check the edit before writing: the name reads back and no other value moved.
-    expected = _options(written)
-    expected.setdefault(section, dict(written.items(written.default_section)))[key.lower()] = name
+    # Check the edit before writing: only the name's line moved and the name reads back.
+    after = _parse_project(updated, path, restore=False, strict=False)
+    updated_lines = _lines(updated)[1]
     if (
-        _options(_parse_project(updated, path, restore=False)) != expected
-        or _plc_name(_parse_project(updated, path)) != name
+        _lines(updated)[0] != _lines(original)[0]
+        or not _only_name_changed(_lines(original)[1], updated_lines)
+        or _plc_name(updated_lines, after) != name
     ):
         raise ValueError(f"Cannot set the PLC name in {path}")
     # Replace the file a symlink points to, not the link.

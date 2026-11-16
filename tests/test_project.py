@@ -402,6 +402,7 @@ def test_layout_is_immutable(tmp_path):
 
 # CLICK 4 writes [PLCName] PLCName= as [Sec20] Key1=; Sec21 marks a CLICK 4 file.
 CLICK_3 = b"[SystemConfig]\r\nItem1=199\r\n[PLCName]\r\nPLCName=Line 1\r\n[Other]\r\nValue=1\r\n"
+CLICK_4_HEAD = b"[Sec21]\r\nKey3_1=199\r\n"
 CLICK_4 = b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Line 1\r\n[Sec22]\r\nKey1_2=\r\n"
 
 
@@ -610,6 +611,88 @@ def test_write_adds_a_missing_name(tmp_path, data, expected):
     assert _write(tmp_path, data, "Mixer") == expected
 
 
+# CLICK 4.00's System Configuration, run on the real program (ClickNick's
+# buildbot/jobs/runner-jobs/RESULTS-C.md, section C2, live-p3 to p10 and p12): it shows the
+# PLC name from [Sec20] Key1 whatever the case of the section and key, and takes the
+# first of two matching sections or two matching keys.
+C2_CASES = [
+    pytest.param(b"[Sec20]\r\nKey1=UpperCase\r\n", "UpperCase", id="p3-Sec20-Key1"),
+    pytest.param(b"[sec20]\r\nkey1=LowerCase\r\n", "LowerCase", id="p4-lower"),
+    pytest.param(b"[SEC20]\r\nKEY1=AllCaps\r\n", "AllCaps", id="p5-upper"),
+    pytest.param(b"[Sec20]\r\nkey1=MixedKey\r\n", "MixedKey", id="p6-lower-key"),
+    pytest.param(b"[sec20]\r\nKey1=MixedSection\r\n", "MixedSection", id="p7-lower-section"),
+    pytest.param(
+        b"[Sec20]\r\nKey1=Upper\r\n[sec20]\r\nkey1=Lower\r\n", "Upper", id="p8-two-sections"
+    ),
+    pytest.param(
+        b"[sec20]\r\nkey1=Lower\r\n[Sec20]\r\nKey1=Upper\r\n", "Lower", id="p9-two-sections"
+    ),
+    pytest.param(b"[Sec20]\r\nKey1=FirstKey\r\nKEY1=SecondKey\r\n", "FirstKey", id="p10-two-keys"),
+    pytest.param(
+        b"[Sec20]\r\nKey1=First\r\n[Sec20]\r\nKey1=Second\r\n", "First", id="same-spelling-twice"
+    ),
+    # A stray [PLCName] does not outrank [Sec20] (p12).
+    pytest.param(
+        b"[PLCName]\r\nPLCName=Legacy\r\n[Sec20]\r\nKey1=Placeholder\r\n",
+        "Placeholder",
+        id="p12-with-PLCName",
+    ),
+]
+
+
+@pytest.mark.parametrize("data,name", C2_CASES)
+def test_read_plc_name_matches_click_4_case_rules(tmp_path, data, name):
+    assert read_plc_name(_project(tmp_path, CLICK_4_HEAD + data)) == name
+
+
+@pytest.mark.parametrize("data,name", C2_CASES)
+def test_write_plc_name_changes_the_name_click_4_reads(tmp_path, data, name):
+    original = CLICK_4_HEAD + data
+    expected = original.replace(b"=" + name.encode(), b"=Mixer", 1)
+    assert expected != original
+    assert _write(tmp_path, original, "Mixer") == expected
+
+
+def test_write_keeps_the_files_spelling_when_adding_a_key(tmp_path):
+    before = CLICK_4_HEAD + b"[SEC20]\r\nKey2=x\r\n"
+    assert (
+        _write(tmp_path, before, "Mixer") == CLICK_4_HEAD + b"[SEC20]\r\nKey1=Mixer\r\nKey2=x\r\n"
+    )
+
+
+def test_a_continuation_line_is_not_an_option(tmp_path):
+    data = CLICK_4_HEAD + b"[Sec20]\r\nOther=a\r\n   Key1=b\r\nKey1=Real\r\n"
+    assert read_plc_name(_project(tmp_path, data)) == "Real"
+    assert _write(tmp_path, data, "Mixer") == data.replace(b"Key1=Real", b"Key1=Mixer")
+
+
+def test_the_click_4_marker_matches_regardless_of_case(tmp_path):
+    data = b"[sec21]\r\nKey3_1=199\r\n[sec20]\r\nKey1=A\r\n"
+    assert read_plc_name(_project(tmp_path, data)) == "A"
+    assert _write(tmp_path, data, "Mixer") == data.replace(b"=A", b"=Mixer")
+    # [SYSTEMCONFIG] marks a CLICK 3 file, where [Sec20] is not the name.
+    assert read_plc_name(_project(tmp_path, b"[SYSTEMCONFIG]\r\n" + data)) is None
+
+
+def test_only_the_first_matching_section_is_searched_for_the_key(tmp_path):
+    # Inferred from Windows' INI functions, not tested in CLICK.
+    data = CLICK_4_HEAD + b"[Sec20]\r\nKey2=x\r\n[sec20]\r\nKey1=A\r\n"
+    assert read_plc_name(_project(tmp_path, data)) is None
+
+
+def test_click_4_with_only_plcname_reads_it(tmp_path):
+    # C2 p11: CLICK 4.00 shows no name for [PLCName] alone. pyclickplc reads it, as a
+    # CLICK 3 file has the name there.
+    data = CLICK_4_HEAD + b"[PLCName]\r\nPLCName=Legacy\r\n"
+    assert read_plc_name(_project(tmp_path, data)) == "Legacy"
+
+
+def test_read_and_write_match_case_in_a_click_3_file(tmp_path):
+    data = b"[plcname]\r\nPLCNAME=Old\r\n"
+    assert read_plc_name(_project(tmp_path, data)) == "Old"
+    assert _write(tmp_path, data, "Mixer") == b"[plcname]\r\nPLCNAME=Mixer\r\n"
+
+
 def test_write_strips_the_name(tmp_path):
     assert _write(tmp_path, CLICK_3, "  Mixer 2\t") == CLICK_3.replace(b"Line 1", b"Mixer 2")
 
@@ -625,10 +708,6 @@ def test_write_strips_the_name(tmp_path):
         (b"\xff[PLCName]\r\n", "Mixer", "Invalid CLICK project"),
         # The edited line would not read back as the name alone.
         (b"[PLCName]\r\nPLCName=Old\r\n  more\r\n", "Mixer", "Cannot set the PLC name"),
-        # A header that matches the name's section only in case: Windows reads either.
-        (b"[plcname]\r\nplcname=Old\r\n", "Mixer", r"\[plcname\] differs from \[PLCName\]"),
-        (b"[PLCName]\r\nPLCName=A\r\n[PLCNAME]\r\n", "Mixer", "only in case"),
-        (b"[Sec21]\r\n[sec20]\r\nKey1=A\r\n", "Mixer", r"\[sec20\] differs from \[Sec20\]"),
     ],
 )
 def test_write_refuses_and_leaves_the_file(tmp_path, data, name, match):

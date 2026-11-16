@@ -8,6 +8,8 @@
 
 ### Behaviour changes
 
+- `read_plc_name` and `write_plc_name` match the section and key regardless of case, and use the first match when a file has several (`[sec20]` with `KEY1` gives the name). `write_plc_name` no longer raises `ValueError` for a header that differs only in case; it writes into the first matching section and key and keeps their spelling. `read_plc_name` no longer raises `ValueError` for a repeated section or key. CLICK 4.00 was seen to read `[Sec20] Key1` this way; the same rule applies to CLICK 3's `[PLCName]`.
+  - Remove any `except ValueError` that handled only a case-only header.
 - `validate_nickname` rejects `max`, `min`, `mdn`, `avg`, `rand` and `abs` in any case (`Reserved keyword`), and a nickname holding a comma (`Invalid: ,`). CLICK 4.00 refuses the six names, in any case and on the whole name, in its Address Picker and its CSV import. CLICK 3's `PLCType.ini` does not reserve them, but `validate_nickname` refuses them for every project.
   - Rename such a nickname (`Max_Speed` and `MAXIMUM` are fine).
 - The system nickname catalog's strings changed, for example SD21 from `_RTC_Month (1-12)` to `_RTC_Month` and SC20 from `_I/O_BUS_Error` to `_I/O Module Error`. `is_canonical_system_nickname` is false for the old string, and `canonicalize_system_nickname` leaves it as it was.
