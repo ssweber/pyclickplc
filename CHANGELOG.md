@@ -1,39 +1,39 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 - 2026-11-16
 
 ### Fixed
 
-- `AUTOMATIONDIRECT_SYSTEM_NICKNAMES` and `canonical_system_nickname` give the names CLICK itself writes for system addresses (`_RTC_Month`, not `_RTC_Month (1-12)`). 22 names changed (SC19-SC29, SC64, SC332, SD19-SD26, SD214).
+- `write_plc_data` raises `ValueError` naming the address, with a short message, for a huge DF or TXT value (a DF `10**5000` raised Python's 4300-digit `ValueError` with no address, and a 3000-character TXT value gave a message as long as the value). A number too large for a Python float (2**1024 or more) now says `outside the float32 range`, not `is not a float32`, as a smaller one past the float32 range already did.
 
 ### Behaviour changes
 
-- `read_plc_name` and `write_plc_name` match the section and key regardless of case, and use the first match when a file has several (`[sec20]` with `KEY1` gives the name). `write_plc_name` no longer raises `ValueError` for a header that differs only in case; it writes into the first matching section and key and keeps their spelling. `read_plc_name` no longer raises `ValueError` for a repeated section or key. CLICK 4.00 was seen to read `[Sec20] Key1` this way; the same rule applies to CLICK 3's `[PLCName]`.
-  - Remove any `except ValueError` that handled only a case-only header.
-- `read_modules`, `read_channel_parameters` and `read_io_layout` find a section whose name differs in case, such as `[sec21]` or `[systemconfig]` (before, they read only CLICK's spelling, so a file with `[sec21]` gave no modules). The first match wins: of a section repeated in any case, or a key repeated in any case within one, they read the first and ignore the rest (before, a repeat raised `ValueError`). `[SystemConfig]` in any case marks a CLICK 3 file. CLICK 4.00 was seen to match and take the first only for the PLC name; the rule for these sections is inferred.
-  - Check the hardware you read from a hand-edited `Project.ini`, and remove a repeated section or key. Remove any `except ValueError` that handled only a repeat.
-- `write_plc_name` raises `ValueError` for a file with a continuation line, a line indented under an option such as `  more` or `  [Next]` after `Key2=x` (before, it set the name in some such files). `read_plc_name` reads such a line as part of the option's value, and CLICK likely reads it as a line of its own (inferred). CLICK writes no such line.
-  - Remove the indent or the line, then set the name again.
-- In a CLICK 4 `Project.ini`, `read_modules`, `read_channel_parameters` and `read_io_layout` ignore a named section that has its CLICK 4 section beside it, such as `[CPUBuild]` beside `[Sec23]` (before, they read the keys only the named section had, such as `[CPUBuild] AD2`). CLICK 4.00 was seen to do this for `[PLCName]` beside `[Sec20]`; the other sections are inferred.
-  - Set a channel the stray section held in CLICK, which writes it to the CLICK 4 section.
-- `validate_nickname` rejects `max`, `min`, `mdn`, `avg`, `rand` and `abs` in any case (`Reserved keyword`), and a nickname holding a comma (`Invalid: ,`). CLICK 4.00 refuses the six names, in any case and on the whole name, in its Address Picker and its CSV import. CLICK 3's `PLCType.ini` does not reserve them, but `validate_nickname` refuses them for every project.
+Nicknames, comments and initial values:
+
+- `validate_nickname` rejects `max`, `min`, `mdn`, `avg`, `rand` and `abs` in any case (`Reserved keyword`), and a nickname holding a comma (`Invalid: ,`). CLICK 4.00 refuses the six names, on the whole name, in its Address Picker and its CSV import (`MAX` and `ABS` were seen refused in any case; the other four were tried in capitals). CLICK 3's `PLCType.ini` does not reserve them, but `validate_nickname` refuses them for every project.
   - Rename such a nickname (`Max_Speed` and `MAXIMUM` are fine).
-- The system nickname catalog's strings changed, for example SD21 from `_RTC_Month (1-12)` to `_RTC_Month` and SC20 from `_I/O_BUS_Error` to `_I/O Module Error`. `is_canonical_system_nickname` is false for the old string, and `canonicalize_system_nickname` leaves it as it was.
-  - Compare against `canonical_system_nickname`, not a saved string. A project that holds a help-page name is not offered a repair.
-- `SystemNicknameGuidance.source`, and `AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE` and `AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE`, are now the text `CLICK 4.00 PLCType.ini [SYSTEM0]`, not help-page URLs. SD71, SD72, SD75 and SD76 keep a help-page URL.
-  - Do not fetch `source` as a URL.
 - `validate_nickname` and `validate_comment` reject a value that starts or ends with a tab or other character up to 0x20, as they did a space, with the same message. CLICK strips them on import, even quoted; CLICK was seen to strip a space and a tab, and the rest is inferred. A tab inside a comment is still valid.
   - Strip the value before you validate and store it.
 - `validate_initial_value` rejects a value of any type but Text that starts or ends with a space, tab or other character up to 0x20 (`" 5"`, `"1.5\t"`), with the message `Cannot start or end with a space`. CLICK was seen to refuse a quoted number with an edge space or tab and to strip an edge space from a bare one; the rest is inferred.
   - Strip the value before you validate and store it.
-- `write_csv` and `format_csv` quote a Text initial value that starts or ends with a space, tab or other character up to 0x20, so ` a` is written `" a"` (only a lone space was quoted). CLICK was seen to strip a bare space, tab, VT or FF at a Text value's ends and keep it quoted; the rest is inferred.
-  - Regenerate any saved output your tests compare against.
 - `validate_initial_value` rejects an INT, INT2, FLOAT or HEX value holding a non-ASCII character, such as `٥`, fullwidth `５` or a no-break space at an edge (`Must be ASCII`); Python's `int()` and `float()` take them. CLICK was seen to refuse those values as INT and FLOAT from a file without a BOM, which is what `write_csv` writes; INT2, HEX and other non-ASCII characters are inferred.
   - Use ASCII digits, and remove a no-break space.
 - `validate_initial_value` rejects an INT, INT2, FLOAT or HEX value holding an underscore, such as `1_000` (`Cannot contain _`). CLICK was seen to refuse `1_000` as INT and FLOAT; INT2 and HEX are inferred.
   - Leave out the underscores (`1000`).
 - `validate_initial_value` rejects a HEX value with a `0x` prefix, such as `0x1F` (`Cannot start with 0x`). CLICK was seen to refuse `0x1F`; `0X` and a sign before the prefix are inferred.
   - Leave out the prefix (`1F`).
+- `write_csv` and `format_csv` quote a Text initial value that starts or ends with a space, tab or other character up to 0x20, so ` a` is written `" a"` (only a lone space was quoted). CLICK was seen to strip a bare space, tab, VT or FF at a Text value's ends and keep it quoted; the rest is inferred.
+  - Regenerate any saved output your tests compare against.
+
+System nicknames:
+
+- `AUTOMATIONDIRECT_SYSTEM_NICKNAMES` and `canonical_system_nickname` give the names CLICK itself writes (`_RTC_Month`, not `_RTC_Month (1-12)`; SC20 is `_I/O Module Error`, not `_I/O_BUS_Error`). 22 names changed (SC19-SC29, SC64, SC332, SD19-SD26, SD214). `is_canonical_system_nickname` is false for the old string, and `canonicalize_system_nickname` leaves it as it was.
+  - Compare against `canonical_system_nickname`, not a saved string. A project that holds a help-page name is not offered a repair.
+- `SystemNicknameGuidance.source`, and `AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE` and `AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE`, are now the text `CLICK 4.00 PLCType.ini [SYSTEM0]`, not help-page URLs. SD71, SD72, SD75 and SD76 keep a help-page URL.
+  - Do not fetch `source` as a URL.
+
+PLC data dumps:
+
 - `write_plc_data` writes every TXT punctuation mark but a comma plain, as CLICK does, so `"` is written `"` and `$` is written `$` (it raised `ValueError` for all but `+`, `-` and `.`). A comma still raises: CLICK writes it unquoted, so the row couldn't be read back.
   - Write the punctuation you left out; keep leaving out a comma.
 - `read_plc_data` raises `ValueError` naming the row's first address for a row whose cells don't match its addresses. CLICK writes a TXT comma unquoted, so such a row has a cell too many (it read the row, with the comma's address and the next one blank and each address after them holding the value of the one before).
@@ -41,9 +41,20 @@
 - `write_plc_data` writes CLICK's digits for more large DF values, such as 1.5e30 and 1.8e30: `1.8e30` is `1800000027085439196000000000000.00000000` (it was `...1958...`). CLICK's last digits still differ for some large values; `read_plc_data` reads either form as the same value.
   - Regenerate any saved output your tests compare against.
 
+Project.ini:
+
+- `read_plc_name` and `write_plc_name` match the section and key regardless of case, and use the first match when a file has several (`[sec20]` with `KEY1` gives the name). `write_plc_name` no longer raises `ValueError` for a header that differs only in case; it writes into the first matching section and key and keeps their spelling. `read_plc_name` no longer raises `ValueError` for a repeated section or key. CLICK 4.00 was seen to read `[Sec20] Key1` this way; the same rule for CLICK 3's `[PLCName]` is inferred.
+  - Remove any `except ValueError` that handled only a case-only header.
+- `read_modules`, `read_channel_parameters` and `read_io_layout` find a section whose name differs in case, such as `[sec21]` or `[systemconfig]` (before, they read only CLICK's spelling, so a file with `[sec21]` gave no modules). They take the first of a section or key repeated in any case, as `read_plc_name` does (before, a repeat raised `ValueError`). `[SystemConfig]` in any case marks a CLICK 3 file. CLICK 4.00 was seen to match and take the first only for the PLC name; the rule for these sections is inferred.
+  - Check the hardware you read from a hand-edited `Project.ini`, and remove a repeated section or key. Remove any `except ValueError` that handled only a repeat.
+- `write_plc_name` raises `ValueError` for a file with a continuation line, a line indented under an option such as `  more` or `  [Next]` after `Key2=x` (before, it set the name in some such files). `read_plc_name` reads such a line as part of the option's value, and CLICK likely reads it as a line of its own (inferred). CLICK writes no such line.
+  - Remove the indent or the line, then set the name again.
+- In a CLICK 4 `Project.ini`, `read_modules`, `read_channel_parameters` and `read_io_layout` ignore a named section that has its CLICK 4 section beside it, such as `[CPUBuild]` beside `[Sec23]` (before, they read the keys only the named section had, such as `[CPUBuild] AD2`). CLICK 4.00 was seen to do this for `[PLCName]` beside `[Sec20]`; the other sections are inferred.
+  - Set a channel the stray section held in CLICK, which writes it to the CLICK 4 section.
+
 ### Documentation
 
-- The `write_plc_data` docstring and the files guide warn that CLICK's Write Data into PLC writes every address in each section of the file, so an address the file leaves blank is cleared in the PLC. To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes.
+- The `write_plc_data` docstring and the files guide warn that CLICK's Write Data into PLC writes every address of each memory type in the file (seen for Text), so an address the file leaves blank is cleared in the PLC. To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes.
 
 ## 0.7.0 - 2026-11-15
 
