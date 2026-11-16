@@ -1,96 +1,104 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 - 2026-11-16
 
 ### Added
 
-- `ClickServer.bound_port`: the port the server listens on, or `None` when it is not running. Start a server with `port=0` and read the port the system picked; every address the host resolves to (`127.0.0.1` and `::1` for `localhost`) listens on that port.
-
-### Changed
-
-- pyclickplc works with pymodbus 3.12 and any later 3.x. `ClickServer` no longer uses pymodbus, so it answers the same whatever pymodbus is installed. A project that pins pymodbus 3.12 needs no change.
+- `ClickServer.bound_port`: the port the server listens on, or `None` when it is not running. Start a server with `port=0` and read the port the system picked; it is the same for every address the host resolves to (`127.0.0.1` and `::1` for `localhost`).
 
 ### Fixed
 
 - `ClickServer` answers every request, in order and with its own transaction id, when several arrive together; before, it answered only some of them, and could give a reply the wrong transaction id.
-- On Windows, `ClickServer.is_running()` gives False once the server stops taking clients, which happens when a client resets its connection before the server has accepted it, and `start()` then listens again (if it can't, `serve_forever()` raises `RuntimeError`); before, `is_running()` gave True.
+- `ClickServer` answers a request too short for its function code with exception 03; before, it got no answer and the connection stopped answering.
+- On Windows, after a client connects and resets before the server has accepted it, `ClickServer` takes no more clients. `is_running()` now gives False then (it gave True before), and calling `start()` listens again.
+- `write_plc_data` raises `ValueError` naming the address, with a short message, for a huge DF value; before, a DF `10**5000` raised Python's 4300-digit `ValueError` with no address.
+- `write_plc_data` raises `ValueError` naming the address, with a short message, for a huge TXT value; before, the message was as long as the value.
+- `write_plc_data` says `outside the float32 range` for a DF number too large for a Python float (2**1024 or more), as it does for a smaller one past the float32 range; before, it said `is not a float32`.
 
 ### Behaviour changes
 
-- Installing or upgrading pyclickplc now brings the newest pymodbus 3 unless something else pins pymodbus.
+Modbus server and pymodbus:
+
+- pyclickplc now works with pymodbus 3.12 and any later 3.x; 0.7.0 pinned 3.12.x, so installing or upgrading brings the newest pymodbus 3 unless something else pins pymodbus.
   - If your own pymodbus code needs 3.12, pin `pymodbus<3.13`.
-- `ClickServer` answers exception 03 and stores nothing when a write of several coils or registers (function code 15 or 16) has a byte count that disagrees with the count or with the data sent; it stored what the data held.
+- `ClickServer` no longer uses pymodbus, so it answers the same whatever pymodbus is installed. Only `ClickClient` uses it.
+- `ClickServer` answers exception 03 and stores nothing when a write of several coils or registers (function code 15 or 16) has a byte count that disagrees with the count or with the data sent; before, it stored the data it received.
   - Send a byte count of (count + 7) // 8 for coils and 2 × count for registers, followed by that many data bytes.
-- A request too short for its function code gets exception 03; before, it got no answer and the connection stopped answering.
-  - A client sending complete requests for function codes 1-6, 15 and 16 sees no change.
-- `ClickServer` answers exception 01 to every function code but 1-6, 15 and 16. Before, function code 20 (read file record) got a malformed reply, 21 (write file record) was answered as if written, 7, 8, 11, 12, 17, 24 and 43 got the answers of a generic Modbus device, a short FC8, FC24 or FC43 request stopped the connection answering, and an unknown function code got a reply with transaction id 0 that a client could not match.
+- `ClickServer` answers exception 01 to every function code but 1-6, 15 and 16; before, 7, 8, 11, 12, 17 and 24 got the answers of a generic Modbus device, 20 (read file record) got a made-up record, 21 (write file record) was answered as if written, and 43 got no answer.
   - Treat exception 01 as "not supported".
-- `ClickServer` closes a connection whose frame header gives a length below 2 or above 262; before, a length below 2 could stop the connection answering, and a longer frame got exception 03.
+- `ClickServer` answers an unknown function code with exception 01 and the request's transaction id; before, the reply had transaction id 0, which a client could not match.
+- `ClickServer` closes a connection whose frame header gives a length below 2 or above 262; before, a length below 2 stopped the connection answering, and a frame with a longer length was answered.
   - Send the length of the unit id and PDU in the header.
-- `ClickServer` drops a frame whose protocol id is not 0 unanswered, then answers the requests after it; before, such a frame could stop the connection answering.
+- `ClickServer` drops a frame whose protocol id is not 0 unanswered, then answers the requests after it; before, such a frame stopped the connection answering.
   - Send protocol id 0.
-- On Windows, starting a server on a port another server holds raises `RuntimeError`; before, it started and never got clients.
+- On Windows, starting a server on a port another server holds raises `RuntimeError`; before, it did not raise.
   - Stop the other server, or start this one on another port.
-- `ClickServer.start()` and `serve_forever()` raise `RuntimeError` when the server is already listening, and the `RuntimeError` for a port it can't listen on now gives the system's reason, with the `OSError` as its cause.
+- `ClickServer.start()` and `serve_forever()` raise `RuntimeError` when the server is already listening; before, a second `start()` did not raise, and the first listener kept answering after `stop()`.
   - Call `start()` once, or check `is_running()` first.
+- `ClickServer.start()`, `serve_forever()` and `stop()` raise `RuntimeError` while the server runs on another event loop that is still open.
+  - Stop the server on the loop that started it.
+- The `RuntimeError` for a port `ClickServer` can't listen on gives the system's reason, with the `OSError` as its cause; before, the message gave no reason.
 - Cancelling `ClickServer.serve_forever()` stops the server and raises `CancelledError`; before, it returned and the server kept listening.
   - Call `stop()`, or cancel the task, to stop the server.
-
-## 0.8.0 - 2026-11-16
-
-### Fixed
-
-- `write_plc_data` raises `ValueError` naming the address, with a short message, for a huge DF or TXT value (a DF `10**5000` raised Python's 4300-digit `ValueError` with no address, and a 3000-character TXT value gave a message as long as the value). A number too large for a Python float (2**1024 or more) now says `outside the float32 range`, not `is not a float32`, as a smaller one past the float32 range already did.
-
-### Behaviour changes
+- `ClickServer.list_clients()` gives client ids `"1"`, `"2"` and so on, counting up across restarts; before, they were pymodbus's connection ids.
+  - Pass the ids `list_clients()` gives to `disconnect_client()`.
 
 Nicknames, comments and initial values:
 
-- `validate_nickname` rejects `max`, `min`, `mdn`, `avg`, `rand` and `abs` in any case (`Reserved keyword`), and a nickname holding a comma (`Invalid: ,`). CLICK 4.00 refuses the six names, on the whole name, in its Address Picker and its CSV import (`MAX` and `ABS` were seen refused in any case; the other four were tried in capitals). CLICK 3's `PLCType.ini` does not reserve them, but `validate_nickname` refuses them for every project.
+- `validate_nickname` rejects `max`, `min`, `mdn`, `avg`, `rand` and `abs` in any case (`Reserved keyword`), and a nickname holding a comma (`Invalid: ,`).
   - Rename such a nickname (`Max_Speed` and `MAXIMUM` are fine).
-- `validate_nickname` and `validate_comment` reject a value that starts or ends with a tab or other character up to 0x20, as they did a space, with the same message. CLICK strips them on import, even quoted; CLICK was seen to strip a space and a tab, and the rest is inferred. A tab inside a comment is still valid.
+- `validate_nickname` and `validate_comment` reject a value that starts or ends with a tab or other character up to 0x20, as they did a space, with the same message. A tab inside a comment is still valid.
   - Strip the value before you validate and store it.
-- `validate_initial_value` rejects a value of any type but Text that starts or ends with a space, tab or other character up to 0x20 (`" 5"`, `"1.5\t"`), with the message `Cannot start or end with a space`. CLICK was seen to refuse a quoted number with an edge space or tab and to strip an edge space from a bare one; the rest is inferred.
+- `validate_initial_value` rejects a value of any type but Text that starts or ends with a space, tab or other character up to 0x20 (`" 5"`, `"1.5\t"`), with the message `Cannot start or end with a space`.
   - Strip the value before you validate and store it.
-- `validate_initial_value` rejects an INT, INT2, FLOAT or HEX value holding a non-ASCII character, such as `٥`, fullwidth `５` or a no-break space at an edge (`Must be ASCII`); Python's `int()` and `float()` take them. CLICK was seen to refuse those values as INT and FLOAT from a file without a BOM, which is what `write_csv` writes; INT2, HEX and other non-ASCII characters are inferred.
+- `validate_initial_value` rejects an INT, INT2, FLOAT or HEX value holding a non-ASCII character, such as `٥`, fullwidth `５` or a no-break space at an edge (`Must be ASCII`); before, Python's `int()` and `float()` took them.
   - Use ASCII digits, and remove a no-break space.
-- `validate_initial_value` rejects an INT, INT2, FLOAT or HEX value holding an underscore, such as `1_000` (`Cannot contain _`). CLICK was seen to refuse `1_000` as INT and FLOAT; INT2 and HEX are inferred.
+- `validate_initial_value` rejects an INT, INT2, FLOAT or HEX value holding an underscore, such as `1_000` (`Cannot contain _`).
   - Leave out the underscores (`1000`).
-- `validate_initial_value` rejects a HEX value with a `0x` prefix, such as `0x1F` (`Cannot start with 0x`). CLICK was seen to refuse `0x1F`; `0X` and a sign before the prefix are inferred.
+- `validate_initial_value` rejects a HEX value with a `0x` prefix, such as `0x1F` (`Cannot start with 0x`).
   - Leave out the prefix (`1F`).
-- `write_csv` and `format_csv` quote a Text initial value that starts or ends with a space, tab or other character up to 0x20, so ` a` is written `" a"` (only a lone space was quoted). CLICK was seen to strip a bare space, tab, VT or FF at a Text value's ends and keep it quoted; the rest is inferred.
+- `write_csv` and `format_csv` quote a Text initial value that starts or ends with a space, tab or other character up to 0x20, so ` a` is written `" a"`; before, only a lone space was quoted.
   - Regenerate any saved output your tests compare against.
 
 System nicknames:
 
-- `AUTOMATIONDIRECT_SYSTEM_NICKNAMES` and `canonical_system_nickname` give the names CLICK itself writes (`_RTC_Month`, not `_RTC_Month (1-12)`; SC20 is `_I/O Module Error`, not `_I/O_BUS_Error`). 22 names changed (SC19-SC29, SC64, SC332, SD19-SD26, SD214). `is_canonical_system_nickname` is false for the old string, and `canonicalize_system_nickname` leaves it as it was.
-  - Compare against `canonical_system_nickname`, not a saved string. A project that holds a help-page name is not offered a repair.
+- `AUTOMATIONDIRECT_SYSTEM_NICKNAMES` and `canonical_system_nickname` give the names CLICK itself writes (`_RTC_Month`, not `_RTC_Month (1-12)`; SC20 is `_I/O Module Error`, not `_I/O_BUS_Error`). 22 names changed (SC19-SC29, SC64, SC332, SD19-SD26, SD214).
+  - Compare against `canonical_system_nickname`, not a saved string. `is_canonical_system_nickname` is false for the old string, `canonicalize_system_nickname` leaves it as it was, and a project that holds a help-page name is not offered a repair.
 - `SystemNicknameGuidance.source`, and `AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE` and `AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE`, are now the text `CLICK 4.00 PLCType.ini [SYSTEM0]`, not help-page URLs. SD71, SD72, SD75 and SD76 keep a help-page URL.
   - Do not fetch `source` as a URL.
 
 PLC data dumps:
 
-- `write_plc_data` writes every TXT punctuation mark but a comma plain, as CLICK does, so `"` is written `"` and `$` is written `$` (it raised `ValueError` for all but `+`, `-` and `.`). A comma still raises: CLICK writes it unquoted, so the row couldn't be read back.
-  - Write the punctuation you left out; keep leaving out a comma.
-- `read_plc_data` raises `ValueError` naming the row's first address for a row whose cells don't match its addresses. CLICK writes a TXT comma unquoted, so such a row has a cell too many (it read the row, with the comma's address and the next one blank and each address after them holding the value of the one before).
+- `write_plc_data` writes every TXT punctuation mark but a comma plain, so `"` is written `"` and `$` is written `$`; before, it raised `ValueError` for all but `+`, `-` and `.`.
+  - Write the punctuation you left out.
+- `write_plc_data` still raises `ValueError` for a TXT comma: CLICK writes it unquoted, so the row couldn't be read back.
+  - Keep leaving out a comma.
+- `read_plc_data` raises `ValueError` naming the row's first address for a row whose cells don't match its addresses, such as a row with a TXT comma, which CLICK writes unquoted; before, it read the row, with the comma's address and the next one blank and each address after them holding the value of the one before.
   - Replace the comma in the PLC's TXT data, then read the data from the PLC again.
-- `write_plc_data` writes CLICK's digits for more large DF values, such as 1.5e30 and 1.8e30: `1.8e30` is `1800000027085439196000000000000.00000000` (it was `...1958...`). CLICK's last digits still differ for some large values; `read_plc_data` reads either form as the same value.
+- `write_plc_data` writes CLICK's digits for more large DF values, such as 1.5e30 and 1.8e30: `1.8e30` is `1800000027085439196000000000000.00000000` (it was `...1958...`). Some large values still differ in the last digits; `read_plc_data` reads either form as the same value.
   - Regenerate any saved output your tests compare against.
 
 Project.ini:
 
-- `read_plc_name` and `write_plc_name` match the section and key regardless of case, and use the first match when a file has several (`[sec20]` with `KEY1` gives the name). `write_plc_name` no longer raises `ValueError` for a header that differs only in case; it writes into the first matching section and key and keeps their spelling. `read_plc_name` no longer raises `ValueError` for a repeated section or key. CLICK 4.00 was seen to read `[Sec20] Key1` this way; the same rule for CLICK 3's `[PLCName]` is inferred.
+- `read_plc_name` and `write_plc_name` match the section and key regardless of case, and use the first match when a file has several (`[sec20]` with `KEY1` gives the name); before, `read_plc_name` gave `None` for such a file, and `write_plc_name` added a `[PLCName]` section.
+- `write_plc_name` writes into the first matching section and key, keeping their spelling; before, it raised `ValueError` for a header that differs only in case.
   - Remove any `except ValueError` that handled only a case-only header.
-- `read_modules`, `read_channel_parameters` and `read_io_layout` find a section whose name differs in case, such as `[sec21]` or `[systemconfig]` (before, they read only CLICK's spelling, so a file with `[sec21]` gave no modules). They take the first of a section or key repeated in any case, as `read_plc_name` does (before, a repeat raised `ValueError`). `[SystemConfig]` in any case marks a CLICK 3 file. CLICK 4.00 was seen to match and take the first only for the PLC name; the rule for these sections is inferred.
-  - Check the hardware you read from a hand-edited `Project.ini`, and remove a repeated section or key. Remove any `except ValueError` that handled only a repeat.
-- `write_plc_name` raises `ValueError` for a file with a continuation line, a line indented under an option such as `  more` or `  [Next]` after `Key2=x` (before, it set the name in some such files). `read_plc_name` reads such a line as part of the option's value, and CLICK likely reads it as a line of its own (inferred). CLICK writes no such line.
+- `read_plc_name` takes the first of a repeated section or key; before, it raised `ValueError`.
+  - Remove any `except ValueError` that handled only a repeat.
+- `read_modules`, `read_channel_parameters` and `read_io_layout` find a section whose name differs in case, such as `[sec21]` or `[systemconfig]`; before, they read only CLICK's spelling, so a file with `[sec21]` gave no modules.
+  - Check the hardware you read from a hand-edited `Project.ini`.
+- `read_modules`, `read_channel_parameters` and `read_io_layout` take the first of a section or key repeated in any case; before, a repeat raised `ValueError`.
+  - Remove a repeated section or key, and any `except ValueError` that handled only a repeat.
+- `[SystemConfig]` in any case marks a CLICK 3 file for those readers; before, only `[SystemConfig]` did, so a file with `[systemconfig]` gave no modules.
+- `write_plc_name` raises `ValueError` for a file with a continuation line, a line indented under an option such as `  more` or `  [Next]` after `Key2=x`; before, it set the name in some such files.
   - Remove the indent or the line, then set the name again.
-- In a CLICK 4 `Project.ini`, `read_modules`, `read_channel_parameters` and `read_io_layout` ignore a named section that has its CLICK 4 section beside it, such as `[CPUBuild]` beside `[Sec23]` (before, they read the keys only the named section had, such as `[CPUBuild] AD2`). CLICK 4.00 was seen to do this for `[PLCName]` beside `[Sec20]`; the other sections are inferred.
+- In a CLICK 4 `Project.ini`, `read_modules`, `read_channel_parameters` and `read_io_layout` ignore a named section that has its CLICK 4 section beside it, such as `[CPUBuild]` beside `[Sec23]`; before, they read the keys only the named section had, such as `[CPUBuild] AD2`.
   - Set a channel the stray section held in CLICK, which writes it to the CLICK 4 section.
 
 ### Documentation
 
-- The `write_plc_data` docstring and the files guide warn that CLICK's Write Data into PLC writes every address of each memory type in the file (seen for Text), so an address the file leaves blank is cleared in the PLC. To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes.
+- The `write_plc_data` docstring and the files guide warn that CLICK's Write Data into PLC writes every address of each memory type in the file, so an address the file leaves blank is cleared in the PLC.
+  - To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes.
 
 ## 0.7.0 - 2026-11-15
 

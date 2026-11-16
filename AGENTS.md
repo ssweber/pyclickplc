@@ -52,4 +52,4 @@ Other modules and their internal imports:
 - `pymodbus` is for `ClickClient` only, `>=3.12,<4` (see `pyproject.toml`). `server.py` and `server_tui.py` import no pymodbus: `ClickServer` reads and answers Modbus TCP frames itself on asyncio (`tests/test_server.py` checks the imports). CI also runs the suite on the floor, 3.12.0.
 - Tests in `tests/` mirror source modules. pytest also collects from `src/` (`python_files = ["*.py"]`), and async tests need no decorator (`asyncio_mode = "auto"`).
 - src layout; Python 3.11+ (CI runs 3.11-3.14); ruff line length 100.
-- CHANGELOG: write for a user deciding whether to upgrade, one line per item, with a "Behaviour changes" block (what changed, then what to do) for anything a caller could trip on. Leave out internal names and fixes to unreleased work.
+- CHANGELOG: write for a user deciding whether to upgrade, one line per item, with a "Behaviour changes" block (what changed, then what to do) for anything a caller could trip on. Leave out internal names and fixes to unreleased work. Entries say what pyclickplc does, what the last release did and what to do, with no account of what CLICK was seen to do or how it was found.
