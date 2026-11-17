@@ -57,7 +57,7 @@ class TestBankConfig:
         assert len(BANKS) == 16
 
     def test_display_max_addr(self):
-        # XD/YD MDB addresses run 0-16; CLICK shows XD0-XD8
+        # XD and YD MDB addresses run from 0 to 16. CLICK shows XD0 to XD8.
         assert (BANKS["XD"].max_addr, BANKS["XD"].display_max_addr) == (16, 8)
         assert (BANKS["YD"].max_addr, BANKS["YD"].display_max_addr) == (16, 8)
         for name, bank in BANKS.items():
@@ -210,9 +210,9 @@ class TestIsValidAddress:
         assert is_valid_address("X", 100) is False
 
     def test_sparse_boundary(self):
-        # X036 is the end of slot 2
+        # X036 is the last address of the range X021 to X036.
         assert is_valid_address("X", 36) is True
-        # X037 is in the gap between slots
+        # X037 is in the gap between X036 and X101.
         assert is_valid_address("X", 37) is False
 
     def test_xd_range(self):
