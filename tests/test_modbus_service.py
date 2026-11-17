@@ -478,7 +478,8 @@ class TestWriteBehavior:
     def test_write_connection_drop_mid_write_fails_remaining_batches(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        # Real ClickClient so pymodbus exceptions go through _call_modbus translation.
+        # Subclass the real ClickClient, so that _call_modbus turns the pymodbus exception into
+        # a ConnectionError.
         class _DroppingClickClient(ClickClient):
             async def __aenter__(self) -> _DroppingClickClient:
                 ok = MagicMock()
@@ -498,7 +499,8 @@ class TestWriteBehavior:
         svc = ModbusService(poll_interval_s=0.03)
         try:
             svc.connect("localhost", 15020)
-            # DS1 -> write_register (succeeds); DF1 -> write_registers (connection drops)
+            # DS1 goes through write_register, which succeeds. DF1 goes through write_registers,
+            # which raises as if the connection dropped.
             result = svc.write([("DS1", 1), ("DF1", 2.0)])
         finally:
             svc.disconnect()

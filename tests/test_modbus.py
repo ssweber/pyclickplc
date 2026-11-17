@@ -95,7 +95,7 @@ class TestModbusMappings:
         m = MODBUS_MAPPINGS["SC"]
         assert m.writable is not None
         assert 53 in m.writable
-        assert 50 not in m.writable  # ladder-only, not Modbus-writable
+        assert 50 not in m.writable  # Only the ladder program sets SC50 and SC51.
         assert 51 not in m.writable
         assert 120 in m.writable
 
@@ -107,7 +107,7 @@ class TestModbusMappings:
         assert 1 not in m.writable
 
     def test_sd_read_only_fc(self):
-        """SD has FC 4 (read input registers) — not writable via FCs."""
+        """SD's only function code is FC 4 (read input registers), so SD is not writable."""
         assert not MODBUS_MAPPINGS["SD"].is_writable
 
     def test_width_2_banks(self):
@@ -253,18 +253,18 @@ class TestPlcToModbus:
         assert plc_to_modbus("XD", 0) == (57344, 1)
 
     def test_xd1(self):
-        # MDB index 2 = XD1 display
+        # MDB index 2 is the address that CLICK shows as XD1.
         assert plc_to_modbus("XD", 2) == (57346, 1)
 
     def test_xd8(self):
-        # MDB index 16 = XD8 display
+        # MDB index 16 is the address that CLICK shows as XD8.
         assert plc_to_modbus("XD", 16) == (57360, 1)
 
     def test_yd0(self):
         assert plc_to_modbus("YD", 0) == (57856, 1)
 
     def test_yd1(self):
-        # MDB index 2 = YD1 display
+        # MDB index 2 is the address that CLICK shows as YD1.
         assert plc_to_modbus("YD", 2) == (57858, 1)
 
     # --- Errors ---
@@ -294,7 +294,7 @@ class TestPlcToModbus:
 class TestModbusToPlc:
     """Tests for modbus_to_plc reverse mapping."""
 
-    # --- Sparse coils (from CLICKSERVER_SPEC test scenarios) ---
+    # --- Sparse coils ---
 
     def test_coil_0_x001(self):
         assert modbus_to_plc(0, is_coil=True) == ("X", 1)
@@ -346,11 +346,11 @@ class TestModbusToPlc:
     # --- Sparse gaps ---
 
     def test_coil_48_gap(self):
-        """Coil 48 is X slot 1 offset 48: hundred=1, unit=17 -> gap."""
+        """Coil 48 would be unit 17 of expansion slot 1, after X116. It maps to no address."""
         assert modbus_to_plc(48, is_coil=True) is None
 
     def test_coil_8240_gap(self):
-        """Coil 8240 = Y base + 48: hundred=1, unit=17 -> gap."""
+        """Coil 8240 is the Y base plus 48, which would be Y117. It maps to no address."""
         assert modbus_to_plc(8240, is_coil=True) is None
 
     # --- Unmapped coils ---
@@ -373,7 +373,7 @@ class TestModbusToPlc:
         assert modbus_to_plc(16386, is_coil=False) == ("DD", 2)
 
     def test_reg_16385_dd1_mid(self):
-        """Register 16385 is the second register of DD1 — mid-value."""
+        """Register 16385 is the second register of DD1, so it maps to no address."""
         assert modbus_to_plc(16385, is_coil=False) is None
 
     def test_reg_24576_dh1(self):
@@ -412,18 +412,18 @@ class TestModbusToPlc:
         assert modbus_to_plc(57344, is_coil=False) == ("XD", 0)
 
     def test_reg_57346_xd1(self):
-        # MDB index 2 = XD1 display
+        # MDB index 2 is the address that CLICK shows as XD1.
         assert modbus_to_plc(57346, is_coil=False) == ("XD", 2)
 
     def test_reg_57345_xd0u(self):
-        """Register 57345 is XD0u (MDB index 1) — now addressable."""
+        """Register 57345 is XD0u, which has MDB index 1."""
         assert modbus_to_plc(57345, is_coil=False) == ("XD", 1)
 
     def test_reg_57856_yd0(self):
         assert modbus_to_plc(57856, is_coil=False) == ("YD", 0)
 
     def test_reg_57858_yd1(self):
-        # MDB index 2 = YD1 display
+        # MDB index 2 is the address that CLICK shows as YD1.
         assert modbus_to_plc(57858, is_coil=False) == ("YD", 2)
 
     # --- Unmapped registers ---
