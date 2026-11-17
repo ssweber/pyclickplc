@@ -15,7 +15,7 @@ from enum import IntEnum
 
 
 class DataType(IntEnum):
-    """DataType mapping from MDB database."""
+    """The data type numbers that CLICK's MDB database uses."""
 
     BIT = 0  # C, CT, SC, T, X, Y - values: "0" or "1"
     INT = 1  # DS, SD, TD - 16-bit signed: -32768 to 32767
@@ -159,16 +159,16 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
     "C": False,
     "T": False,
     "CT": True,  # Counters are retentive by default
-    "SC": False,  # Can't change
+    "SC": False,  # Retentive cannot be changed
     "DS": True,  # Data registers are retentive by default
     "DD": True,
     "DH": True,
     "DF": True,
-    "XD": False,  # Can't change
-    "YD": False,  # Can't change
-    "TD": False,  # See note
-    "CTD": True,  # See note
-    "SD": False,  # Can't change
+    "XD": False,  # Retentive cannot be changed
+    "YD": False,  # Retentive cannot be changed
+    "TD": False,  # Follows T. See PAIRED_RETENTIVE_TYPES.
+    "CTD": True,  # Follows CT. See PAIRED_RETENTIVE_TYPES.
+    "SD": False,  # Retentive cannot be changed
     "TXT": True,
 }
 

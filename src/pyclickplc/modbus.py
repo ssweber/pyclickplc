@@ -162,10 +162,9 @@ _SPARSE_RANGES: tuple[tuple[int, int], ...] = _SPARSE_RANGES_OPT
 def _sparse_plc_to_coil(base: int, index: int) -> int:
     """Forward map sparse PLC index to coil address.
 
-    Uses the formula from CLICKDEVICE_SPEC:
-    - CPU slot 1 (001-016): base + index - 1
-    - CPU slot 2 (021-036): base + 16 + (index - 21)
-    - Expansion (101+):     base + 32 * hundred + (unit - 1)
+    - CPU, 001-016: base + index - 1
+    - CPU, 021-036: base + 16 + (index - 21)
+    - Expansion module n, n01-n16: base + 32 * n + (index % 100 - 1)
     """
     if index <= 16:
         return base + index - 1
@@ -177,12 +176,13 @@ def _sparse_plc_to_coil(base: int, index: int) -> int:
 
 
 def _sparse_coil_to_plc(bank: str, base: int, coil: int) -> tuple[str, int] | None:
-    """Reverse map coil address to (bank, index) or None for gaps.
+    """Reverse map coil address to (bank, index), or None for a coil with no address.
 
-    Uses the formula from CLICKSERVER_SPEC:
-    - offset < 16:  CPU slot 1 -> *001-*016
-    - offset < 32:  CPU slot 2 -> *021-*036
-    - else:         expansion  -> hundred*100 + unit
+    With offset = coil - base:
+    - offset 0-15: CPU, *001-*016
+    - offset 16-31: CPU, *021-*036
+    - offset 32n to 32n + 15: expansion module n, *n01-*n16
+    - offset 32n + 16 to 32n + 31: no address
     """
     offset = coil - base
     if offset < 0:
@@ -205,16 +205,18 @@ def _sparse_coil_to_plc(bank: str, base: int, coil: int) -> tuple[str, int] | No
     return bank, index
 
 
-# Total coil address space for sparse banks. The CPU (*001..*036) and each slot 1..8 take 32
-# coils. A slot names units 1..16 and reserves 17..32, so slot 8 ends at offset 8*32 + 31 = 287.
+# The number of coils that X or Y spans from its base. The CPU (*001 to *036) and each
+# expansion module 1 to 8 take 32 coils. A module's first 16 coils are its addresses *n01 to
+# *n16, and the other 16 have no address. Module 8 ends at offset 8*32 + 31 = 287.
 _SPARSE_COIL_SPAN = 9 * 32  # 288
 
 
 def _in_sparse_coil_span(address: int) -> bool:
-    """Return True if a coil address is in the X or Y span, reserved slot units included.
+    """Return True if a coil address is in the coils that X or Y spans.
 
-    A CLICK keeps what a client writes to a reserved coil and reads it as OFF until then. It
-    refuses an address outside every bank.
+    The span includes the coils between modules that have no address. A CLICK PLC stores
+    what a client writes to one of those coils, and reads the coil as OFF until a client
+    writes it. A CLICK PLC refuses an address that is in no bank.
     """
     return any(
         MODBUS_MAPPINGS[bank].base <= address < MODBUS_MAPPINGS[bank].base + _SPARSE_COIL_SPAN
@@ -289,14 +291,18 @@ def _is_valid_index(bank: str, index: int) -> bool:
 
 
 def modbus_to_plc(address: int, is_coil: bool) -> tuple[str, int] | None:
-    """Reverse map Modbus address to (bank, display_index) or None.
+    """Reverse map Modbus address to (bank, mdb_index) or None.
+
+    The index is the MDB address that ``plc_to_modbus`` takes, so XD1 maps back to
+    ``("XD", 2)``. A TXT register holds two addresses and maps to the odd one. The second
+    register of a two-register value maps to None.
 
     Args:
         address: Raw Modbus coil or register address
         is_coil: True for coil address space, False for register space
 
     Returns:
-        Tuple of (bank_name, display_index) or None if unmapped
+        Tuple of (bank_name, mdb_index) or None if unmapped
     """
     if is_coil:
         return _reverse_coil(address)
@@ -350,13 +356,14 @@ def _reverse_register(address: int) -> tuple[str, int] | None:
 
 
 def modbus_to_plc_register(address: int) -> tuple[str, int, int] | None:
-    """Extended reverse register mapping.
+    """Reverse map a Modbus register address to (bank, mdb_index, reg_position) or None.
 
-    Unlike modbus_to_plc(is_coil=False), this does NOT return None for
-    mid-value registers of width-2 types. Instead it returns the
-    reg_position (0 or 1) within the value.
+    Unlike ``modbus_to_plc(address, is_coil=False)``, this function also maps the second
+    register of a two-register value. reg_position is 0 for a value's first register and
+    1 for its second.
 
-    Needed by the server for FC 06 on width-2 types (read-modify-write).
+    The server uses it to read or write one register of a two-register value. To write
+    one register, the server reads the value, replaces that register and stores the value.
 
     Returns:
         (bank, mdb_index, reg_position) or None if unmapped
