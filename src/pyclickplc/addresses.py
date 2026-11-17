@@ -73,7 +73,7 @@ def is_xd_yd_upper_byte(memory_type: str, mdb_address: int) -> bool:
 
 
 def is_xd_yd_hidden_slot(memory_type: str, mdb_address: int) -> bool:
-    """Check if an XD/YD MDB address is a hidden slot (odd addresses > 1)."""
+    """Check if an XD/YD MDB address is an odd address above 1. CLICK does not show these."""
     if memory_type in ("XD", "YD"):
         return mdb_address >= 3 and mdb_address % 2 == 1
     return False
@@ -112,7 +112,8 @@ def xd_yd_display_to_mdb(display_addr: int, upper_byte: bool = False) -> int:
 def format_address_display(memory_type: str, mdb_address: int) -> str:
     """Format a memory type and MDB address as a display string.
 
-    X/Y are 3-digit zero-padded. XD/YD use special encoding. Others are unpadded.
+    X and Y are zero-padded to 3 digits. XD and YD show MDB 0 as XD0, MDB 1 as XD0u
+    and MDB 2n as XDn. Other banks are not padded.
     """
     if memory_type in ("XD", "YD"):
         if mdb_address == 0:
@@ -241,14 +242,13 @@ class AddressNormalizerMixin:
 class AddressRecord:
     """Immutable record for a single PLC address.
 
-    Simpler than ClickNick's AddressRow -- omits all UI validation state.
-    For user-facing creation from display addresses, prefer
-    ``make_address_record(...)``.
+    The record has no UI validation state. To build one from a display address
+    such as ``"X001"``, use ``make_address_record(...)``.
     """
 
     # --- Identity ---
     memory_type: str  # 'X', 'Y', 'C', etc.
-    address: int  # MDB address (1, 2, 3... or 0 for XD/YD)
+    address: int  # MDB address. It is the display number except for XD/YD, where XD1 is 2.
 
     # --- Content ---
     nickname: str = ""
@@ -373,7 +373,10 @@ def make_address_record(
     retentive: bool | None = None,
     used: bool | None = None,
 ) -> AddressRecord:
-    """Create an AddressRecord from a display address with inferred defaults."""
+    """Create an AddressRecord from a display address such as ``"X001"``.
+
+    The data type comes from the bank. So does ``retentive``, unless you pass it.
+    """
     return AddressRecord.from_address(
         address,
         nickname=nickname,

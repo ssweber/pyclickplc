@@ -51,10 +51,11 @@ _CDV_CODE_TO_DATA_TYPE: dict[int, DataType] = {
 _DATA_TYPE_TO_CDV_CODE: dict[DataType, int] = {v: k for k, v in _CDV_CODE_TO_DATA_TYPE.items()}
 
 
-# SC addresses that take a New Value. Most SC are read-only system controls. SC50
-# (_PLC_Mode_Change_to_STOP) and SC51 (_Watchdog_Timer_Reset) are left out. Only ladder writes
-# them, and every installed PLCType.ini (2.60 to 4.00; 3.60 has none) marks both R under
-# [DATAVIEW_RW0].
+# SC addresses that can take a New Value in a Data View. Most SC addresses are read-only system
+# controls. SC50 (_PLC_Mode_Change_to_STOP) and SC51 (_Watchdog_Timer_Reset) are left out,
+# because only the ladder program writes them. The PLCType.ini of each installed CLICK
+# version from 2.60 to 4.00 marks both as R under [DATAVIEW_RW0]. CLICK 3.60 has no
+# PLCType.ini.
 WRITABLE_SC: frozenset[int] = frozenset({53, 55, 60, 61, 65, 66, 67, 75, 76, 120, 121})
 
 # SD addresses that are writable (most SD are read-only system data)
@@ -117,8 +118,8 @@ def get_data_type_for_address(address: str) -> DataType | None:
 def is_address_writable(address: str) -> bool:
     """Check if an address is writable (can have a New Value set).
 
-    Most addresses are writable, but SC and SD have specific writable addresses.
-    XD and YD are read-only.
+    XD and YD are read-only. In SC and SD, only the addresses in ``WRITABLE_SC`` and
+    ``WRITABLE_SD`` are writable. Every other valid address is writable.
 
     Args:
         address: Address string like "X001", "SC53"
@@ -131,19 +132,15 @@ def is_address_writable(address: str) -> bool:
     except ValueError:
         return False
 
-    # XD and YD are read-only
     if memory_type in ("XD", "YD"):
         return False
 
-    # SC has specific writable addresses
     if memory_type == "SC":
         return mdb_address in WRITABLE_SC
 
-    # SD has specific writable addresses
     if memory_type == "SD":
         return mdb_address in WRITABLE_SD
 
-    # All other addresses are writable
     return True
 
 
@@ -152,10 +149,10 @@ class DataViewRecord:
     """Represents a single row in a CLICK DataView.
 
     A dataview row contains an address to monitor and optionally a new value
-    to write to that address. The nickname and comment are display-only
-    fields populated from SharedAddressData.
-    For user-facing creation from display addresses, prefer
-    ``make_dataview_record(...)``.
+    to write to that address. The nickname and comment are for display only.
+    pyclickplc does not fill them in, the CDV file does not store them, and
+    ``==`` ignores them. To build a record from a display address such as
+    ``"DS1"``, use ``make_dataview_record(...)``.
     """
 
     # Core data (stored in CDV file)
@@ -163,7 +160,7 @@ class DataViewRecord:
     data_type: DataType | None = None  # DataType for the address
     new_value: DataViewValue = None  # Native Python value for optional write
 
-    # Display-only fields (populated from SharedAddressData)
+    # For display only. The CDV file does not store these.
     nickname: str = field(default="", compare=False)
     comment: str = field(default="", compare=False)
 
@@ -275,7 +272,10 @@ def make_dataview_record(
     *,
     new_value: DataViewValue = None,
 ) -> DataViewRecord:
-    """Create a DataViewRecord from a display address with inferred defaults."""
+    """Create a DataViewRecord from a display address such as ``"DS1"``.
+
+    The data type comes from the address's bank.
+    """
     return DataViewRecord.from_address(
         address,
         new_value=new_value,
@@ -360,7 +360,7 @@ def datatype_to_storage(value: int | float | bool | str | None, data_type: DataT
     """Convert a native Python value to CDV storage format.
 
     Args:
-        value: The native Python value (bool, int, or float).
+        value: The native Python value: bool, int or float, or str for TXT.
         data_type: DataType for conversion.
 
     Returns:
@@ -414,7 +414,7 @@ def datatype_to_display(value: int | float | bool | str | None, data_type: DataT
     """Convert a native Python value to a UI-friendly display string.
 
     Args:
-        value: The native Python value (bool, int, or float).
+        value: The native Python value: bool, int or float, or str for TXT.
         data_type: DataType for conversion.
 
     Returns:
@@ -497,7 +497,7 @@ def validate_new_value(display_str: str, data_type: DataType) -> tuple[bool, str
     if not display_str:
         return True, ""
     if data_type == DataType.TXT:
-        # A CLICK stores a Text byte above 127 unchanged, so a DataView accepts 0..255.
+        # Accept codes 0 to 255, because a CLICK PLC stores a Text byte above 127 unchanged.
         if len(display_str) != 1:
             return False, "Must be single char"
         if ord(display_str) > 0xFF:
@@ -513,7 +513,10 @@ def validate_new_value(display_str: str, data_type: DataType) -> tuple[bool, str
 
 @dataclass(frozen=True)
 class DisplayParseResult:
-    """Result object for non-throwing display -> native parsing."""
+    """The result of ``DataViewFile.try_parse_display``, which does not raise.
+
+    If the display string is invalid, ``ok`` is False and ``error`` says why.
+    """
 
     ok: bool
     value: DataViewValue = None
@@ -652,7 +655,10 @@ class DataViewFile:
 
     @staticmethod
     def set_row_new_value_from_display(row: DataViewRecord, display_str: str) -> None:
-        """Strictly set a row's native new_value from a display string."""
+        """Parse a display string and set it as the row's native new_value.
+
+        Raise ValueError if the row is read-only or the string is not valid for its data type.
+        """
         ok, error = DataViewFile.validate_row_display(row, display_str)
         if not ok:
             raise ValueError(error)
@@ -749,7 +755,12 @@ class DataViewFile:
         return ",".join(parts)
 
     def save(self, path: Path | str | None = None) -> None:
-        """Save CDV back to disk, converting native values at the file boundary."""
+        """Write the rows to a CDV file at *path*, or at ``self.path`` if *path* is None.
+
+        Each new value is converted from its Python type to the text that the CDV file
+        stores. If the rows and header have not changed since the last ``load`` or
+        ``save``, the bytes of that file are written again unchanged.
+        """
         target = Path(path) if path is not None else self.path
         if target is None:
             raise ValueError("No path provided for save")
@@ -872,7 +883,11 @@ def _validate_cdv_new_value(
     filename: str,
     row_num: int,
 ) -> list[str]:
-    """Validate CDV new_value storage and logical ranges for a row."""
+    """Return the problems with one row's stored new value.
+
+    Check that the stored number is in range for its storage, and that the value it
+    converts to is in range for the data type.
+    """
     issues: list[str] = []
     prefix = f"CDV {filename} row {row_num}: {address}"
 
@@ -1011,7 +1026,12 @@ def verify_cdv(
     rows: list[DataViewRecord],
     has_new_values: bool | None = None,
 ) -> list[str]:
-    """Verify in-memory rows against a CDV file using native value comparison."""
+    """Compare *rows* to a CDV file and return a list of the differences.
+
+    Values are compared as Python values, not as the text in the file. If
+    *has_new_values* is None, the expected flag is True when any non-empty row has a
+    new value.
+    """
     has_values = has_new_values
     if has_values is None:
         has_values = any(
