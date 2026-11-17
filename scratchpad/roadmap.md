@@ -47,10 +47,9 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 - `[DATAVIEW_RW0]` in CLICK 4's `PLCType.ini` has `SC50 = R` (and `SC51 = R` in 4.00), while
   `dataview.WRITABLE_SC` includes 50 and 51. What does `R` mean there? A Data View New Value on SC50 and SC51
   would show it.
-- What does a CLICK answer to Modbus function codes 7, 8, 11, 12, 17, 24 and 43 (exception status,
-  diagnostics, the comm event counter and log, server id, FIFO queue, device identification)?
-  `ClickServer` answers every function code but 1-6, 15 and 16 with exception 01, to be confirmed against
-  a CLICK. A raw request of each to a CLICK answers it, and `ClickServer` can then give the same answer.
+- Does CLICK's Write Data into PLC clear a blank address for every memory type, or only for Text? It was
+  seen for Text; the `write_plc_data` docs warn for every type, which is the safe reading. Writing a dump
+  with a blank DS, DF or C address over a PLC holding a value there answers it (needs a real PLC).
 
 ## Unscheduled
 
@@ -63,6 +62,11 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   `is_running()` gives False until `start()` listens again. A fix accepts connections itself
   (`loop.sock_accept` on sockets `ClickServer` binds, carrying on after a failed accept) instead of through
   `loop.create_server`, and keeps `_server.transport.sockets` working for pyrung.
+- **`ClickServer` answers function code 17 (report server id) with exception 01, where a CLICK answers.**
+  A real C2-03CPU in RUN (probed 2026-11-16) answered FC 7, 8 (sub-function 0), 11, 12, 20,
+  24 and 43/14 with exception 01, as `ClickServer` does, and FC 17 with `11 09 00 ff 00 08 00 c6 03 c0 00`:
+  run indicator FF, `00 c6` = 198, the catalog's id for C2-03CPU; the other bytes are unknown. Decided
+  (Sam): keep 01.
 - **CLICK's digits for a large DF value follow no rule found** (ClickNick's run D2), so `write_plc_data`
   matches CLICK's cell for some large values and not for others. Not pursued: both forms read back as the
   same float32.
