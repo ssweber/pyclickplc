@@ -123,7 +123,8 @@ class TestValidateNickname:
     def test_click4_refused_names(self, name):
         # Source: ClickNick runner RESULTS-F.md (real CLICK 4.00). The Address Picker and the
         # CSV import refuse these. PLCType.ini [NGWORD] WORD lists MAX MIN MDN AVG RAND ABS
-        # for 4.00 only. We refuse them for CLICK 3 projects too, by ruling.
+        # for 4.00 only. pyclickplc refuses them for CLICK 3 projects
+        # too. A CLICK 3 project that holds one breaks when CLICK 4 opens it.
         assert validate_nickname(name) == (False, "Reserved keyword")
 
     @pytest.mark.parametrize("name", ["MAXIMUM", "Max_Speed", "Speed"])

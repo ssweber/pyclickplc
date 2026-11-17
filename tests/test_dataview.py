@@ -548,7 +548,10 @@ class TestValidateNewValue:
         ],
     )
     def test_edge_whitespace_still_valid(self, display, data_type):
-        """A New Value with edge whitespace is valid. The nickname CSV's edge rule does not apply."""
+        """A New Value with edge whitespace is valid.
+
+        The value is parsed to a number, so the nickname CSV's edge rule does not apply.
+        """
         assert validate_new_value(display, data_type) == (True, "")
         row = DataViewRecord(address="DS1", data_type=data_type)
         assert DataViewFile.validate_row_display(row, display) == (True, "")

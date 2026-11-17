@@ -58,7 +58,8 @@ do not change the test matrix before then.
 - Add a CHANGELOG (Unreleased) entry when a user sees the change. Add none for lockfile or CI
   changes. Never rewrite a published entry. Change user docs (`docs/`, CHANGELOG) only where
   what a user sees or does changes. A fine edge goes in a test, not a paragraph. Prose follows
-  the Writing section of AGENTS.md.
+  the Writing section of AGENTS.md. Do not tell the history of a change in docs or comments,
+  and do not use marketing words.
 
 ## Ground truth
 

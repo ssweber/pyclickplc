@@ -8,9 +8,10 @@ pyclickplc is a shared utility library for AutomationDirect CLICK PLCs. It provi
 
 Sentence style is in the Writing section of `../AGENTS.md`. These decisions are about what the docs contain.
 
+- **Say what it does.** Do not use marketing words such as "powerful" or "elegant".
 - **Code first.** Start with a working example and explain it afterwards. If the code is clear, do not restate it in prose.
 - **One concept per section.** Keep paragraphs short and formatting minimal.
-- **Simple to complex.** Every guide starts with the 80% use case and adds detail after that. Leave edge cases for later in the guide.
+- **Simple to complex.** Every guide starts with the 80% use case and adds detail after that. Do not open a guide with edge cases.
 - **Real scenarios, not API walkthroughs.** Write "Read a temperature register", not "Step 1: call read()."
 - **Link, don't repeat.** If the types guide explains types, link to it.
 - **Keep internals out of the guides.** A guide shows how to use the library. The API Reference gives the exhaustive details.
