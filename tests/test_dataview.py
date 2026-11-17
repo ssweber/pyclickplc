@@ -104,6 +104,12 @@ class TestIsAddressWritable:
         assert is_address_writable("SC1") is False
         assert is_address_writable("SC100") is False
 
+    @pytest.mark.parametrize("address", ["SC50", "SC51"])
+    def test_sc_written_only_by_ladder_takes_no_new_value(self, address):
+        assert is_address_writable(address) is False
+        with pytest.raises(ValueError, match=f"Read-only address: {address}"):
+            DataViewRecord.from_address(address, new_value=True)
+
     def test_sd_writable_addresses(self):
         for addr in WRITABLE_SD:
             assert is_address_writable(f"SD{addr}") is True
@@ -772,6 +778,18 @@ class TestCheckCdv:
         issues = check_cdv_file(cdv)
         assert len(issues) == 1
         assert "invalid for BIT" in issues[0]
+
+    def test_a_new_value_on_sc50_still_reads_and_is_reported(self, tmp_path):
+        cdv = tmp_path / "sc50.cdv"
+        lines = ["-1,0,0\n", f"SC50,{_CdvStorageCode.BIT},1\n"]
+        for _ in range(99):
+            lines.append(",0\n")
+        cdv.write_text("".join(lines), encoding="utf-16")
+
+        assert read_cdv(cdv).rows[0].new_value is True
+        issues = check_cdv_file(cdv)
+        assert len(issues) == 1
+        assert "SC50 has new_value but address is not writable" in issues[0]
 
     def test_check_cdv_file_non_writable_with_new_value(self, tmp_path):
         cdv = tmp_path / "non-writable.cdv"

@@ -44,9 +44,6 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   as configparser reads it, as part of that option's value, even `  [Sec20]`; Windows' INI functions
   likely trim the indent and read a line of its own (inferred), so `write_plc_name` refuses a file with a
   continuation line. The four Project.ini fixtures have no indented line.
-- `[DATAVIEW_RW0]` in CLICK 4's `PLCType.ini` has `SC50 = R` (and `SC51 = R` in 4.00), while
-  `dataview.WRITABLE_SC` includes 50 and 51. What does `R` mean there? A Data View New Value on SC50 and SC51
-  would show it.
 
 ## Unscheduled
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Behaviour changes
+
+- A Data View row for SC50 (`_PLC_Mode_Change_to_STOP`) or SC51 (`_Watchdog_Timer_Reset`) takes no New Value: `is_address_writable` gives False and `DataViewRecord.from_address(..., new_value=...)` raises `ValueError`; before, both took one.
+  - Set them from the ladder program. A `.cdv` holding a New Value on them still reads, `check_cdv_file` reports it, and `write_cdv` writes it back.
+
 ## 0.8.0 - 2026-11-16
 
 ### Added
