@@ -644,7 +644,8 @@ def write_plc_name(path: str | Path, name: str) -> None:
     lines = _lines(original)[1]
     # configparser reads a line indented under an option as part of the option's value. The
     # Windows INI functions probably strip the indent and read it as a line of its own. That
-    # is an assumption that no one has tested. CLICK writes no such line, so refuse the file.
+    # is an assumption that no one has tested. The two readers may disagree, so refuse the
+    # file. CLICK writes no such line.
     for number, (role, _) in enumerate(_line_roles(lines), start=1):
         if role == "continuation":
             raise ValueError(

@@ -107,7 +107,7 @@ class TestModbusMappings:
         assert 1 not in m.writable
 
     def test_sd_read_only_fc(self):
-        """SD's only function code is FC 4 (read input registers), so SD is not writable."""
+        """SD's only function code is FC 4 (read input registers), so ``is_writable`` is False."""
         assert not MODBUS_MAPPINGS["SD"].is_writable
 
     def test_width_2_banks(self):

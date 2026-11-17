@@ -261,8 +261,9 @@ def _validate_typed_value(initial_value: str, data_type: int) -> tuple[bool, str
     The import rules are the extra checks that ``validate_initial_value`` makes because
     CLICK's nickname import refuses some values. They reject a space or other code up to 0x20
     at either end of a value that is not Text. They also reject a non-ASCII character, an
-    underscore or a hex ``0x`` prefix in a number. A DataView new value is converted to a
-    number and is not written as text. So ``validate_new_value`` makes only this check.
+    underscore or a hex ``0x`` prefix in a number. A DataView new value that is not Text is
+    converted to a number and is not written as text. So ``validate_new_value`` makes only
+    this check for such a value.
     """
     if initial_value == "":
         return True, ""  # Empty is valid (means no initial value set)

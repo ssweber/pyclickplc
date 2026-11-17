@@ -1095,7 +1095,8 @@ def test_line_reading_matches_configparser(tmp_path):
         assert name == (value.strip() or None if value is not None else None), text
 
         # For one file in eight, check write_plc_name. It refuses a file with a continuation
-        # line. Otherwise it sets the name, and the name reads back.
+        # line. Otherwise it either sets the name, and the name reads back, or it refuses the
+        # edit and leaves the file unchanged.
         if number % 8:
             continue
         path.write_bytes(data)
