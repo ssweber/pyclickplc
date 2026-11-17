@@ -633,7 +633,7 @@ def write_plc_name(path: str | Path, name: str) -> None:
             raise ValueError(
                 f"Cannot set the PLC name in {path}: line {number} is indented under the line"
                 " above it, so readers may take it as part of that line's value or as a line"
-                " of its own; remove the indent."
+                " of its own. Remove the indent."
             )
     section, key, _, _ = _plc_name_line(lines, written)
     try:

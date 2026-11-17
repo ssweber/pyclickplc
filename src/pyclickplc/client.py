@@ -608,7 +608,7 @@ class AddressInterface:
                 end_display_name = format_address_display(bank1, end)
                 if start_display_name.endswith("u") or end_display_name.endswith("u"):
                     raise ValueError(
-                        f"{bank1} ranges cannot include upper-byte addresses; read {bank1}0u separately."
+                        f"{bank1} ranges cannot include upper-byte addresses. Read {bank1}0u separately."
                     )
                 start_display = xd_yd_mdb_to_display(start)
                 end_display = xd_yd_mdb_to_display(end)
