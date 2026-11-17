@@ -47,9 +47,6 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 - `[DATAVIEW_RW0]` in CLICK 4's `PLCType.ini` has `SC50 = R` (and `SC51 = R` in 4.00), while
   `dataview.WRITABLE_SC` includes 50 and 51. What does `R` mean there? A Data View New Value on SC50 and SC51
   would show it.
-- Does CLICK's Write Data into PLC clear a blank address for every memory type, or only for Text? It was
-  seen for Text; the `write_plc_data` docs warn for every type, which is the safe reading. Writing a dump
-  with a blank DS, DF or C address over a PLC holding a value there answers it (needs a real PLC).
 
 ## Unscheduled
 

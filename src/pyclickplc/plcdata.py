@@ -308,8 +308,12 @@ def write_plc_data(
             an infinity, so they raise too (a program or a Modbus write can
             still put one in the PLC). Nothing is written then.
     """
-    # The warning is from ClickNick's Write Data check (run G6): a file holding 28 TXT cells
-    # left every other TXT address blank in the PLC.
+    # The warning is from ClickNick's Write Data runs on CLICK 4.00 and a C2-03CPU. Run G6: a file
+    # holding 28 TXT cells left every other TXT address blank, with no question. The
+    # write-data-blanks run (2026-11-17): for C, DS, DF and TD, CLICK asks about each blank cell
+    # ("illegal value") and writes 0 on Yes; No cancels the write. A bank absent from the file
+    # was left alone. Outside TXT this function writes 0 for an unset address, never a blank, so
+    # CLICK is not expected to ask about its files (X, Y, T, CT, DD, DH and CTD not tried).
     if banks is not None:
         selected = list(banks)
     else:
