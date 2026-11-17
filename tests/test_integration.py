@@ -31,7 +31,8 @@ from tests._nan import KEEPS_SIGNALLING_NAN
 # Port for integration tests (avoid 502 which needs root)
 TEST_PORT = 15020
 
-# The event loops asyncio has here: Selector everywhere, and Proactor on Windows.
+# The event loops that asyncio offers on this platform. The Selector loop exists everywhere,
+# and the Proactor loop only on Windows.
 _LOOP_FACTORIES: list[Any] = [asyncio.SelectorEventLoop]
 _LOOP_FACTORY_IDS = ["selector"]
 if hasattr(asyncio, "ProactorEventLoop"):
@@ -583,7 +584,8 @@ class TestRawAnswers:
                     if step == "write":
                         response = await plc._client.write_register(yd_base + 3, 0x8000)
                         assert not response.isError()
-                        # A Y gap coil, and a signalling NaN in DF1.
+                        # Coil 8240 lies between two Y slots, so no Y address maps to it.
+                        # Then write a signalling NaN to DF1.
                         response = await plc._client.write_coil(8240, True)
                         assert not response.isError()
                         response = await plc._client.write_registers(df1, [0x0001, 0x7F80])
@@ -722,7 +724,8 @@ REQUESTS_HELD = 256 * 1024
 class _SilentClient:
     """A client that sends requests and reads nothing until a test reads.
 
-    A bare socket, because asyncio's StreamReader would go on reading into its own buffer.
+    It uses a raw socket, because asyncio's StreamReader would go on reading the answers into
+    its own buffer.
     """
 
     sock: socket.socket
@@ -756,13 +759,15 @@ class _SilentClient:
 async def _client_that_does_not_read(
     server: ClickServer, count: int = 60_000
 ) -> tuple[server_module._Connection, _SilentClient]:
-    """Open a client that sends count requests and reads no answer, and wait until the server
-    holds its answers.
+    """Open a client that sends *count* requests and reads no answer.
 
-    Before any request, the client's receive buffer is set to 4 KiB and the server side's send
-    buffer to 64 KiB, as Windows has it. The unread answers then fill both buffers well before
-    the last. Linux otherwise grows loopback buffers to megabytes. Those can take every answer
-    without the server holding any.
+    Wait until the server pauses the connection, and return the connection and the client.
+
+    Before the client sends a request, the helper makes the buffers small, as on Windows. It
+    sets the client's receive buffer to 4 KiB and the server's send buffer to 64 KiB. The
+    unread answers then fill both buffers long before the last request. Without this, Linux
+    grows loopback buffers to megabytes. Those buffers can take every answer, and the server
+    never pauses.
     """
     port = server.bound_port
     assert port is not None
@@ -788,7 +793,8 @@ async def _held_connection(server: ClickServer):
     assert server._server is not None
     (connection,) = server._server.connections.values()
     await _until(lambda: connection._paused, timeout=10)
-    # Still paused a little later: the client's answers stay unsent.
+    # Check that the connection is still paused a little later. That shows the client's
+    # answers stay unsent.
     await asyncio.sleep(0.2)
     await _until(lambda: connection._paused, timeout=10)
     return connection
@@ -895,7 +901,8 @@ class TestFraming:
             pytest.param(b"\x03", bytes([0x83, 3]), id="length 2"),
             pytest.param(b"\x03" + bytes(260), bytes([0x83, 3]), id="length 262"),
             pytest.param(b"\x07", bytes([0x87, 1]), id="length 2, fc7"),
-            # The largest well-formed writes: the byte count is one byte, so 255 at most.
+            # These are the largest well-formed writes. The byte count field is one byte, so it
+            # is 255 at most.
             pytest.param(
                 struct.pack(">BHHB", 16, DS1, 127, 254) + bytes(254),
                 bytes([0x90, 3]),
@@ -961,8 +968,8 @@ class TestFraming:
         server, _provider = framing_server
         count = 60_000
         connection, client = await _client_that_does_not_read(server, count)
-        # The server stops reading and answering. It holds at most one read of requests, and the
-        # answers that its transport takes before it asks the server to pause.
+        # The paused server neither reads nor answers. Its unanswered requests are at most one
+        # read of 256 KiB. Its unsent answers are at most asyncio's 64 KiB limit plus one answer.
         assert connection.transport is not None
         assert connection.transport.get_write_buffer_size() <= ANSWERS_HELD + 11
         assert len(connection._buffer) <= REQUESTS_HELD
@@ -1146,7 +1153,8 @@ class TestServerControls:
             await _until(lambda: len(old.connections) == 1)
             (old_id,) = old.connections
             assert server.is_running() is False
-            # Two starts at once: one replaces the listener, the other finds it running.
+            # Call start() twice at once. One call replaces the listener, and the other raises
+            # because the server is already running.
             results = await asyncio.gather(server.start(), server.start(), return_exceptions=True)
             assert results[0] is None
             assert isinstance(results[1], RuntimeError)
@@ -1221,17 +1229,19 @@ class TestServerControls:
                 assert await _answers("127.0.0.1", port) is True
             return failed
 
-        # A loop of its own, closed before the collection, so nothing it leaks outlives the test.
+        # Run on a loop of its own, and close the loop before gc.collect(), so that nothing the
+        # loop leaks outlives the test.
         with warnings.catch_warnings():
             if proactor:
                 # An accept that fails on the Proactor loop leaves open the socket that asyncio made
-                # for it. asyncio then reports an error that nobody read. The log record of that
-                # report would hold the socket past the test, so the report is not logged.
+                # for it. asyncio then reports "Task exception was never retrieved". A log record
+                # of that report would keep the socket alive past the test. So
+                # _unless_never_retrieved drops the report.
                 warnings.simplefilter("ignore", ResourceWarning)
             with asyncio.Runner(loop_factory=loop_factory) as runner:
                 failed = runner.run(resets())
             accepts_failed = bool(failed)
-            # The errors' tracebacks hold those sockets.
+            # The tracebacks of the recorded errors refer to those sockets.
             failed.clear()
             gc.collect()
         if proactor:
@@ -1254,7 +1264,7 @@ class TestServerControls:
             async with ClickServer(MemoryDataProvider(), host="127.0.0.1", port=0) as server:
                 port = server.bound_port
                 assert port is not None
-                # The first client is taken and closed, and its accept fails.
+                # The first accept takes the client, closes it and raises the error.
                 assert await _answers("127.0.0.1", port) is False
                 assert left == []
                 assert server.is_running() is True
@@ -1388,7 +1398,7 @@ class TestLifecycle:
             else:
                 assert server.is_running() is True
             await server.stop()
-            # The port is free again: the server starts on it.
+            # The port is free again, so the server can start on it.
             await server.start()
             assert server.is_running() is True
             await server.stop()
@@ -1419,7 +1429,8 @@ class TestLifecycle:
         servers = _record_servers(monkeypatch)
         _resolve_without_a_thread(monkeypatch)
         server = ClickServer(MemoryDataProvider(), host="127.0.0.1", port=0)
-        # From 1: if start() is cancelled before its first step, the old listener stays as it was.
+        # The steps start at 1, not 0. If start() is cancelled before its first step, the old
+        # listener stays as it was.
         for steps in range(1, 12):
             await server.start()
             old = _listener_stopped_listening(server)
@@ -1501,7 +1512,7 @@ class TestLifecycle:
                     client.close()
                 gc.collect()
             assert [str(warning.message) for warning in caught] == []
-        # The steps reach from before the server has the client to after it has it.
+        # Some stops came before the client was in the listener's connections, and some after.
         assert listed_before_the_stop == {False, True}
 
     async def test_serve_forever_returns_after_a_cancelled_stop(self):
@@ -1533,7 +1544,8 @@ class TestLifecycle:
         assert server.is_running() is False
         assert server._server is None
         assert _bindable(port)
-        # The server drops the connection after 1 s, though nothing waits for it any more.
+        # The server drops the connection after 1 s, even though the cancelled stop() no longer
+        # waits for it.
         assert connection.lost.done() is False
         await _until(lambda: connection.lost.done(), timeout=3)
         await client.close()
@@ -1711,7 +1723,7 @@ class TestLifecycle:
     def test_clients_of_a_server_left_running_when_its_loop_closed_are_closed(
         self, monkeypatch, loop_factory
     ):
-        # The listening sockets, to check that the next start() closed them.
+        # Record the listening sockets, to check that the next start() closes them.
         servers = _record_servers(monkeypatch)
         server = ClickServer(MemoryDataProvider(), host="127.0.0.1", port=0)
 
@@ -1789,11 +1801,12 @@ class TestLifecycle:
         stopping = asyncio.create_task(server.stop())
         await asyncio.sleep(0)
         await opening
-        await server.start()  # A fresh run, before the waiter has woken.
+        await server.start()  # Start again before the waiting serve_forever() wakes.
         try:
             assert await asyncio.wait_for(waiting, 2) is None
             await stopping
-            # The fresh run is not the one serve_forever() waited on, and runs on.
+            # serve_forever() waited on the run that the first start() opened, and the stop ended
+            # that run. The second start() opened another run, which keeps going.
             assert server.is_running() is True
             port = server.bound_port
             assert port is not None
@@ -1880,8 +1893,11 @@ class TestLifecycle:
 
 
 def _record_servers(monkeypatch: pytest.MonkeyPatch) -> list[list[socket.socket]]:
-    """Record the listening sockets that each later bind makes, one list per bind, even when a
-    cancel leaves the bind unreturned."""
+    """Record each later call to ``_bind``, and return the record.
+
+    Each entry is the list of listening sockets that one call made. A call is recorded even
+    when a cancel stops its result from being returned.
+    """
     made: list[list[socket.socket]] = []
     bind = server_module._bind
 
@@ -1932,10 +1948,10 @@ def _free_tcp_port() -> int:
 def _bindable(port: int) -> bool:
     """True when a server could listen on the port at 127.0.0.1 again.
 
-    On POSIX the socket sets SO_REUSEADDR, as ClickServer does. Then the connections that a
-    server closed, which Linux keeps on the port in TIME_WAIT, don't count. A socket that
-    listens on the port still counts. Windows needs no option for that, and there SO_REUSEADDR
-    would let the socket share a port that another one listens on.
+    On POSIX the test socket sets SO_REUSEADDR, as ClickServer does. Then a connection that a
+    server closed, which Linux keeps on the port in TIME_WAIT, does not block the bind. A
+    socket that listens on the port still blocks it. Windows needs no option for this. On
+    Windows, SO_REUSEADDR would let the socket share a port that another socket listens on.
     """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -1958,8 +1974,10 @@ async def _client_of(
 
 
 def _listener_stopped_listening(server: ClickServer) -> server_module._Listener:
-    """Make the server's listener report that it stopped listening, as it does on Windows
-    once asyncio has closed one of its sockets; return that listener."""
+    """Make the server's listener report that it has stopped listening, and return the listener.
+
+    On Windows a listener reports this once asyncio has closed one of its sockets.
+    """
     listener = server._server
     assert listener is not None
     cast(Any, listener).is_listening = lambda: False
@@ -1976,7 +1994,10 @@ async def _kill_listening_socket(server: ClickServer, index: int) -> None:
 
 
 def _unless_never_retrieved(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
-    """Report an error in the loop as asyncio does, except a task's error that nobody read."""
+    """Pass each loop error to asyncio's default handler.
+
+    Skip the report "Task exception was never retrieved".
+    """
     if context.get("message") != "Task exception was never retrieved":
         loop.default_exception_handler(context)
 
@@ -1991,12 +2012,13 @@ def _connect_and_reset(port: int) -> None:
 def _fail_accepts(
     monkeypatch: pytest.MonkeyPatch, errors: list[OSError], *, taking_a_client: bool
 ) -> list[OSError]:
-    """Make the next accepts raise the errors, in order. Return the errors that are left.
+    """Make the next accepts raise *errors*, in order. Return the list of errors not yet raised.
 
-    With ``taking_a_client``, each failing accept first takes a client and closes it, as when
-    the client went away; without, it fails before taking one, as when sockets run out. The
-    server accepts with ``socket.accept`` on a selector loop and with the running loop's
-    ``sock_accept`` on the Proactor loop; both are made to fail.
+    If ``taking_a_client`` is true, each failing accept first accepts a client and closes it.
+    That is what happens when the client went away. Otherwise each failing accept raises
+    before it accepts a client. That is what happens when sockets run out. On a selector loop
+    the server accepts with ``socket.accept``. On the Proactor loop it accepts with the running
+    loop's ``sock_accept``. This function makes both of them fail.
     """
     loop = asyncio.get_running_loop()
     sock_accept = loop.sock_accept
@@ -2027,8 +2049,10 @@ def _fail_accepts(
 
 
 def _record_failed_accepts(monkeypatch: pytest.MonkeyPatch) -> list[OSError]:
-    """Record the error of every accept that fails from here on, on a selector loop or on the
-    running loop if it is a Proactor loop."""
+    """Record the error of every accept that fails after this call, and return the record.
+
+    It records failures on a selector loop, and on the running loop if that is a Proactor loop.
+    """
     loop = asyncio.get_running_loop()
     sock_accept = loop.sock_accept
     accept = socket.socket.accept

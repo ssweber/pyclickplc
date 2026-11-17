@@ -1,4 +1,4 @@
-"""Tests for maintained vendor system-nickname guidance."""
+"""Tests for the catalog of CLICK's nicknames for the SC and SD system addresses."""
 
 from datetime import date
 from pathlib import Path

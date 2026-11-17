@@ -63,7 +63,10 @@ def generate(
     docs_dir: Path = DOCS_DIR,
     config_file: Path = CONFIG_FILE,
 ) -> Path:
-    """Generate the curated HTML-route index used by public agents."""
+    """Write *output_file*, which links each page in SECTIONS by its URL on the site.
+
+    Return the path of the file.
+    """
     site_name = _simple_config_value(config_file, "site_name")
     site_description = _simple_config_value(config_file, "site_description")
     site_url = _simple_config_value(config_file, "site_url")

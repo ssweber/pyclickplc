@@ -680,7 +680,10 @@ class TestClickDump:
         assert isinstance(value, float) and math.isnan(value)
 
     def test_write_matches_click_bytes_apart_from_err_format(self, tmp_path: Path) -> None:
-        """With each NaN set to 0.0, the write is the dump with Err-Format as 0.00000000."""
+        """With each NaN set to 0.0, write_plc_data writes the bytes of CLICK's dump.
+
+        The one difference is 0.00000000 in place of each Err-Format cell.
+        """
         data = read_plc_data(CLICK_DUMP)
         data = {a: 0.0 if isinstance(v, float) and math.isnan(v) else v for a, v in data.items()}
         out = tmp_path / "out.csv"
@@ -694,12 +697,14 @@ class TestClickDump:
         assert not out.exists()
 
 
-# The DF and TXT cell forms that CLICK writes. The file holds rows DF251 and TXT961..TXT991
-# of a dump that CLICK v4.00 wrote, with each section's start, header and end lines.
+# A dump that shows how CLICK v4.00 writes DF and TXT cells. It holds the DF251 row and the
+# TXT961, TXT971, TXT981 and TXT991 rows that CLICK wrote, and each section's start, header and
+# end lines.
 CLICK_FORMS = Path(__file__).parent / "fixtures" / "PlcDataDumpForms.csv"
 # CLICK writes TXT972's comma unquoted, so its row has 11 cells.
 COMMA_ROW = "TXT971,*,,,/,:,;,<,=,>,?,@,"
-# The values the PLC held: DF251..DF260, and TXT961..TXT970 and TXT981..TXT1000.
+# The values that the PLC held in DF251..DF260, TXT961..TXT970 and TXT981..TXT1000. The comma
+# row, TXT971..TXT980, is not here.
 FORMS_DF = [1.8e30, 1.9e30, 2e30, 1.5e30, 1e35, -3e38, -0.0, 0.001953125, 0.0, 0.0]
 FORMS_TXT = {
     961: [" ", "!", '"', "#", "$", "%", "&", "'", "(", ")"],
@@ -741,7 +746,10 @@ class TestClickForms:
         assert str(data["DF257"]) == "-0.0"
 
     def test_write_matches_click_cells_of_comma_row(self, tmp_path: Path) -> None:
-        """The comma row's other nine marks are written as CLICK writes them."""
+        """write_plc_data writes the nine marks other than the comma in TXT971's row as CLICK did.
+
+        The test leaves TXT972, which held the comma, empty.
+        """
         marks = ["*", "/", ":", ";", "<", "=", ">", "?", "@"]
         addrs = ["TXT971"] + [f"TXT{n}" for n in range(973, 981)]
         out = tmp_path / "out.csv"
@@ -792,8 +800,8 @@ class TestWriteDfForm:
         """The writer produces the same cell as CLICK for this value."""
         assert _first_cell(tmp_path, {"DF1": value}, "DF") == cell
 
-    # CLICK wrote these neighbouring float32 values with 20 and 19 digits in ClickNick's run D2
-    # (runner-jobs/d2/live-r8 DF251 and live-r6 DF258).
+    # CLICK wrote 0x7154FFFF with 20 significant digits and the next float32 value, 0x71550000,
+    # with 19. _DF_KEPT_LIMIT in plcdata.py lies between the two.
     @pytest.mark.parametrize(
         ("bits", "cell"),
         [
@@ -808,17 +816,18 @@ class TestWriteDfForm:
         (value,) = struct.unpack("<f", struct.pack("<I", bits))
         assert _first_cell(tmp_path, {"DF1": value}, "DF") == cell
 
-    # CLICK wrote these cells in ClickNick's run D2 (runner-jobs/d2/live-r2, live-r6, live-r8)
-    # for the float32 values given as bits. pyclickplc writes some with other last digits.
+    # CLICK wrote each cell for the float32 value given as bits. write_plc_data writes some of
+    # these values with different last digits. read_plc_data reads each cell as the value that
+    # CLICK wrote.
     @pytest.mark.parametrize(
         ("bits", "cell"),
         [
-            (0x7154FFFF, "1054724837913280268300000000000.00000000"),  # r8 DF251
-            (0x71550000, "1054724913471143994000000000000.00000000"),  # r6 DF258
-            (0x715815B4, "1069999993433429738000000000000.00000000"),  # r2 DF254
-            (0x690B933D, "10546000128175236840000000.00000000"),  # r8 DF254
-            (0x79A28486, "105479998215512625970000000000000000.0000"),  # r8 DF253
-            (0x7E9EB56B, "105479999641619551220000000000000000000.0"),  # r8 DF257
+            (0x7154FFFF, "1054724837913280268300000000000.00000000"),
+            (0x71550000, "1054724913471143994000000000000.00000000"),
+            (0x715815B4, "1069999993433429738000000000000.00000000"),
+            (0x690B933D, "10546000128175236840000000.00000000"),
+            (0x79A28486, "105479998215512625970000000000000000.0000"),
+            (0x7E9EB56B, "105479999641619551220000000000000000000.0"),
         ],
     )
     def test_reads_click_large_cell_as_float32_written(
@@ -926,9 +935,10 @@ class TestTxtForm:
         assert not out.exists()
 
     def test_punctuation_round_trips(self, tmp_path: Path) -> None:
-        """Write and read back the 28 marks among CLICK_FORMS's test values, all written plain.
+        """Each ASCII punctuation mark except ``+ , - .`` reads back as written.
 
-        They are all the ASCII punctuation marks except ``+ , - .``.
+        CLICK_FORMS holds all 28 of these marks. CLICK writes each one as itself, not as a
+        ``$`` code.
         """
         punctuation = [
             chr(c) for c in range(0x21, 0x7F) if not chr(c).isalnum() and chr(c) not in "+,-."

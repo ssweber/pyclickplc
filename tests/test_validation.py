@@ -42,7 +42,7 @@ class TestValidateNickname:
         [" Pump", "Pump ", "  Spaced Nick  ", " ", "\tPump", "Pump\t", "Pump\x0b", "\x0cPump"],
     )
     def test_leading_or_trailing_whitespace_invalid(self, name):
-        # CLICK strips them, so "Pump " and "Pump" would be one nickname
+        # CLICK strips whitespace from both ends, so "Pump " and "Pump" would be one nickname
         assert validate_nickname(name) == (False, "Cannot start or end with a space")
 
     @pytest.mark.parametrize("char", [chr(code) for code in range(0x21)])
@@ -121,15 +121,15 @@ class TestValidateNickname:
         ["MAX", "Max", "max", "MIN", "ABS", "abs", "RAND", "MDN", "AVG", "LOG", "Log", "log"],
     )
     def test_click4_refused_names(self, name):
-        # Source: ClickNick runner RESULTS-F.md (real CLICK 4.00). The Address Picker and the
-        # CSV import refuse these. PLCType.ini [NGWORD] WORD lists MAX MIN MDN AVG RAND ABS
-        # for 4.00 only. pyclickplc refuses them for CLICK 3 projects too, because a CLICK 3
-        # project that holds one breaks when CLICK 4 opens it. Sam ruled this.
+        # CLICK 4.00's Address Picker and CSV import refuse these names. PLCType.ini lists MAX,
+        # MIN, MDN, AVG, RAND and ABS under [NGWORD] WORD in 4.00 only. pyclickplc refuses them
+        # for CLICK 3 projects too, because a CLICK 3 project that uses one of these names
+        # breaks when CLICK 4 opens it.
         assert validate_nickname(name) == (False, "Reserved keyword")
 
     @pytest.mark.parametrize("name", ["MAXIMUM", "Max_Speed", "Speed"])
     def test_click4_accepted_names(self, name):
-        # Source: RESULTS-F.md. CLICK 4.00 stores these names, so only a whole-name match is refused.
+        # CLICK 4.00 stores these names. It refuses a reserved word only as the whole name.
         assert validate_nickname(name) == (True, "")
 
     def test_click4_names_refused_for_system_banks(self):
@@ -137,8 +137,8 @@ class TestValidateNickname:
         assert validate_nickname("MAX", system_bank="SC") == (False, "Reserved keyword")
 
     def test_comma_refused(self):
-        # Source: RESULTS-F.md, where CLICK refused `A,B` ("reserved character"). PLCType.ini
-        # [NGWORD] `All =` lists `,` in every CLICK version.
+        # CLICK refuses `A,B` as a "reserved character". In every CLICK version, PLCType.ini
+        # lists `,` under [NGWORD] `All =`.
         assert validate_nickname("A,B") == (False, "Invalid: ,")
 
     def test_forbidden_chars(self):
@@ -189,7 +189,8 @@ class TestValidateComment:
         assert validate_comment("two  words") == (True, "")
 
     def test_block_tags_not_rejected(self):
-        # Length-only validation -- block tags are NOT rejected here
+        # validate_comment checks only the length and the ends of a comment. It does not reject a
+        # block tag.
         assert validate_comment("[Block:MyBlock]") == (True, "")
         assert validate_comment("[Block:Dup]") == (True, "")
 
@@ -302,7 +303,7 @@ class TestValidateInitialValue:
     # --- TXT ---
     @pytest.mark.parametrize("char", ["A", " ", "\t", "\x0b", "\x0c"])
     def test_txt_valid(self, char):
-        # A Text space or tab is a value. write_csv quotes it, so CLICK stores it.
+        # A Text value may be a space, tab, VT or FF. write_csv quotes it, so CLICK stores it.
         assert validate_initial_value(char, DataType.TXT) == (True, "")
 
     @pytest.mark.parametrize(
@@ -322,7 +323,7 @@ class TestValidateInitialValue:
         ],
     )
     def test_number_with_edge_whitespace_invalid(self, value, data_type):
-        # CLICK refuses " 5" when it is quoted and strips the space when it is bare.
+        # CLICK refuses " 5" when it is quoted and strips the space when it is unquoted.
         # int(" 5") accepts it.
         assert validate_initial_value(value, data_type) == (
             False,
@@ -330,8 +331,9 @@ class TestValidateInitialValue:
         )
 
     # --- Number forms in CLICK's import ---
-    # Seen in CLICK: the INT and FLOAT cases except 1_0.5, and HEX 0x1F and 1F.
-    # Inferred: INT2, 1_0.5 and the other HEX cases.
+    # CLICK's import was tried with the INT and FLOAT cases except 1_0.5, and with HEX 0x1F
+    # and 1F. The INT2 cases, 1_0.5 and the other HEX cases were not tried. They assume that
+    # CLICK treats them as it treats the cases that were tried.
     @pytest.mark.parametrize(
         ("value", "data_type"),
         [
@@ -402,7 +404,8 @@ class TestValidateInitialValue:
         ],
     )
     def test_already_invalid_keeps_its_message(self, value, data_type, error):
-        # The import-only checks run only on a value that passes the type check
+        # validate_initial_value checks for non-ASCII, an underscore and a 0x prefix only after
+        # the value passes the type check. A value that fails gets the type check's message.
         assert validate_initial_value(value, data_type) == (False, error)
 
     def test_txt_too_long(self):

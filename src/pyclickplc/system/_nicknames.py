@@ -5,12 +5,13 @@ The names follow CLICK Programming Software 4.00's ``PLCType.ini``, section
 SD75 and SD76 are the exception. CLICK 4.00 does not list them, so they keep the
 AutomationDirect help page's names and ``source``.
 
-CLICK project databases can keep stale system nicknames after software and
-firmware updates. This catalog records the current CLICK name for each address.
-Repairs stay narrow on purpose. The code changes a value only when it is a
-recorded stale alias. It preserves every other value. It also preserves a blank,
-unless a specific incident justifies filling it. So this snapshot never silently
-replaces newer vendor data.
+A CLICK project database can keep an old system nickname after a software or
+firmware update. This catalog records the current CLICK name for each address.
+``canonicalize_system_nickname`` replaces a nickname only when the catalog lists
+it as an old name for that address. It leaves every other value as it is. It
+leaves a blank too, except at the few addresses where the catalog lists a blank
+as an old value. So if AutomationDirect renames an address after this catalog
+was made, the newer name is never replaced.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ AUTOMATIONDIRECT_SYSTEM_NICKNAME_REVIEWED_ON = date(2026, 11, 16)
 
 @dataclass(frozen=True)
 class SystemNicknameGuidance:
-    """Vendor guidance and safe repair inputs for one system address."""
+    """The CLICK nickname for one system address, and the old nicknames to replace with it."""
 
     nickname: str
     repair_from: frozenset[str]
@@ -36,13 +37,13 @@ class SystemNicknameGuidance:
     reviewed_on: date
 
 
-# Names as CLICK 4.00 writes them (PLCType.ini, [SYSTEM0]). CLICK 3.71 and 3.92
-# agree. Where the help pages differ from CLICK, CLICK wins.
+# The names are the ones that CLICK 4.00 writes (PLCType.ini, [SYSTEM0]). CLICK 3.71 and 3.92
+# write the same names. Where a help page gives a different name, this catalog uses CLICK's name.
+# SD71, SD72, SD75 and SD76 take their names from the help pages, because 4.00 does not list them.
 #
-# Omitted intentionally:
-# - SD73/SD74 have two documented names selected by CPU type.
-# - SD150, SC160-SC171 and SD160-SD163 are in 4.00 but not in this catalog.
-# - SD71, SD72, SD75 and SD76 are kept from the help pages, because 4.00 does not list them.
+# The catalog leaves out these addresses on purpose:
+# - SD73 and SD74. The documentation gives two names for each, and the CPU type decides which.
+# - SD150, SC160-SC171 and SD160-SD163. CLICK 4.00 lists them.
 _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
     # System Control Relays
     ("SC", 1): "_Always_ON",
@@ -422,14 +423,19 @@ AUTOMATIONDIRECT_SYSTEM_NICKNAMES: dict[tuple[str, int], SystemNicknameGuidance]
 
 
 def canonical_system_nickname(memory_type: str, address: int) -> str | None:
-    """Return the documented nickname for a maintained system address."""
+    """Return CLICK's nickname for a system address, or None if this catalog does not list it."""
 
     guidance = AUTOMATIONDIRECT_SYSTEM_NICKNAMES.get((memory_type.upper(), address))
     return guidance.nickname if guidance is not None else None
 
 
 def canonicalize_system_nickname(memory_type: str, address: int, nickname: str) -> str:
-    """Repair an explicitly known stale vendor nickname, preserving other data."""
+    """Return CLICK's current nickname if *nickname* is an old name for the address.
+
+    The old names are the ones that this catalog lists for the address. For any
+    other *nickname*, or an address that the catalog does not list, return
+    *nickname* unchanged.
+    """
 
     guidance = AUTOMATIONDIRECT_SYSTEM_NICKNAMES.get((memory_type.upper(), address))
     if guidance is None:
@@ -440,7 +446,7 @@ def canonicalize_system_nickname(memory_type: str, address: int, nickname: str) 
 
 
 def is_canonical_system_nickname(memory_type: str, address: int, nickname: str) -> bool:
-    """Return whether *nickname* is the maintained vendor value for the address."""
+    """Return True if *nickname* is CLICK's current nickname for the address in this catalog."""
 
     canonical = canonical_system_nickname(memory_type, address)
     return canonical is not None and nickname == canonical

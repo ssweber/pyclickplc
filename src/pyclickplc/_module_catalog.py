@@ -1,13 +1,18 @@
 """Hardware facts from the CLICK 3.92 module catalog.
 
-Model IDs: SystemConfig.dll's module table (also SC_ModuleInformation.ini
-for expansions). Discrete counts: SC_ModuleInformation.ini Data1/Data2;
-analog counts: its channel lists and CPU descriptions. Recorded 2026-09-08.
-IDs 41 (C0-08TD1-1) and 244 (C0-02DA-D) have model names in the DLL but no
-INI entry and no published product page or manual listing; their counts are
-inferred from the sibling models C0-08TD1 and C0-02DR-D.
-Reading a project does not require CLICK installed. No vendor descriptions
-or executable code are included here.
+The model IDs come from the module table in CLICK's SystemConfig.dll. For
+expansion modules they also come from SC_ModuleInformation.ini. The discrete
+I/O counts come from the Data1 and Data2 keys in SC_ModuleInformation.ini. The
+analog counts come from that file's channel lists and CPU descriptions. These
+facts were recorded on 2026-09-08.
+
+The DLL has model names for IDs 41 (C0-08TD1-1) and 244 (C0-02DA-D). The INI
+file has no entry for them, and no published product page or manual lists
+them. Their counts are an assumption. They are copied from the similar models
+C0-08TD1 and C0-02DR-D.
+
+Reading a project does not require CLICK to be installed. This module contains
+no vendor descriptions and none of CLICK's executable code.
 """
 
 from dataclasses import dataclass

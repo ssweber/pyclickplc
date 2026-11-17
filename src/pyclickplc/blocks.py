@@ -55,13 +55,13 @@ class BlockTag:
 
 @dataclass(frozen=True)
 class StructuredBlockName:
-    """Opt-in parse result for structured block naming conventions.
+    """The parts of a block name that follows a structured naming convention.
 
-    `parse_block_tag()` treats block names as opaque strings. This helper is
-    intentionally separate and optional for callers that want to interpret
-    naming conventions such as:
+    `parse_block_tag()` treats a block name as an opaque string. A caller that
+    wants to read one of these conventions calls `parse_structured_block_name()`,
+    which returns this class:
     - Semantic blocks: ``Base:block`` / ``Base:block(start=n)``
-    - UDT fields: ``Base.field:udt`` (or bare ``Base.field``)
+    - UDT fields: ``Base.field:udt``, or ``Base.field`` without the suffix
     - Named arrays: ``Base:named_array(count,stride)``
     """
 
@@ -88,10 +88,10 @@ _BLOCK_PLAIN_RE = re.compile(rf"^(?P<base>{_STRUCTURED_IDENT}):block$")
 
 
 def parse_structured_block_name(name: str) -> StructuredBlockName:
-    """Parse optional structured naming conventions from a block name.
+    """Parse a block name into its parts if it follows a structured naming convention.
 
-    This parser is non-throwing and non-strict by design. Names that do not
-    exactly match a supported convention are returned as ``kind="plain"``.
+    This function never raises. If *name* does not match a convention exactly,
+    the result has ``kind="plain"``.
     """
     named_array_match = _NAMED_ARRAY_BLOCK_NAME_RE.fullmatch(name)
     if named_array_match is not None:
@@ -327,7 +327,7 @@ def get_block_type(comment: str) -> str | None:
 
 
 def is_block_tag(comment: str) -> bool:
-    """Check if a comment starts with a block tag (any type).
+    """Check if a comment contains a block tag of any type, anywhere in its text.
 
     Block tags mark sections in the Address Editor:
     - <BlockName> - opening tag for a range
@@ -338,13 +338,13 @@ def is_block_tag(comment: str) -> bool:
         comment: The comment string to check
 
     Returns:
-        True if the comment starts with any type of block tag
+        True if the comment contains any type of block tag
     """
     return get_block_type(comment) is not None
 
 
 def extract_block_name(comment: str) -> str | None:
-    """Extract block name from a comment that starts with a block tag.
+    """Return the name of the first block tag in a comment.
 
     Args:
         comment: The comment string (e.g., "<Motor>Valve info", "</Motor>", "<Spare />")
@@ -356,13 +356,14 @@ def extract_block_name(comment: str) -> str | None:
 
 
 def strip_block_tag(comment: str) -> str:
-    """Strip block tag from a comment, returning any text after the tag.
+    """Remove the first block tag from a comment and return the rest of the text.
 
     Args:
         comment: The comment string (e.g., "<Motor>Valve info")
 
     Returns:
-        Text after the tag (e.g., "Valve info"), or original if no tag
+        The text before and after the tag (e.g., "Valve info"), or the
+        comment unchanged if it has no tag
     """
     if not comment:
         return ""
@@ -597,7 +598,6 @@ def compute_all_block_ranges(rows: Sequence[HasComment]) -> list[BlockRange]:
         for start_idx, bg_color in stack:
             ranges.append(BlockRange(start_idx, start_idx, name, bg_color, mem_type))
 
-    # Sort by start index
     ranges.sort(key=lambda r: r.start_idx)
     return ranges
 
