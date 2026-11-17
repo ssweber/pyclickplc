@@ -7,8 +7,8 @@ This repo's specifics for the bob plugin's skill and agents.
 - Main checkout `C:/Users/Sam/Documents/GitHub/pyclickplc`, base `main`. No merge queue: each
   READY branch becomes its own pull request (the skill's section 3a).
 - Worktrees `../pyclickplc-wt/<name>` on `bob/<name>` (`run.py worktree new <name>`).
-- Job notes (`<jobs>`): `../pyclickplc-wt/.bob/jobs/<name>/` (`BRIEF.md`, `HANDOFF.md`,
-  `REVIEW.md`, `PR.md`) and `../pyclickplc-wt/.bob/jobs/<arc>/LEDGER.md`.
+- Job notes (`<jobs>`, `jobs_dir` in config.toml): `../pyclickplc-wt/.bob/jobs/<name>/`
+  (`BRIEF.md`, `HANDOFF.md`, `REVIEW.md`, `PR.md`) and `../pyclickplc-wt/.bob/jobs/<arc>/LEDGER.md`.
 - The plan of record is `scratchpad/roadmap.md`. Arc docs live under `<jobs>/<arc>/ARC.md`,
   outside the repo. When an arc closes, its open items move into the roadmap, and an item that
   lands is deleted from the roadmap in the branch that lands it.
