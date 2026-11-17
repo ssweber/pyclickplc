@@ -74,7 +74,7 @@ class TestReadCsv:
         assert ds_records[0].nickname == "Temp"
         assert ds_records[0].retentive is True
 
-        # Existing int-key access remains intact
+        # The map also accepts the integer key from get_addr_key
         assert records[get_addr_key("X", 1)].nickname == "Input1"
         assert records[get_addr_key("DS", 1)].nickname == "Temp"
 
@@ -307,7 +307,8 @@ class TestReadCsv:
         assert read_csv(csv_path).addr["DS1"].nickname == "Speed"
 
     def test_read_address_with_leading_zeros(self, tmp_path):
-        # CLICK's import stores these rows, bare or quoted, under the plain address
+        # CLICK's import stores each of these rows under the address without its leading zeros,
+        # whether or not the address is quoted
         csv_path = tmp_path / "test.csv"
         csv_path.write_text(
             "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
@@ -487,7 +488,10 @@ class TestWriteCsv:
 
     @pytest.mark.parametrize("initial", ["1,5", 'a"b', "1\r\n2"])
     def test_write_quotes_a_numeric_initial_value_that_needs_it(self, tmp_path, initial):
-        """CLICK never writes such a value. The writer quotes it, and it reads back as one value."""
+        """write_csv quotes a numeric initial value with a comma, double quote or line break.
+
+        read_csv reads it back as one value. CLICK never writes such a value.
+        """
         csv_path = tmp_path / "test.csv"
         record = AddressRecord(
             memory_type="DF",
@@ -507,7 +511,10 @@ class TestWriteCsv:
 
 
 class TestReadMdbCsv:
-    """CLICK's Address.csv: MDB columns and addresses, UTF-8 with a BOM."""
+    """Tests for read_mdb_csv, which reads CLICK's Address.csv.
+
+    That file has the columns and addresses of CLICK's project database, in UTF-8 with a BOM.
+    """
 
     HEADER = "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment"
 
@@ -570,7 +577,10 @@ class TestReadMdbCsv:
         assert [r.display_address for r in records.values()] == ["DS1"]
 
     def test_data_type_is_the_banks(self, tmp_path):
-        """The reader ignores a DataType that differs from the bank's, so format_csv's text reads back."""
+        """read_mdb_csv ignores the DataType column and gives each record its bank's type.
+
+        read_csv then reads back the text that format_csv writes, with the same types.
+        """
         csv_path = self.write(
             tmp_path,
             "100663297,DS,1,4,Speed,1,5,1,",
@@ -588,7 +598,11 @@ class TestReadMdbCsv:
         assert sorted((r.display_address, r.data_type) for r in loaded.values()) == expected
 
     def test_skips_xd_hidden_slots(self, tmp_path):
-        """The reader skips MDB XD3. CLICK does not show it, and it would display as XD1 beside the real XD1."""
+        """read_mdb_csv skips the XD and YD slots that CLICK does not show.
+
+        Here they are XD3 and YD15 in the database's numbering. XD3 would display as XD1, beside
+        the real XD1.
+        """
         csv_path = self.write(
             tmp_path,
             "167772163,XD,3,4,Hidden,0,0,0,",
@@ -660,7 +674,7 @@ class TestRoundTrip:
 
 
 class TestCsvFormat:
-    """The bytes of the CSV, as CLICK writes them."""
+    """Tests that read_csv and write_csv handle the bytes of the file as CLICK does."""
 
     HEADER = "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment"
 
@@ -725,8 +739,13 @@ class TestCsvFormat:
         ],
     )
     def test_txt_initial_value_bare_unless_whitespace_comma_or_quote(self, tmp_path, initial, cell):
-        """CLICK writes Text bare, but imports a space, tab, VT, FF, comma or double quote
-        only quoted. Bare, it stores an edge space, tab, VT or FF as no value."""
+        """write_csv quotes a Text initial value only where CLICK needs the quotes to import it.
+
+        CLICK writes a Text value unquoted. It imports a comma or a double quote only in quotes.
+        It strips a space, tab, VT or FF at either end of an unquoted value, so a value of one of
+        these would import as empty. write_csv also quotes any other character up to 0x20, on the
+        assumption that CLICK strips those too.
+        """
         csv_path = tmp_path / "txt.csv"
         record = AddressRecord(
             memory_type="TXT",
@@ -751,7 +770,10 @@ class TestCsvFormat:
     def test_number_with_edge_whitespace_is_written_bare(
         self, tmp_path, initial, data_type, memory_type
     ):
-        """CLICK refuses a quoted number with an edge space or tab. It strips the space from a bare one."""
+        """write_csv writes a number with a space or tab at either end unquoted.
+
+        CLICK refuses such a number in quotes. Unquoted, CLICK strips the space.
+        """
         csv_path = tmp_path / "num.csv"
         record = AddressRecord(
             memory_type=memory_type,
@@ -806,14 +828,20 @@ class TestClickExports:
     """Real CSV files exported by CLICK."""
 
     def test_click_export_rewrites_to_the_same_bytes(self, tmp_path):
-        """Rewrite a file that has every bank and column type, as CLICK exported it."""
+        """read_csv and write_csv reproduce a CLICK export byte for byte.
+
+        The export has every bank and every column type.
+        """
         fixture = FIXTURES / "NicknameExport.csv"
         out = tmp_path / "out.csv"
         write_csv(out, read_csv(fixture))
         assert out.read_bytes() == fixture.read_bytes()
 
     def test_reads_clicks_bare_comma_and_quote(self):
-        """CLICK exports these Text values bare. The reader loses no value and shifts no row."""
+        """CLICK exports these Text values unquoted, even a comma or a double quote.
+
+        read_csv still reads every value, and no cell moves to the wrong column.
+        """
         records = read_csv(FIXTURES / "NicknameExportTxtSpecials.csv")
         txt = [records[get_addr_key("TXT", i)] for i in range(1, 6)]
         assert [(r.nickname, r.initial_value, r.retentive, r.comment) for r in txt] == [
@@ -826,7 +854,10 @@ class TestClickExports:
         assert records[get_addr_key("DF", 1)].comment == "Degrees, F"
 
     def test_click_export_rewrites_with_comma_and_quote_importable(self, tmp_path):
-        """Only TXT2, TXT3 and TXT4 change, because CLICK cannot import its own bare form of them."""
+        """write_csv changes only TXT2, TXT3 and TXT4, and it quotes their values.
+
+        CLICK cannot import its own unquoted form of these values.
+        """
         fixture = FIXTURES / "NicknameExportTxtSpecials.csv"
         out = tmp_path / "out.csv"
         write_csv(out, read_csv(fixture))
