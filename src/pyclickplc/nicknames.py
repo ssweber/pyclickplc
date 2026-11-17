@@ -410,9 +410,9 @@ def _format_csv(
             # Bare as CLICK writes it, unless it would not read back as written. A comma, double
             # quote or line break splits the cell. CLICK strips a space, tab, VT or FF at the
             # ends of a bare Text value. Only those four are known. This code assumes that
-            # CLICK strips every code up to 0x20, as Delphi's Trim does. CLICK looks like a Delphi
-            # program. CLICK refuses a quoted
-            # number with an edge space, so only Text is quoted for that.
+            # CLICK strips every code up to 0x20, as Delphi's Trim does. CLICK looks like a
+            # Delphi program. CLICK refuses a quoted number with an edge space, so only Text is
+            # quoted for that.
             edge_whitespace = initial_value_str[0] <= " " or initial_value_str[-1] <= " "
             if (record.data_type == DataType.TXT and edge_whitespace) or any(
                 char in initial_value_str for char in ',"\r\n'

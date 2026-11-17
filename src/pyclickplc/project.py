@@ -191,9 +191,9 @@ def _first_matches(lines: list[str]) -> list[str]:
 
     Names match regardless of case. A later section is dropped whole, and a later option is
     dropped with the lines that continue it. CLICK 4 reads the PLC name this way. This code
-    applies the same rule to every other section and key. That CLICK does so for the other
-    keys is inferred from how Windows' INI functions behave. A line configparser refuses is kept, so the file is
-    still refused.
+    applies the same rule to every other section and key. CLICK has not been checked for the
+    other keys. This code infers the rule from how Windows' INI functions behave. A line
+    configparser refuses is kept, so the file is still refused.
 
     Every kept line but a continuation loses its indent. configparser strips that indent
     from the value anyway. Without the indent, a dropped line can't make the next line
@@ -349,7 +349,10 @@ def _cpu_channel(parser: ConfigParser, key: str) -> str | None:
 def _channels(
     parser: ConfigParser, location: _Location, position: int, module: Module
 ) -> _Channels:
-    """Read one module's analog DF assignments in channel order. The entry for a channel with no assignment is None."""
+    """Read one module's analog DF assignments in channel order.
+
+    The entry for a channel with no assignment is None.
+    """
     if location == "cpu":
         return (
             tuple(_cpu_channel(parser, f"AD{n}") for n in range(1, module.analog_inputs + 1)),
