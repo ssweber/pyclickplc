@@ -44,8 +44,8 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   such as `[Sec23]` for CLICK 3's `[CPUBuild]`. `read_modules` and the channel readers match `[Sec21]` to
   `[Sec23]` and CLICK 3's names regardless of case. If a section or key appears twice, they use the first.
   In a CLICK 4 file that has both a placeholder section and its named section, such as `[Sec23]` and
-  `[CPUBuild]`, they ignore the named section. CLICK 4.00 is known to do this only for the PLC name. It
-  shows the name under `[Sec20]` and ignores a `[PLCName]` beside it. Does CLICK 4 read the hardware
+  `[CPUBuild]`, they ignore the named section. This has been checked in CLICK 4.00 only for the PLC
+  name. It shows the name under `[Sec20]` and ignores a `[PLCName]` beside it. Does CLICK 4 read the hardware
   sections the same way? Does CLICK 4 read a named section that has no placeholder beside it, such as
   `[CPUBuild]` alone? The readers read it, as `read_plc_name` reads `[PLCName]` alone. The readers follow
   configparser for a line that is indented under an option. They read the line as part of that option's

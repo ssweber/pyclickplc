@@ -194,7 +194,8 @@ class TestParseAddress:
         ],
     )
     def test_leading_zeros_as_click_imports_them(self, address, expected):
-        # CLICK's nickname import stores these under DS30, DS32, X001 and DS1
+        # CLICK's nickname import stores these under DS30, DS32, X001 and DS1. DS0001 and
+        # ds0001 were checked by hand in CLICK 4.
         assert parse_address(address) == expected
 
 

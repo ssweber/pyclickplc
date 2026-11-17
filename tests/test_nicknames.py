@@ -791,7 +791,13 @@ class TestCsvFormat:
         [("X", 1, DataType.BIT), ("DS", 1, DataType.INT), ("TXT", 1, DataType.TXT)],
     )
     def test_address_is_never_quoted(self, memory_type, address, data_type):
-        """CLICK refuses a quoted address with an edge space. It writes that row over the last one."""
+        """format_csv writes the Address cell without quotes.
+
+        It does so even when the nickname, initial value and comment are a space.
+
+        CLICK refuses a quoted address that has a space at either end. It does not store that row.
+        It writes the row's nickname, initial value, Retentive and comment over the row before it.
+        """
         record = AddressRecord(
             memory_type=memory_type,
             address=address,
