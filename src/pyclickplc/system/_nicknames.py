@@ -2,15 +2,15 @@
 
 The names follow CLICK Programming Software 4.00's ``PLCType.ini``, section
 ``[SYSTEM0]``, which is what CLICK writes for a system address. SD71, SD72,
-SD75 and SD76 are the exception: 4.00 does not list them, so they keep the
+SD75 and SD76 are the exception. CLICK 4.00 does not list them, so they keep the
 AutomationDirect help page's names and ``source``.
 
-CLICK project databases can retain stale system nicknames after software and
-firmware updates. This catalog records the current CLICK name by address, but
-repairs remain deliberately narrow: a value is changed only when it is an
-explicitly recorded stale alias. Unfamiliar values, including blanks unless a
-specific incident justifies filling them, are preserved so newer vendor data is
-never silently replaced by this snapshot.
+CLICK project databases can keep stale system nicknames after software and
+firmware updates. This catalog records the current CLICK name for each address.
+Repairs stay narrow on purpose. The code changes a value only when it is a
+recorded stale alias. It preserves every other value, blanks included, unless a
+specific incident justifies filling them. So this snapshot never silently
+replaces newer vendor data.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from datetime import date
 
 AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE = "CLICK 4.00 PLCType.ini [SYSTEM0]"
 AUTOMATIONDIRECT_SYSTEM_DATA_REGISTER_SOURCE = "CLICK 4.00 PLCType.ini [SYSTEM0]"
-# SD71, SD72, SD75 and SD76 are not in [SYSTEM0]; their source is the help page.
+# SD71, SD72, SD75 and SD76 are not in [SYSTEM0]. Their source is the help page.
 _HELP_PAGE_SOURCE = "https://cdn.automationdirect.com/static/helpfiles/click/Content/110.htm"
 _NOT_IN_PLCTYPE_INI = frozenset({("SD", 71), ("SD", 72), ("SD", 75), ("SD", 76)})
 AUTOMATIONDIRECT_SYSTEM_NICKNAME_REVIEWED_ON = date(2026, 11, 16)
@@ -36,13 +36,13 @@ class SystemNicknameGuidance:
     reviewed_on: date
 
 
-# Names as CLICK 4.00 writes them (PLCType.ini, [SYSTEM0]); CLICK 3.71 and 3.92
+# Names as CLICK 4.00 writes them (PLCType.ini, [SYSTEM0]). CLICK 3.71 and 3.92
 # agree. Where the help pages differ from CLICK, CLICK wins.
 #
 # Omitted intentionally:
 # - SD73/SD74 have two documented names selected by CPU type.
 # - SD150, SC160-SC171 and SD160-SD163 are in 4.00 but not in this catalog.
-# - SD71, SD72, SD75 and SD76 are kept from the help pages; 4.00 does not list them.
+# - SD71, SD72, SD75 and SD76 are kept from the help pages, because 4.00 does not list them.
 _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
     # System Control Relays
     ("SC", 1): "_Always_ON",

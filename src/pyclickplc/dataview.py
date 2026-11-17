@@ -51,8 +51,8 @@ _CDV_CODE_TO_DATA_TYPE: dict[int, DataType] = {
 _DATA_TYPE_TO_CDV_CODE: dict[DataType, int] = {v: k for k, v in _CDV_CODE_TO_DATA_TYPE.items()}
 
 
-# SC addresses that take a New Value (most SC are read-only system controls). SC50
-# (_PLC_Mode_Change_to_STOP) and SC51 (_Watchdog_Timer_Reset) are left out: only ladder writes
+# SC addresses that take a New Value. Most SC are read-only system controls. SC50
+# (_PLC_Mode_Change_to_STOP) and SC51 (_Watchdog_Timer_Reset) are left out. Only ladder writes
 # them, and every installed PLCType.ini (2.60 to 4.00; 3.60 has none) marks both R under
 # [DATAVIEW_RW0].
 WRITABLE_SC: frozenset[int] = frozenset({53, 55, 60, 61, 65, 66, 67, 75, 76, 120, 121})
@@ -497,7 +497,7 @@ def validate_new_value(display_str: str, data_type: DataType) -> tuple[bool, str
     if not display_str:
         return True, ""
     if data_type == DataType.TXT:
-        # A CLICK holds a Text byte above 127 as is, so a DataView takes 0..255.
+        # A CLICK stores a Text byte above 127 unchanged, so a DataView accepts 0..255.
         if len(display_str) != 1:
             return False, "Must be single char"
         if ord(display_str) > 0xFF:

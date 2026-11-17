@@ -1,6 +1,6 @@
 """CSV read/write for CLICK PLC address nicknames.
 
-Reads and writes the nickname CSV that CLICK Programming Software exports and
+This module reads and writes the nickname CSV that CLICK Programming Software exports and
 imports, using AddressRecord as the data model.
 """
 
@@ -77,7 +77,7 @@ DATA_TYPE_CODE_TO_STR: dict[int, str] = {
     6: "TEXT",
 }
 
-# The Data Type names CLICK writes, the only ones read_csv accepts (any case)
+# The Data Type names that CLICK writes. read_csv accepts only these, in any case.
 _CLICK_DATA_TYPES: dict[str, DataType] = {
     name: DataType(code) for code, name in DATA_TYPE_CODE_TO_STR.items()
 }
@@ -119,8 +119,8 @@ class AddressLookupView(AddressNormalizerMixin):
 class TagLookupView:
     """Case-insensitive nickname-indexed view over an AddressRecordMap.
 
-    While any nickname is used twice (ignoring case), every lookup raises
-    ``ValueError`` naming the repeats, whichever nickname is asked for.
+    If any nickname is used twice (ignoring case), every lookup raises
+    ``ValueError`` that names the repeats, whichever nickname you ask for.
     """
 
     def __init__(self, records: AddressRecordMap) -> None:
@@ -159,7 +159,7 @@ class AddressRecordMap(dict[int, AddressRecord]):
         self._tag_index: dict[str, AddressRecord] = {}
         self._tag_collision_error: str | None = None
         self._index_dirty = True
-        # The columns of the file it was read from; empty when not read from a file
+        # The columns of the file it was read from. Empty when it was not read from a file.
         self.columns: tuple[str, ...] = ()
         self.addr = AddressLookupView(self)
         self.tag = TagLookupView(self)
@@ -263,7 +263,7 @@ REQUIRED_COLUMNS = ("Address", "Nickname")
 
 
 def _is_blank(row: Mapping[str | None, str | list[str] | None]) -> bool:
-    """A row with nothing in any cell, such as a spreadsheet's trailing ``,,,,,``."""
+    """Return True for a row with nothing in any cell, such as a spreadsheet's trailing ``,,,,,``."""
     cells = [
         cell for value in row.values() for cell in (value if isinstance(value, list) else [value])
     ]
@@ -271,7 +271,7 @@ def _is_blank(row: Mapping[str | None, str | list[str] | None]) -> bool:
 
 
 def _initial_value(raw: str, data_type: int) -> str:
-    """A Text initial value is kept as written (a space is a value); others are trimmed."""
+    """Return a Text initial value as written (a space is a value) and trim any other type."""
     return raw if data_type == DataType.TXT else raw.strip()
 
 
@@ -286,12 +286,12 @@ def read_csv(
     included. A Text initial value may be quoted, or bare as CLICK exports it,
     even when it is a comma or a double quote. Retentive is on for ``Yes``,
     ``True`` or ``1`` in any case, and off for anything else. Blank rows are
-    skipped. A nickname that repeats does not fail the read and ``.addr``
-    works, but every ``.tag`` lookup then raises ``ValueError``.
+    skipped. If a nickname repeats, the read does not fail and ``.addr`` still
+    works, but every ``.tag`` lookup raises ``ValueError``.
 
-    The columns the file had are in the result's ``columns``; a missing
-    optional column, or a blank cell in it, leaves its default (a blank Data
-    Type is the bank's own).
+    The result's ``columns`` lists the columns the file had. A missing
+    optional column, or a blank cell in one, leaves the default. A blank Data
+    Type means the bank's own type.
 
     Raises:
         ValueError: If a *required* column is missing, a row has a non-blank
@@ -383,7 +383,7 @@ def read_csv(
 def _format_csv(
     records: Mapping[int, AddressRecord] | Iterable[AddressRecord],
 ) -> tuple[str, int]:
-    """The nickname CSV text for *records*, and how many rows it holds."""
+    """Return the nickname CSV text for *records* and the number of rows in it."""
     record_iter: Iterable[AddressRecord]
     if isinstance(records, Mapping):
         record_iter = cast(Iterable[AddressRecord], records.values())
@@ -404,14 +404,14 @@ def _format_csv(
 
     lines = [",".join(CSV_COLUMNS)]
     for record in rows_to_write:
-        # A defaulted numeric is written "0", as CLICK does; Text's default is empty
+        # A defaulted numeric is written "0", as CLICK does. Text's default is empty.
         if record.initial_value:
             initial_value_str = str(record.initial_value)
-            # Bare as CLICK writes it, unless it would not read back as written: a comma, double
-            # quote or line break splits the cell, and CLICK strips a space, tab, VT or FF at
-            # the ends of a bare Text value. That it strips every code up to 0x20 is inferred
-            # (a Delphi Trim does); only those four were tried. CLICK refuses a quoted number
-            # with an edge space, so only Text is quoted for that.
+            # Bare as CLICK writes it, unless it would not read back as written. A comma, double
+            # quote or line break splits the cell. CLICK strips a space, tab, VT or FF at the
+            # ends of a bare Text value. This code assumes that CLICK strips every code up to
+            # 0x20, as a Delphi Trim does. Only those four are known. CLICK refuses a quoted
+            # number with an edge space, so only Text is quoted for that.
             edge_whitespace = initial_value_str[0] <= " " or initial_value_str[-1] <= " "
             if (record.data_type == DataType.TXT and edge_whitespace) or any(
                 char in initial_value_str for char in ',"\r\n'
@@ -441,8 +441,8 @@ def _format_csv(
 def format_csv(records: Mapping[int, AddressRecord] | Iterable[AddressRecord]) -> str:
     """Return the nickname CSV text that ``write_csv`` writes for *records*.
 
-    For a caller that writes the file itself: encode it as UTF-8 without a
-    byte order mark and write it unchanged (lines already end in CRLF).
+    If you write the file yourself, encode the text as UTF-8 without a byte
+    order mark and write it unchanged. Its lines already end in CRLF.
     """
     return _format_csv(records)[0]
 
@@ -456,10 +456,10 @@ def write_csv(
     Only records with content (nickname, comment, non-default initial value
     or retentive) are written. Records are sorted by memory type order then
     address. Lines end in CRLF and an initial value is bare, as in CLICK's
-    export. An initial value that holds a comma, double quote or line break is
-    quoted, as is a Text value that starts or ends with a space, tab or other
-    character up to 0x20: CLICK exports a Text space, comma or double quote bare
-    but can only import it quoted.
+    export. The function quotes an initial value that holds a comma, double
+    quote or line break. It also quotes a Text value that starts or ends with a
+    space, tab or other character up to 0x20. CLICK exports a Text space, comma
+    or double quote bare but can only import it quoted.
 
     Args:
         path: Path to write the CSV file.
@@ -481,10 +481,10 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
     CLICK writes this file beside its project database, as UTF-8 with a byte
     order mark, with columns AddrKey, MemoryType, Address, DataType, Nickname,
     Use, InitialValue, Retentive, Comment. Address is the MDB address (XD1 is
-    2), and Use and Retentive are numbers. DataType is not read: every
-    record takes its bank's type. Only rows with content are kept. A row
-    whose MemoryType or Address pyclickplc does not know is skipped, as is
-    an XD/YD slot CLICK does not show (MDB 3, 5, ... 15).
+    2), and Use and Retentive are numbers. DataType is not read. Every
+    record gets its bank's type. Only rows with content are kept. The function
+    skips a row whose MemoryType or Address pyclickplc does not know. It also
+    skips an XD/YD slot that CLICK does not show (MDB 3, 5, ... 15).
 
     Raises:
         ValueError: If the file is not UTF-8 or not CSV. The message names the
@@ -526,7 +526,7 @@ def read_mdb_csv(path: str | Path) -> AddressRecordMap:
             elif not is_valid_address(mem_type, address):
                 continue
 
-            # CLICK's banks have fixed types; the DataType column is not read
+            # CLICK's banks have fixed types, so the DataType column is not read.
             data_type = BANKS[mem_type].data_type
 
             retentive_raw = (row.get("Retentive") or "").strip()
