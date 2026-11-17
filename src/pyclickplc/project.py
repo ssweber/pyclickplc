@@ -54,7 +54,7 @@ class ChannelParameters:
 
 @dataclass(frozen=True)
 class ModuleIO:
-    """Describe one installed module and the addresses of its I/O points.
+    """One installed module and the addresses of its I/O points.
 
     Position is 0 for the CPU, 0/1 for CLICK PLUS slots, and 1..8 for
     expansions. Discrete addresses follow the module's point counts. Each analog
