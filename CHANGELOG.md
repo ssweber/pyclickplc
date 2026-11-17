@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- On Windows, `ClickServer` keeps listening after a client resets before it is accepted; before, it took no more clients, and `is_running()` gave False until `start()` listened again.
+
 ### Behaviour changes
 
 - A Data View row for SC50 (`_PLC_Mode_Change_to_STOP`) or SC51 (`_Watchdog_Timer_Reset`) takes no New Value: `is_address_writable` gives False and `DataViewRecord.from_address(..., new_value=...)` raises `ValueError`; before, both took one.

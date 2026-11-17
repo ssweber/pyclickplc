@@ -47,15 +47,6 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 
 ## Unscheduled
 
-- **Drop `ClickServer._server.transport` once pyrung reads `ClickServer.bound_port`.** pyrung's
-  `dap/modbus.py` reads the port bound for port 0 through `server._server.transport.sockets`, so
-  `server.py` keeps that name for it. Needs: pyrung to move to `bound_port` first.
-- **Keep `ClickServer` listening on Windows when a client resets before it is accepted.** On asyncio's
-  Proactor loop (the Windows default), a client that connects and resets before the accept finishes makes
-  asyncio close the listening socket ("Accept failed on a socket"): the server takes no more clients, and
-  `is_running()` gives False until `start()` listens again. A fix accepts connections itself
-  (`loop.sock_accept` on sockets `ClickServer` binds, carrying on after a failed accept) instead of through
-  `loop.create_server`, and keeps `_server.transport.sockets` working for pyrung.
 - **`ClickServer` answers function code 17 (report server id) with exception 01, where a CLICK answers.**
   A real C2-03CPU in RUN (probed 2026-11-16) answered FC 7, 8 (sub-function 0), 11, 12, 20,
   24 and 43/14 with exception 01, as `ClickServer` does, and FC 17 with `11 09 00 ff 00 08 00 c6 03 c0 00`:
@@ -64,3 +55,9 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 - **CLICK's digits for a large DF value follow no rule found** (ClickNick's run D2), so `write_plc_data`
   matches CLICK's cell for some large values and not for others. Not pursued: both forms read back as the
   same float32.
+- **On Windows, each client that resets before `ClickServer` accepts it logs an asyncio error and leaks a
+  socket.** On the Proactor loop the accept fails (WinError 64); asyncio logs "Task exception was never
+  retrieved" and, when the socket it made for the accept is collected, a ResourceWarning. The server keeps
+  listening. The cause is in asyncio: `IocpProactor.accept` closes that socket only when the accept is
+  cancelled, and the task that would close it is out of reach through public API. Needs: nothing here; a
+  CPython report.
