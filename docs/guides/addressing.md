@@ -45,7 +45,7 @@ Check an address you build at run time with `normalize_address` (returns `None`)
 | ... | ... |
 | `XD8` | X801–X816 (expansion 8) |
 
-`YD` follows the same layout over `Y`. Bank accessors take the number after `XD`; `XD0u` has its own accessor:
+`YD` follows the same layout over `Y`. The bank accessors take the number after `XD`. `XD0u` has its own accessor:
 
 ```python
 xd0 = await plc.xd[0]             # XD0
@@ -53,7 +53,7 @@ values = await plc.xd.read(0, 2)  # XD0, XD1, XD2
 upper = await plc.xd0u.read()     # {"XD0u": 0}
 ```
 
-`XD0u` and `YD0u` are the only `u` addresses, and a range read cannot include them.
+`XD0u` and `YD0u` are the only `u` addresses. A range read cannot include them.
 
 ## Every address
 
@@ -65,7 +65,7 @@ from pyclickplc import format_address_display, iter_address_slots
 names = [format_address_display(bank, addr) for bank, addr in iter_address_slots()]
 ```
 
-X and Y yield only their valid slots, and XD and YD skip the slots CLICK hides.
+For X and Y, it yields only the valid slots. For XD and YD, it skips the slots that CLICK hides.
 
 ## See also
 

@@ -24,7 +24,9 @@ print(tag.display_address)  # DS1
 
 `read_csv` returns an `AddressRecordMap` with `.addr` and `.tag` lookup dicts.
 
-A row whose Address isn't a CLICK address, or whose Data Type isn't its bank's, raises `ValueError` naming the file and line. A file with a nickname used twice (ignoring case) still loads and `.addr` works, but every `.tag` lookup raises `ValueError` naming the repeats until one is renamed.
+`read_csv` raises `ValueError` naming the file and line if a row's Address isn't a CLICK address or its Data Type doesn't match its bank.
+
+If two rows use the same nickname (ignoring case), the file still loads and `.addr` works. Every `.tag` lookup then raises `ValueError` naming the repeats, until you rename one.
 
 ### Write
 
@@ -57,7 +59,7 @@ Address normalization, data type inference, and default values are handled autom
 
 ### CLICK's Address.csv
 
-CLICK keeps an `Address.csv` beside its open project's database. It holds the same nicknames in database form. `read_mdb_csv` reads it into the same `AddressRecordMap`, with `used` taken from its Use column:
+CLICK keeps an `Address.csv` beside its open project's database. It holds the same nicknames in database form. `read_mdb_csv` reads it into the same `AddressRecordMap` and sets `used` from the file's Use column:
 
 ```python
 from pyclickplc import read_mdb_csv
@@ -112,7 +114,11 @@ data = read_plc_data("data.csv", skip_default=True)
 
 Returns a flat dict mapping normalized addresses to native Python values (`bool` for bits, `int` for INT/INT2/HEX, `float` for FLOAT, `str` for TXT).
 
-CLICK shows `Err-Format` for a DF value it can't display; it reads as `float("nan")`. CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code; it reads as the character (`$20` is `" "`, `$C8` is `"\xc8"`). CLICK writes a TXT comma unquoted, which gives its row a cell too many, so `read_plc_data` raises `ValueError` naming the row's first address.
+CLICK writes the cases below in a way that `read_plc_data` has to handle:
+
+- CLICK shows `Err-Format` for a DF value it can't display. `read_plc_data` returns `float("nan")` for it.
+- CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code. `read_plc_data` returns the character (`$20` is `" "`, `$C8` is `"\xc8"`).
+- CLICK writes a TXT comma unquoted, which gives its row a cell too many. `read_plc_data` raises `ValueError` naming the row's first address.
 
 ### Write
 
@@ -126,9 +132,11 @@ write_plc_data("output.csv", data, banks=["DS", "DF"])  # specific banks
 
 Unspecified addresses within included banks get bank defaults. Banks not in `banks` (or not present in data keys when `banks` is omitted) are excluded from the file.
 
-**CLICK's Write Data into PLC writes every address of each memory type in the file**, so an address the file leaves blank is cleared in the PLC. CLICK asks before it overwrites the PLC's data. To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes, as in [Modify and write back](#modify-and-write-back).
+CLICK's Write Data into PLC writes every address of each memory type in the file. An address that the file leaves blank is cleared in the PLC. CLICK asks before it overwrites the PLC's data. To change some addresses and keep the rest, read the PLC's data first, then write it back with your changes, as in [Modify and write back](#modify-and-write-back).
 
-A DF value is written as the float32 the PLC holds, in CLICK's fixed-point form (`66.7` is written `66.69999695`). For some values above about 1e19, CLICK's last digits differ from pyclickplc's; both read back as the same value. CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` refuses them (a program or a Modbus write can still put one in the PLC). It raises `ValueError` naming the address for such a DF value, and for a TXT comma, because the file couldn't be read back.
+`write_plc_data` writes a DF value as the float32 that the PLC holds, in CLICK's fixed-point form (`66.7` is written `66.69999695`). For some values above about 1e19, CLICK's last digits differ from pyclickplc's. Both read back as the same value.
+
+CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` raises `ValueError` naming the address for such a DF value. A program or a Modbus write can still put one in the PLC. It also raises `ValueError` for a TXT comma, because CLICK couldn't read the file back.
 
 ### Modify and write back
 
@@ -142,7 +150,7 @@ If the dump has an `Err-Format` cell, set that address to a number before writin
 
 ## Project.ini
 
-A CLICK project folder keeps its hardware configuration and PLC name in `Project.ini`. These functions don't need CLICK installed. Unknown hardware or a malformed record raises `ValueError`.
+A CLICK project folder keeps its hardware configuration and PLC name in `Project.ini`. These functions don't need CLICK installed. They raise `ValueError` for unknown hardware or a malformed record.
 
 ### Installed modules
 
@@ -160,7 +168,7 @@ for position, module in modules.expansions.items():
     print(position, module.model, module.discrete_inputs)  # 1 C0-08NE3 8
 ```
 
-`slots` holds CLICK PLUS CPU slots 0 and 1; `expansions` holds positions 1 through 8. Empty positions are left out. Each `Module` gives its point counts: `discrete_inputs`, `discrete_outputs`, `analog_inputs` and `analog_outputs`.
+`slots` is keyed by CLICK PLUS CPU slot, 0 and 1. `expansions` is keyed by position, 1 through 8. Empty positions are left out. Each `Module` has the point counts `discrete_inputs`, `discrete_outputs`, `analog_inputs` and `analog_outputs`.
 
 ### Channel parameters
 
@@ -172,7 +180,7 @@ print(channels.inputs)   # frozenset({'DF41', 'DF42', 'DF43', 'DF44'})
 print(channels.outputs)  # frozenset({'DF45'})
 ```
 
-These are the DF addresses assigned to analog input and output channels. A project with no analog channels gives empty sets.
+These are the DF addresses assigned to analog input and output channels. A project with no analog channels returns empty sets.
 
 ### I/O layout
 
@@ -201,7 +209,7 @@ if ok:
     write_plc_name("Project.ini", "Line 2")
 ```
 
-A PLC name is 1 to 24 letters, digits, spaces, underscores and hyphens. `write_plc_name` raises `ValueError` for a name `validate_click_name` refuses. It changes only the line holding the name, or adds one, and leaves the rest of the file as it was.
+A PLC name is 1 to 24 letters, digits, spaces, underscores and hyphens. `write_plc_name` raises `ValueError` for a name `validate_click_name` refuses. It changes only the line that holds the name, or adds that line if the file has none. It leaves the rest of the file as it was.
 
 ## See also
 
