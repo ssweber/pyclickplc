@@ -150,7 +150,7 @@ class DataViewRecord:
 
     A dataview row contains an address to monitor and optionally a new value
     to write to that address. The nickname and comment are for display only.
-    pyclickplc does not fill them in, the CDV file does not store them, and
+    The CDV file does not store them, and pyclickplc does not fill them in.
     ``==`` ignores them. To build a record from a display address such as
     ``"DS1"``, use ``make_dataview_record(...)``.
     """
@@ -1029,8 +1029,8 @@ def verify_cdv(
     """Compare *rows* to a CDV file and return a list of the differences.
 
     Values are compared as Python values, not as the text in the file. If
-    *has_new_values* is None, the expected flag is True when any non-empty row has a
-    new value.
+    *has_new_values* is None, the function expects the file to be marked as having new
+    values when any non-empty row has a new value.
     """
     has_values = has_new_values
     if has_values is None:

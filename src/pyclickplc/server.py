@@ -151,11 +151,11 @@ _ILLEGAL_ADDRESS = 0x02
 _ILLEGAL_VALUE = 0x03
 _DEVICE_FAILURE = 0x04
 
-# A pending write: a target and the value to write there. The target is either a PLC address,
-# which the provider stores, or an int Modbus address, which the server stores itself. An int
-# target is a spare word (see _is_unnamed_word) or a gap coil. A gap coil is a coil between X or
-# Y slots that no address names. _plan_coils and _plan_registers build a list of pending writes,
-# called a plan, and _commit writes it.
+# A pending write. It pairs a target with the value to write there. The target is either a
+# PLC address, which the provider stores, or an int Modbus address, which the server stores
+# itself. An int target is a spare word (see _is_unnamed_word) or a gap coil. A gap coil is a
+# coil between X or Y slots that no address names. _plan_coils and _plan_registers build a
+# list of pending writes, called a plan, and _commit writes it.
 _Store = tuple[str | int, PlcValue]
 
 # The register after XD8 and the register after YD8. No address names them. A read returns 0
@@ -777,9 +777,7 @@ class _Connection(asyncio.Protocol):
             if not _MIN_LENGTH <= length <= _MAX_LENGTH:
                 self.close()
                 return
-            # The length field alone says where a frame ends, whatever the function code. The
-            # pymodbus server that this code replaced took 9 bytes as one frame of length 2 when
-            # 9 bytes had arrived.
+            # The length field alone says where a frame ends, whatever the function code.
             end = 6 + length
             if len(buffer) < end:
                 return
@@ -940,8 +938,10 @@ class _Listener:
         client socket until the task wakes up and takes it. If the task is cancelled in between,
         the client socket is lost and never closed. On the Proactor loop this happens when an
         accept completes in the same iteration of the event loop as a stop() or a cancel. So
-        this method adds a callback to the future. The callbacks of a future run in the
-        iteration where it completes, before the loop can stop.
+        this method adds a callback to the future. The Proactor loop completes the future
+        while it polls for I/O. asyncio queues the future's callbacks with ``call_soon``, and
+        the loop runs them later in the same iteration. The loop stops only after an iteration
+        ends, so the callback runs even if stop() was called.
         """
         if accepting.done():
             self._took(accepting)

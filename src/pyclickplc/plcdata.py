@@ -57,8 +57,8 @@ _DF_ERROR = "Err-Format"
 # and then zeros. No rule is known that says which. Near 1e30, CLICK changes from 20 digits to 19
 # between the float32 values 0x7154FFFF (20 digits) and 0x71550000 (19 digits). But no single
 # limit on the first 20 digits fits every value. CLICK writes 20 digits for 1.0548e35 and
-# 1.0548e38, and 19 for 1.0546e25. For 1.07e30, CLICK writes a last digit that neither rounding
-# up nor rounding down of the exact value gives.
+# 1.0548e38, and 19 for 1.0546e25. For 1.07e30, CLICK's last digit is neither the exact value
+# rounded up nor the exact value rounded down.
 #
 # This code writes 20 significant digits when the first 20 digits, read as an integer, are less
 # than _DF_KEPT_LIMIT. Otherwise it writes 19. It rounds half to even. The limit lies between the
@@ -317,15 +317,15 @@ def write_plc_data(
             an infinity. Or a TXT value is not one character with code 0..255, or is a
             comma. The message names the address. CLICK's editor can't enter a NaN or
             an infinity, though a program or a Modbus write can still put one in the
-            PLC. CLICK writes a TXT comma unquoted, so it couldn't read the row back. If
-            this function raises, it writes nothing.
+            PLC. CLICK writes a TXT comma unquoted, so read_plc_data could not read the
+            row back. If this function raises, it writes nothing.
     """
-    # The warning comes from trials with CLICK 4.00 and a C2-03CPU. A file that held 28 TXT
-    # cells cleared all the other TXT addresses, and CLICK did not ask first. For C, DS, DF and
-    # TD, CLICK asks about each blank cell ("illegal value"). Yes writes 0, and No cancels the
-    # write. CLICK leaves alone a bank that is not in the file. Outside TXT, this function writes
-    # 0 for an unset address and never a blank cell. So CLICK should not ask about a file that
-    # this function writes. That was not tried for X, Y, T, CT, DD, DH or CTD.
+    # CLICK's Write Data into PLC clears every TXT address that the file leaves blank, and
+    # does not ask first. For C, DS, DF and TD, CLICK asks about each blank cell ("illegal
+    # value"). Yes writes 0, and No cancels the write. CLICK leaves alone a bank that is not in
+    # the file. Outside TXT, this function writes 0 for an unset address and never a blank
+    # cell. So CLICK should not ask about a file that this function writes. That was not tried
+    # for X, Y, T, CT, DD, DH or CTD.
     if banks is not None:
         selected = list(banks)
     else:

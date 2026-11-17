@@ -8,10 +8,11 @@ AutomationDirect help page's names and ``source``.
 A CLICK project database can keep an old system nickname after a software or
 firmware update. This catalog records the current CLICK name for each address.
 ``canonicalize_system_nickname`` replaces a nickname only when the catalog lists
-it as an old name for that address. It leaves every other value as it is. It
-leaves a blank too, except at the few addresses where the catalog lists a blank
-as an old value. So if AutomationDirect renames an address after this catalog
-was made, the newer name is never replaced.
+it as an old name for that address. It leaves every other value as it is. So
+if AutomationDirect renames an address after this catalog was made, the newer
+name is never replaced. ``canonicalize_system_nickname`` also leaves a blank as
+it is, except at the few addresses where the catalog lists a blank as an old
+value.
 """
 
 from __future__ import annotations
@@ -41,9 +42,11 @@ class SystemNicknameGuidance:
 # write the same names. Where a help page gives a different name, this catalog uses CLICK's name.
 # SD71, SD72, SD75 and SD76 take their names from the help pages, because 4.00 does not list them.
 #
-# The catalog leaves out these addresses on purpose:
-# - SD73 and SD74. The documentation gives two names for each, and the CPU type decides which.
-# - SD150, SC160-SC171 and SD160-SD163. CLICK 4.00 lists them.
+# The catalog leaves out SD73 and SD74 on purpose. The documentation gives two names for each,
+# and the CPU type decides which.
+#
+# The catalog also does not list SD150, SC160 to SC171 or SD160 to SD163, although CLICK 4.00
+# lists them. No reason is recorded.
 _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
     # System Control Relays
     ("SC", 1): "_Always_ON",

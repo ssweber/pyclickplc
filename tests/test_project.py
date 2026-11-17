@@ -661,11 +661,12 @@ def test_write_sets_the_placeholder_when_both_sections_exist(tmp_path):
     )
 
 
-# Project.ini files that CLICK wrote. Each entry gives the file name, the bytes before the PLC
-# name, the name (None if the project has none) and the modules that read_io_layout returns.
+# Project.ini files that CLICK wrote. Each entry gives the file name, the bytes just before the
+# PLC name (the section line and `Key1=` or `PLCName=`), the name (None if the project has
+# none) and the modules that read_io_layout returns.
 # In the CLICK 3 files, 14 credential-like values in [wsnc], [emsnc] and [rpsnc] are blanked.
-# In the CLICK 4 files, the long hex values in [Sec55] Key1 and [Sec52] Key3_1 are blanked. So
-# is [Sec52] Key4_1 in the CLICK 4 file that has a name. Every other byte is as CLICK wrote it.
+# In the CLICK 4 files, the long hex values in [Sec55] Key1 and [Sec52] Key3_1 are blanked. In
+# Project_click4.ini, [Sec52] Key4_1 is blanked too. Every other byte is as CLICK wrote it.
 CLICK_FIXTURES = [
     pytest.param("Project_click3.ini", b"[PLCName]\r\nPLCName=", "V3PLC", [], id="click3"),
     pytest.param(

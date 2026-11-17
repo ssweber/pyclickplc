@@ -196,10 +196,10 @@ def _first_matches(lines: list[str]) -> list[str]:
 
     Names match regardless of case. A repeated section is dropped whole, and a repeated
     option is dropped with the lines that continue it. CLICK 4 uses the first match when it
-    reads the PLC name. This function uses the first match for every section and key. That
-    CLICK does the same for the other keys is an assumption, based on how the Windows INI
-    functions behave. A line that configparser refuses is always kept, so that configparser
-    still refuses the file.
+    reads the PLC name. This function uses the first match for every section and key. For the
+    other keys, the code assumes that CLICK does the same, because the Windows INI functions
+    do. A line that configparser refuses is always kept, so that configparser still refuses
+    the file.
 
     Every kept line loses its indent, except a continuation, a blank line or a comment.
     configparser strips that indent from a value anyway. Without the indent, a line that
@@ -480,7 +480,7 @@ def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None
     Either index is None if the section or option is missing. Names match regardless of
     case, and CLICK matches them the same way. The function looks for the key only in the
     first matching section, as Windows' GetPrivateProfileString does. This code assumes
-    that CLICK does the same, but no test has checked it. Lines are read as configparser
+    that CLICK does the same. Nobody has checked this in CLICK. Lines are read as configparser
     reads them (``_roles``).
     """
     header, option = section.lower(), key.lower()
