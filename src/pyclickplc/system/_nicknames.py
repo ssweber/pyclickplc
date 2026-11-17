@@ -8,8 +8,8 @@ AutomationDirect help page's names and ``source``.
 CLICK project databases can keep stale system nicknames after software and
 firmware updates. This catalog records the current CLICK name for each address.
 Repairs stay narrow on purpose. The code changes a value only when it is a
-recorded stale alias. It preserves every other value, blanks included, unless a
-specific incident justifies filling them. So this snapshot never silently
+recorded stale alias. It preserves every other value. It also preserves a blank,
+unless a specific incident justifies filling it. So this snapshot never silently
 replaces newer vendor data.
 """
 

@@ -14,7 +14,8 @@ passed that commit, and nothing in the PR waits on Sam (his judgment, a CLICK ch
 
 ## 1. Smaller items from ClickNick's inventory
 
-Needs: nothing for the code. Sam settles the API names with the ClickNick session.
+Needs: nothing for the code. This session and the ClickNick session settle the API names, and Sam passes the
+messages between them.
 
 - **Leave the unassigned I/O slot titles in ClickNick** ("Option slot N - unassigned" and the like). They are
   ClickNick's wording, not a CLICK fact. pyclickplc's `ModuleIO` already gives the location and position.
@@ -31,15 +32,15 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
 - The PLC name in Project.ini. The fixtures show that CLICK 3 (`[PLCName] PLCName=`) and CLICK 4
   (`[Sec20] Key1=`) always write the name line, and leave it empty for a project with no name. So
   `write_plc_name` never adds a section to a file that CLICK wrote. `read_plc_name` reads `[PLCName]` alone in
-  a CLICK 4 file. CLICK 4.00 shows no name for such a file (C2 p11). We saw CLICK 4.00 match `[Sec20] Key1`
+  a CLICK 4 file. CLICK 4.00 shows no name for such a file (C2 p11). ClickNick's runner saw CLICK 4.00 match `[Sec20] Key1`
   regardless of case and take the first match. Two parts are inferred and not tested in CLICK. One is that
   CLICK 3 reads `[PLCName]` the same way. The other is that CLICK does not search a key in a second section
   that matches the first only in case (Windows' INI functions). Two questions for CLICK: does CLICK 3 read
   `[PLCName]` that way, and does CLICK 4 search a key in a second matching section?
 - The hardware sections in Project.ini. `read_modules` and the channel readers match `[Sec21]` to `[Sec23]`
   and CLICK 3's sections regardless of case. They take the first of a repeated section or key. In a CLICK 4
-  file they ignore a named section that sits beside its placeholder (`[CPUBuild]` beside `[Sec23]`). We saw
-  CLICK 4.00 do this only for `[Sec20]`. Does it read the hardware sections the same way? Does CLICK 4 read
+  file they ignore a named section that sits beside its placeholder (`[CPUBuild]` beside `[Sec23]`). ClickNick's
+  runner saw CLICK 4.00 do this only for `[Sec20]`. Does it read the hardware sections the same way? Does CLICK 4 read
   a named section with no placeholder, such as `[CPUBuild]` alone? The readers read it, as `read_plc_name`
   reads `[PLCName]` alone. The readers treat a line indented under an option (a continuation line) the way
   configparser does, as part of that option's value, even `  [Sec20]`. Windows' INI functions probably trim
@@ -61,4 +62,4 @@ Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's b
   retrieved". When the socket that asyncio made for the accept is collected, asyncio also logs a
   ResourceWarning. The server keeps listening. The cause is in asyncio. `IocpProactor.accept` closes that
   socket only when the accept is cancelled, and public API gives no way to reach the task that would close
-  it. Needs: nothing here, but a CPython report.
+  it. Needs: no change here. Someone should report it to CPython.

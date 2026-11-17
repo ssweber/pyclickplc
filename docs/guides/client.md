@@ -39,7 +39,7 @@ values = await plc.ds.read(1, 3)
 values["ds1"]   # 100 — lookups are case-insensitive
 ```
 
-pyclickplc splits a long range read or write into several requests at the Modbus limits. A split write is not atomic. If a request fails partway, the earlier requests stay written.
+pyclickplc splits a long range read or write into several requests at the Modbus limits. A split write is not atomic. If one of the requests fails, the requests before it stay written.
 
 ## String address interface
 

@@ -136,7 +136,7 @@ Unspecified addresses within included banks get bank defaults. Banks not in `ban
 
 `write_plc_data` writes a DF value as the float32 that the PLC holds, in CLICK's fixed-point form (`66.7` is written `66.69999695`). For some values above about 1e19, CLICK's last digits differ from pyclickplc's. Both read back as the same value.
 
-CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` raises `ValueError` naming the address for such a DF value. A program or a Modbus write can still put one in the PLC. It also raises `ValueError` for a TXT comma, because CLICK couldn't read the file back.
+CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` raises `ValueError` naming the address for such a DF value. A program or a Modbus write can still put one in the PLC. `write_plc_data` also raises `ValueError` for a TXT comma. CLICK writes a TXT comma unquoted, so `read_plc_data` could not read the file back.
 
 ### Modify and write back
 
@@ -209,7 +209,7 @@ if ok:
     write_plc_name("Project.ini", "Line 2")
 ```
 
-A PLC name is 1 to 24 letters, digits, spaces, underscores and hyphens. `write_plc_name` raises `ValueError` for a name `validate_click_name` refuses. It changes only the line that holds the name, or adds that line if the file has none. It leaves the rest of the file as it was.
+A PLC name is 1 to 24 letters, digits, spaces, underscores and hyphens. `write_plc_name` raises `ValueError` for a name `validate_click_name` refuses. It changes only the line that holds the name. If the file has no name line, it adds that line, and the section header too if the section is missing. It leaves the rest of the file as it was.
 
 ## See also
 

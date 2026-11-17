@@ -92,7 +92,7 @@ def _has_edge_whitespace(text: str) -> bool:
     even a quoted one. It drops a space, tab, VT or FF at the ends of a bare Text value. It
     refuses a quoted number with an edge space or tab, and strips an edge space from a bare
     one. For the rest of the range up to 0x20, this code assumes that CLICK behaves like
-    Delphi's ``Trim``, which drops every code up to 0x20.
+    Delphi's ``Trim``, which drops every code up to 0x20. CLICK looks like a Delphi program.
     """
     return bool(text) and (text[0] <= " " or text[-1] <= " ")
 

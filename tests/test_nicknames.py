@@ -286,7 +286,7 @@ class TestReadCsv:
         [("true", True), ("False", False), ("no", False), ("garbage", False), ("", True)],
     )
     def test_read_retentive_on_a_retentive_bank(self, tmp_path, cell, expected):
-        """DS is retentive by default. A blank cell keeps that default, and only Yes/True/1 keep it on."""
+        """DS is retentive by default. A blank cell keeps that default. Otherwise only Yes, True or 1 keeps it on."""
         csv_path = tmp_path / "test.csv"
         csv_path.write_text(
             "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
@@ -588,7 +588,7 @@ class TestReadMdbCsv:
         assert sorted((r.display_address, r.data_type) for r in loaded.values()) == expected
 
     def test_skips_xd_hidden_slots(self, tmp_path):
-        """The reader skips MDB XD3. CLICK does not show it, and it would display as XD1 beside XD1."""
+        """The reader skips MDB XD3. CLICK does not show it, and it would display as XD1 beside the real XD1."""
         csv_path = self.write(
             tmp_path,
             "167772163,XD,3,4,Hidden,0,0,0,",
