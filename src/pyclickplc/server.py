@@ -164,7 +164,7 @@ _PAST_XD_YD = frozenset(
 
 @dataclass(frozen=True)
 class _ServerMemory:
-    """Hold what the server keeps itself, so a DataProvider never sees it.
+    """Holds what the server keeps itself, so a DataProvider never sees it.
 
     ``words`` and ``coils`` hold what a client wrote to the unnamed YD registers and to the X
     and Y gap coils, by Modbus address. No PLC address names them. ``nan_words`` holds the two
@@ -328,7 +328,7 @@ def _answer(context: _ClickDeviceContext, pdu: bytes) -> bytes:
 
 
 class _ClickDeviceContext:
-    """Route Modbus requests to a DataProvider.
+    """Routes Modbus requests to a DataProvider.
 
     When ``getValues`` or ``setValues`` refuses a request, it returns a Modbus exception code
     as an ``int``.
@@ -693,7 +693,7 @@ async def _readable(loop: asyncio.AbstractEventLoop, sock: socket.socket) -> Non
 
 
 class _Connection(asyncio.Protocol):
-    """Serve one client: read Modbus TCP frames and answer each in the order received.
+    """Serves one client: reads Modbus TCP frames and answers each in the order received.
 
     A frame may arrive in pieces, or several frames may arrive in one read. A frame whose
     protocol id is not 0 is not Modbus. The connection drops it without an answer and goes on
@@ -792,7 +792,7 @@ class _Connection(asyncio.Protocol):
 
 
 class _Listener:
-    """Own the listening sockets of a ClickServer, the tasks that accept their clients, and the
+    """Owns the listening sockets of a ClickServer, the tasks that accept their clients, and the
     connections.
 
     A listener opens once and shuts once. ``shut()`` never waits, so the listener is shut even
@@ -1015,7 +1015,7 @@ class _Listener:
 
 
 class _Run:
-    """Represent one run of a ClickServer, from a start() to the stop() that ends it.
+    """One run of a ClickServer, from a start() to the stop() that ends it.
 
     If start() replaces a listener that stopped listening on its own, the run continues.
     ``ended`` resolves to None when the run was stopped. It resolves to the error when start()

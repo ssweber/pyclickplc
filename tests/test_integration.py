@@ -1365,7 +1365,7 @@ class TestServerControls:
 
 
 class TestLifecycle:
-    """Cancel start(), stop() and serve_forever() at any await, or run them together."""
+    """Tests that cancel start(), stop() and serve_forever() at any await, or run them together."""
 
     @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
     async def test_a_start_cancelled_at_any_step_leaves_nothing_listening(self, monkeypatch, host):
