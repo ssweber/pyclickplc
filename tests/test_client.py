@@ -563,7 +563,8 @@ class TestAddressAccessorWrite:
     @pytest.mark.parametrize(
         ("value", "registers"),
         [
-            (float("nan"), [0xFFFF, 0xFFFF]),
+            (float("nan"), [0x0000, 0x7FC0]),
+            (-float("nan"), [0x0000, 0xFFC0]),
             (float("inf"), [0x0000, 0x7F80]),
             (float("-inf"), [0x0000, 0xFF80]),
         ],
@@ -609,6 +610,20 @@ class TestAddressAccessorWrite:
         plc = _make_plc()
         with pytest.raises(ValueError, match="not writable"):
             await plc.x.write(1, True)
+
+    @pytest.mark.asyncio
+    async def test_write_y_gap_raises(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="must be"):
+            await plc.y.write(117, True)
+        _get_write_coils_mock(plc).assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("bank", "address"), [("t", 45056), ("ct", 49152)])
+    async def test_write_t_and_ct(self, bank, address):
+        plc = _make_plc()
+        await getattr(plc, bank).write(1, True)
+        _get_write_coils_mock(plc).assert_called_once_with(address, [True])
 
     @pytest.mark.asyncio
     async def test_write_not_writable_sc(self):

@@ -420,13 +420,14 @@ class TestContextCoilWrites:
         assert result is None
         assert p.get("SC53") is True
 
-    def test_write_x_not_writable(self):
-        """X inputs are read-only."""
+    def test_write_x_is_stored(self):
+        """X inputs take a write (b4 R3 and R6, 2026-11-17)."""
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
-        result = ctx.setValues(5, 0, [True])
-
-        assert result == 2
+        assert ctx.setValues(5, 0, [True]) is None
+        assert p.get("X001") is True
+        assert ctx.setValues(15, 0, [False, True]) is None
+        assert p._data == {"X001": False, "X002": True}
 
 
 # ==============================================================================
@@ -773,13 +774,15 @@ class TestAnswersAsAClick:
         assert p.get("C1999") is False
         assert p.get("C2000") is False
 
-    def test_fc15_over_the_y_gap_skips_it(self):
+    def test_fc15_over_the_y_gap_stores_the_gap_coils(self):
+        # b4 R1 (2026-11-17) stored and read back the gap coils.
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         addr, _ = plc_to_modbus("Y", 116)
         assert ctx.setValues(15, addr, [True] * 18) is None
         assert p.get("Y116") is True
         assert p.get("Y201") is True
+        assert ctx.getValues(1, addr, 18) == [True] * 18
 
     def test_unnamed_yd_register_keeps_its_own_word(self):
         p = MemoryDataProvider()
@@ -820,7 +823,7 @@ class TestAnswersAsAClick:
         yd_base, _ = plc_to_modbus("YD", 0)
         assert ctx.setValues(16, yd_base + 2, [1, 2, 3]) == 4
         assert p.get("YD1") == 0
-        assert ctx.spare_words == {}
+        assert ctx.memory.words == {}
 
     @pytest.mark.parametrize("func_code", [22, 23])
     def test_fc22_and_fc23_are_illegal_function(self, func_code):
@@ -845,15 +848,250 @@ class TestAnswersAsAClick:
         assert ctx.getValues(1, 8192 + 288, 1) == 2
         assert ctx.getValues(1, 8192 + 287, 2) == 2
 
-    @pytest.mark.parametrize("offset", [48, 272])
-    def test_fc05_to_a_reserved_y_coil_is_illegal_address(self, offset):
+    @pytest.mark.parametrize("offset", [48, 63, 80, 272, 287])
+    @pytest.mark.parametrize("base", [0, 8192], ids=["X", "Y"])
+    def test_fc05_to_a_reserved_coil_stores_it(self, base, offset):
+        # b4 R1 and R6 (2026-11-17) wrote Y offsets 48, 80 and 272 (coils 8240, 8272 and 8464)
+        # and X offset 48; the other gap coils are taken to match.
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(5, base + offset, [True]) is None
+        assert ctx.getValues(1, base + offset, 1) == [True]
+        assert ctx.getValues(2, base + offset, 1) == [True]
+        assert p._data == {}
 
-        ctx = _ClickDeviceContext(MemoryDataProvider())
-        assert ctx.setValues(5, 8192 + offset, [True]) == 2
-
-    def test_fc15_over_slot_8_reserved_coils_skips_them(self):
+    def test_fc15_over_slot_8_reserved_coils_stores_them(self):
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         addr, _ = plc_to_modbus("Y", 816)
         assert ctx.setValues(15, addr, [True] * 17) is None
         assert p.get("Y816") is True
+        assert ctx.getValues(1, addr, 17) == [True] * 17
+
+    def test_fc15_past_slot_8_stores_nothing(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(15, 8192 + 271, [True] * 18) == 2
+        assert p._data == {}
+        assert ctx.memory.coils == {}
+
+
+class TestAnswersAsAClickB4:
+    """What a C2-03CPU (firmware 4.00) answered on 2026-11-17: runs b3, b4 (R1 to R6) and t1ct1."""
+
+    def test_r1_fc15_and_fc05_over_the_y_gap(self):
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        # Y115, Y116, the 16 gap coils 8240..8255, Y201 and Y202.
+        fc01 = struct.pack(">BHH", 1, 8238, 20)
+        assert _answer(ctx, fc01) == bytes([1, 3, 0x00, 0x00, 0x00])
+        fc15 = struct.pack(">BHHB", 15, 8238, 20, 3) + bytes([0xFF, 0xFF, 0x0F])
+        assert _answer(ctx, fc15) == struct.pack(">BHH", 15, 8238, 20)
+        assert _answer(ctx, fc01) == bytes([1, 3, 0xFF, 0xFF, 0x0F])
+        for value in (0xFF00, 0x0000):
+            fc05 = struct.pack(">BHH", 5, 8240, value)
+            assert _answer(ctx, fc05) == fc05
+        fc15 = struct.pack(">BHHB", 15, 8238, 20, 3) + bytes(3)
+        assert _answer(ctx, fc15) == struct.pack(">BHH", 15, 8238, 20)
+        assert _answer(ctx, fc01) == bytes([1, 3, 0x00, 0x00, 0x00])
+
+    def test_r1_the_gap_coils_live_in_the_server_not_the_provider(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(15, 8238, [True] * 20) is None
+        assert set(p._data) == {"Y115", "Y116", "Y201", "Y202"}
+        assert ctx.memory.coils == dict.fromkeys(range(8240, 8256), True)
+        # A context on the same memory, as after a server restart, reads them back.
+        assert _ClickDeviceContext(p, ctx.memory).getValues(1, 8240, 16) == [True] * 16
+
+    def test_r1_provider_failure_midway_keeps_no_gap_coil(self):
+        class Flaky(MemoryDataProvider):
+            def write(self, address: str, value):
+                if address == "Y201":
+                    raise RuntimeError("down")
+                super().write(address, value)
+
+        p = Flaky()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(15, 8238, [True] * 20) == 4
+        assert p.get("Y115") is False
+        assert ctx.memory.coils == {}
+
+    @pytest.mark.parametrize(
+        ("func_code", "address", "count", "answer"),
+        [
+            (4, 57344, 9, bytes([4, 18]) + bytes(18)),
+            (4, 57353, 1, bytes([4, 2, 0, 0])),
+            (4, 57352, 2, bytes([4, 4]) + bytes(4)),
+            (3, 57865, 1, bytes([3, 2, 0, 0])),
+            (3, 57864, 2, bytes([3, 4]) + bytes(4)),
+            (2, 16, 16, bytes([2, 2, 0, 0])),
+            (2, 48, 16, bytes([2, 2, 0, 0])),
+            (2, 0, 64, bytes([2, 8]) + bytes(8)),
+            # R2b: XD8 and YD8 are 57360 and 57872, and the register after each reads 0.
+            (4, 57361, 1, bytes([4, 2, 0, 0])),
+            (4, 57360, 2, bytes([4, 4]) + bytes(4)),
+            (4, 57344, 18, bytes([4, 36]) + bytes(36)),
+            (3, 57873, 1, bytes([3, 2, 0, 0])),
+            (3, 57872, 2, bytes([3, 4]) + bytes(4)),
+            (3, 57856, 18, bytes([3, 36]) + bytes(36)),
+        ],
+    )
+    def test_r2_reads_answer_0(self, func_code, address, count, answer):
+        # R2: 57353 and 57865 are the unnamed words after XD4 and YD4, inside the banks.
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert _answer(ctx, struct.pack(">BHH", func_code, address, count)) == answer
+
+    @pytest.mark.parametrize("address", [57361, 57873])
+    def test_r2b_the_register_after_xd8_or_yd8_refuses_a_write(self, address):
+        # No run wrote it, nor read the register after it.
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        assert _answer(ctx, struct.pack(">BHH", 6, address, 1)) == bytes([0x86, 2])
+        assert _answer(ctx, struct.pack(">BHH", 3, address, 2)) == bytes([0x83, 2])
+        assert ctx.memory.words == {}
+
+    def test_r3_a_write_to_x001_is_answered_and_stored(self):
+        # The CLICK's input scan rewrote X001 to 0; the server has no input scan, so whatever
+        # drives the provider's inputs does that.
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        fc05 = struct.pack(">BHH", 5, 0, 0xFF00)
+        assert _answer(ctx, fc05) == fc05
+        assert p.get("X001") is True
+        p.set("X001", False)
+        fc15 = struct.pack(">BHHBB", 15, 0, 1, 1, 1)
+        assert _answer(ctx, fc15) == struct.pack(">BHH", 15, 0, 1)
+        assert _answer(ctx, struct.pack(">BHH", 1, 0, 1)) == bytes([1, 1, 1])
+        assert _answer(ctx, struct.pack(">BHH", 2, 0, 1)) == bytes([2, 1, 1])
+
+    @pytest.mark.parametrize(("coil", "address"), [(16, "X021"), (48, None)])
+    def test_r6_fc05_to_x021_or_an_x_gap_coil_reads_back_on_fc01_and_fc02(self, coil, address):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        fc05 = struct.pack(">BHH", 5, coil, 0xFF00)
+        assert _answer(ctx, fc05) == fc05
+        for func_code in (1, 2):
+            assert _answer(ctx, struct.pack(">BHH", func_code, coil, 1)) == bytes([func_code, 1, 1])
+        assert p._data == ({address: True} if address else {})
+
+    def test_r6_fc15_over_x101_to_x132_reads_back_on_fc01_and_fc02(self):
+        # X101..X116 through the provider, then slot 1's 16 gap coils in the server.
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        fc15 = struct.pack(">BHHB", 15, 32, 32, 4) + bytes([0xFF] * 4)
+        assert _answer(ctx, fc15) == struct.pack(">BHH", 15, 32, 32)
+        for func_code in (1, 2):
+            read = struct.pack(">BHH", func_code, 32, 32)
+            assert _answer(ctx, read) == bytes([func_code, 4]) + bytes([0xFF] * 4)
+        assert p._data == {f"X{i}": True for i in range(101, 117)}
+        assert ctx.memory.coils == dict.fromkeys(range(48, 64), True)
+        # Written back to 0, as R6 ended.
+        fc15 = struct.pack(">BHHB", 15, 32, 32, 4) + bytes(4)
+        assert _answer(ctx, fc15) == struct.pack(">BHH", 15, 32, 32)
+        assert _answer(ctx, struct.pack(">BHH", 2, 0, 64)) == bytes([2, 8]) + bytes(8)
+
+    @pytest.mark.parametrize("coil", [8272, 8464])
+    def test_r6_fc05_to_slot_2_and_slot_8_y_gap_coils(self, coil):
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        for value, bit in ((0xFF00, 1), (0x0000, 0)):
+            fc05 = struct.pack(">BHH", 5, coil, value)
+            assert _answer(ctx, fc05) == fc05
+            assert _answer(ctx, struct.pack(">BHH", 1, coil, 1)) == bytes([1, 1, bit])
+
+    @pytest.mark.parametrize(
+        ("address", "coil"), [("T1", 45056), ("CT1", 49152), ("T2", 45057), ("CT2", 49153)]
+    )
+    def test_t1ct1_fc05_sets_and_clears_the_bit_fc01_and_fc02_read(self, address, coil):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        for value, bit in ((0xFF00, 1), (0x0000, 0)):
+            fc05 = struct.pack(">BHH", 5, coil, value)
+            assert _answer(ctx, fc05) == fc05
+            assert p.get(address) is bool(bit)
+            for func_code in (1, 2):
+                read = struct.pack(">BHH", func_code, coil, 1)
+                assert _answer(ctx, read) == bytes([func_code, 1, bit])
+
+    @pytest.mark.parametrize(("address", "coil"), [("T1", 45056), ("CT1", 49152)])
+    def test_r3_fc15_to_t1_and_ct1_stores_the_bit(self, address, coil):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        fc15 = struct.pack(">BHHBB", 15, coil, 1, 1, 1)
+        assert _answer(ctx, fc15) == struct.pack(">BHH", 15, coil, 1)
+        assert p.get(address) is True
+
+    def test_r4_fc06_to_one_word_of_a_df_keeps_the_other(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        df1 = plc_to_modbus("DF", 1)[0]
+        read = struct.pack(">BHH", 3, df1, 2)
+        nan_words = bytes([3, 4, 0x00, 0x00, 0x7F, 0xC0])
+        fc16_nan = struct.pack(">BHHBHH", 16, df1, 2, 4, 0x0000, 0x7FC0)
+        assert _answer(ctx, fc16_nan) == struct.pack(">BHH", 16, df1, 2)
+        assert _answer(ctx, read) == nan_words
+        for reg_addr, value in ((df1, 0x0000), (df1 + 1, 0x7FC0)):
+            fc06 = struct.pack(">BHH", 6, reg_addr, value)
+            assert _answer(ctx, fc06) == fc06
+            assert _answer(ctx, read) == nan_words
+        # 2.5 (0x0000:0x4020) over the NaN, one word at a time.
+        assert _answer(ctx, fc16_nan) == struct.pack(">BHH", 16, df1, 2)
+        fc06 = struct.pack(">BHH", 6, df1, 0x0000)
+        assert _answer(ctx, fc06) == fc06
+        assert _answer(ctx, read) == nan_words
+        fc06 = struct.pack(">BHH", 6, df1 + 1, 0x4020)
+        assert _answer(ctx, fc06) == fc06
+        assert _answer(ctx, read) == bytes([3, 4, 0x00, 0x00, 0x40, 0x20])
+        assert p.get("DF1") == 2.5
+
+    @pytest.mark.parametrize(
+        "words",
+        [(0x0000, 0x7FC0), (0x0001, 0x7F80), (0xFFFF, 0xFFFF), (0x0000, 0x3FC0)],
+        ids=["quiet NaN", "signalling NaN", "FFFF FFFF", "1.5"],
+    )
+    def test_b3_a_df_reads_back_the_words_written(self, words):
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        df1 = plc_to_modbus("DF", 1)[0]
+        assert ctx.setValues(16, df1, list(words)) is None
+        assert ctx.getValues(3, df1, 2) == list(words)
+        assert ctx.getValues(3, df1 + 1, 1) == [words[1]]
+        # Writing the high word alone keeps the low word as written.
+        assert ctx.setValues(6, df1 + 1, [words[1]]) is None
+        assert ctx.getValues(3, df1, 2) == list(words)
+
+    def test_a_df_the_provider_changes_reads_as_the_provider_holds_it(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        df1 = plc_to_modbus("DF", 1)[0]
+        assert ctx.setValues(16, df1, [0x0001, 0x7F80]) is None
+        p.set("DF1", 1.5)
+        assert ctx.getValues(3, df1, 2) == [0x0000, 0x3FC0]
+        p.set("DF1", math.nan)
+        assert ctx.getValues(3, df1, 2) == [0x0000, 0x7FC0]
+
+    def test_a_number_written_over_a_nan_forgets_its_words(self):
+        ctx = _ClickDeviceContext(MemoryDataProvider())
+        df1 = plc_to_modbus("DF", 1)[0]
+        assert ctx.setValues(16, df1, [0x0001, 0x7F80]) is None
+        assert ctx.memory.nan_words == {"DF1": (0x0001, 0x7F80)}
+        assert ctx.setValues(16, df1, [0x0000, 0x3FC0]) is None
+        assert ctx.memory.nan_words == {}
+
+    @pytest.mark.parametrize(
+        ("value", "words"), [(math.nan, [0x0000, 0x7FC0]), (-math.nan, [0x0000, 0xFFC0])]
+    )
+    def test_a_nan_set_in_the_provider_reads_as_its_own_bits(self, value, words):
+        p = MemoryDataProvider()
+        p.set("DF1", value)
+        ctx = _ClickDeviceContext(p)
+        assert ctx.getValues(3, plc_to_modbus("DF", 1)[0], 2) == words
+
+    def test_provider_failure_midway_keeps_no_nan_words(self):
+        class Flaky(MemoryDataProvider):
+            def write(self, address: str, value):
+                if address == "DF2":
+                    raise RuntimeError("down")
+                super().write(address, value)
+
+        ctx = _ClickDeviceContext(Flaky())
+        df1 = plc_to_modbus("DF", 1)[0]
+        assert ctx.setValues(16, df1, [0x0001, 0x7F80, 0x0000, 0x3FC0]) == 4
+        assert ctx.memory.nan_words == {}

@@ -26,6 +26,7 @@ import pyclickplc.server as server_module
 from pyclickplc.client import ClickClient
 from pyclickplc.modbus import plc_to_modbus
 from pyclickplc.server import ClickServer, MemoryDataProvider
+from tests._nan import KEEPS_SIGNALLING_NAN
 
 # Port for integration tests (avoid 502 which needs root)
 TEST_PORT = 15020
@@ -75,7 +76,9 @@ class TestRoundTrips:
         assert math.isnan(provider.get("DF3"))
         assert math.isnan(provider.get("DF4"))
         raw = (await plc._client.read_holding_registers(28672, count=8)).registers
-        assert raw == [0x0000, 0x7F80, 0x0000, 0xFF80, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF]
+        # Some Python versions set DF4's quiet bit on the way to a float.
+        df4 = [0x2345, 0xFFA1] if KEEPS_SIGNALLING_NAN else [0x2345, 0xFFE1]
+        assert raw == [0x0000, 0x7F80, 0x0000, 0xFF80, 0x0000, 0x7FC0, *df4]
 
     @pytest.mark.asyncio
     async def test_int32_round_trip(self, plc_fixture):
@@ -565,10 +568,11 @@ class TestRawAnswers:
         assert response.isError()
         assert response.exception_code == 2
 
-    async def test_unnamed_yd_word_survives_a_server_restart(self):
+    async def test_what_the_server_keeps_survives_a_server_restart(self):
         provider = MemoryDataProvider()
         server = ClickServer(provider, port=TEST_PORT)
         yd_base, _ = plc_to_modbus("YD", 0)
+        df1, _ = plc_to_modbus("DF", 1)
         for step in ("write", "read"):
             async with server:
                 await asyncio.sleep(0.1)
@@ -576,9 +580,18 @@ class TestRawAnswers:
                     if step == "write":
                         response = await plc._client.write_register(yd_base + 3, 0x8000)
                         assert not response.isError()
+                        # A Y gap coil, and a signalling NaN in DF1.
+                        response = await plc._client.write_coil(8240, True)
+                        assert not response.isError()
+                        response = await plc._client.write_registers(df1, [0x0001, 0x7F80])
+                        assert not response.isError()
                     else:
                         response = await plc._client.read_holding_registers(yd_base + 2, count=2)
                         assert response.registers == [0, 0x8000]
+                        response = await plc._client.read_coils(8240, count=1)
+                        assert response.bits[0] is True
+                        response = await plc._client.read_holding_registers(df1, count=2)
+                        assert response.registers == [0x0001, 0x7F80]
         assert provider.get("YD1") == 0
 
     async def test_fc23_answers_exception_01_and_stores_nothing(self, plc_fixture):

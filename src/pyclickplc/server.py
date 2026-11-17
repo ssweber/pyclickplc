@@ -10,12 +10,13 @@ import asyncio
 import contextlib
 import errno
 import itertools
+import math
 import os
 import socket
 import struct
 import sys
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, cast, runtime_checkable
 
 from .addresses import AddressNormalizerMixin, format_address_display, parse_address
@@ -148,8 +149,41 @@ _ILLEGAL_ADDRESS = 0x02
 _ILLEGAL_VALUE = 0x03
 _DEVICE_FAILURE = 0x04
 
-# A store is a provider address and its value, or a spare word's Modbus address and its value.
+# A store is a provider address and its value, or the Modbus address of a spare word or of a
+# gap coil and its value.
 _Store = tuple[str | int, PlcValue]
+
+# The register after XD8 and the one after YD8. No address names them; a read gives 0 and a
+# write is refused.
+_PAST_XD_YD = frozenset(
+    MODBUS_MAPPINGS[bank].base + BANKS[bank].max_addr + 1 for bank in ("XD", "YD")
+)
+
+
+@dataclass(frozen=True)
+class _ServerMemory:
+    """What the server keeps itself, so a DataProvider never sees it.
+
+    ``words`` and ``coils`` are the unnamed YD registers and the X and Y gap coils a client
+    wrote, by Modbus address; no PLC address names them. ``nan_words`` holds the two registers of
+    each DF a client wrote as a NaN, by PLC address. A NaN that goes through a Python float can
+    come back with other bits (Python 3.11 to 3.13 and 3.15 set a signalling NaN's quiet bit;
+    3.14 keeps it), so the server answers with the registers as written for as long as the
+    provider holds that NaN.
+
+    Where Python sets the quiet bit, two NaNs that differ only in that bit give the same Python
+    float, so a provider change from one to the other can't be seen, and the registers as
+    written win.
+    """
+
+    words: dict[int, int] = field(default_factory=dict)
+    coils: dict[int, bool] = field(default_factory=dict)
+    nan_words: dict[str, tuple[int, int]] = field(default_factory=dict)
+
+
+def _same_float(value: PlcValue, other: float) -> bool:
+    """True if ``value`` is a float with the same bits as ``other``, NaN payload included."""
+    return isinstance(value, float) and struct.pack("<d", value) == struct.pack("<d", other)
 
 
 def _unpack(fmt: str, data: bytes) -> tuple[int, ...] | None:
@@ -197,7 +231,7 @@ def _read(context: _ClickDeviceContext, function_code: int, data: bytes) -> byte
 def _write_coil(context: _ClickDeviceContext, function_code: int, data: bytes) -> bytes:
     """FC 05. A value other than 0x0000 or 0xFF00 gets exception 03 and stores nothing.
 
-    The answer holds the value read back after the write.
+    The answer echoes the request.
     """
     fields = _unpack(">HH", data)
     if fields is None or fields[1] not in (0x0000, 0xFF00):
@@ -205,24 +239,18 @@ def _write_coil(context: _ClickDeviceContext, function_code: int, data: bytes) -
     address, value = fields
     if (rc := context.setValues(5, address, [value == 0xFF00])) is not None:
         return _exception(function_code, rc)
-    values = context.getValues(5, address, 1)
-    if isinstance(values, int):
-        return _exception(function_code, values)
-    return struct.pack(">BHH", function_code, address, 0xFF00 if values[0] else 0x0000)
+    return struct.pack(">BHH", function_code, address, value)
 
 
 def _write_register(context: _ClickDeviceContext, function_code: int, data: bytes) -> bytes:
-    """FC 06. The answer holds the value read back after the write."""
+    """FC 06. The answer echoes the request."""
     fields = _unpack(">HH", data)
     if fields is None:
         return _exception(function_code, _ILLEGAL_VALUE)
     address, value = fields
     if (rc := context.setValues(6, address, [value])) is not None:
         return _exception(function_code, rc)
-    values = context.getValues(6, address, 1)
-    if isinstance(values, int):
-        return _exception(function_code, values)
-    return struct.pack(">BHH", function_code, address, values[0])
+    return struct.pack(">BHH", function_code, address, value)
 
 
 def _write_coils(context: _ClickDeviceContext, function_code: int, data: bytes) -> bytes:
@@ -299,10 +327,9 @@ class _ClickDeviceContext:
     refuse a request.
     """
 
-    def __init__(self, provider: DataProvider, spare_words: dict[int, int] | None = None) -> None:
+    def __init__(self, provider: DataProvider, memory: _ServerMemory | None = None) -> None:
         self.provider = provider
-        # The unnamed YD registers keep what a client writes to them, by Modbus address.
-        self.spare_words: dict[int, int] = {} if spare_words is None else spare_words
+        self.memory = _ServerMemory() if memory is None else memory
 
     def getValues(
         self, func_code: int, address: int, count: int = 1
@@ -331,20 +358,27 @@ class _ClickDeviceContext:
         if func_code not in _CLICK_FUNCTION_CODES:
             return _ILLEGAL_FUNCTION
         try:
+            df_words: dict[str, tuple[int, int]] = {}
             if func_code in (5, 15):
                 plan = self._plan_coils(address, values)
             elif func_code == 6:
-                plan = self._plan_registers(address, [values[0]])
+                plan = self._plan_registers(address, [values[0]], df_words)
             else:
-                plan = self._plan_registers(address, values)
+                plan = self._plan_registers(address, values, df_words)
             if isinstance(plan, int):
                 return plan
-            return self._commit(plan)
+            return self._commit(plan, coils=func_code in (5, 15), df_words=df_words)
         except Exception:
             return _DEVICE_FAILURE
 
-    def _commit(self, plan: list[_Store]) -> int | None:
-        """Store a checked plan, putting the old values back if the provider fails midway."""
+    def _commit(
+        self, plan: list[_Store], *, coils: bool, df_words: dict[str, tuple[int, int]]
+    ) -> int | None:
+        """Store a checked plan, putting the old values back if the provider fails midway.
+
+        An int address in the plan is a gap coil if ``coils``, else a spare word.
+        ``df_words`` holds the two registers written to each DF in the plan.
+        """
         stores = [(plc_addr, value) for plc_addr, value in plan if isinstance(plc_addr, str)]
         old = [self.provider.read(plc_addr) for plc_addr, _ in stores]
         done = 0
@@ -359,10 +393,33 @@ class _ClickDeviceContext:
                 except Exception:
                     pass
             return _DEVICE_FAILURE
-        for reg_addr, value in plan:
-            if isinstance(reg_addr, int):
-                self.spare_words[reg_addr] = int(value)
+        for modbus_addr, value in plan:
+            if not isinstance(modbus_addr, int):
+                continue
+            if coils:
+                self.memory.coils[modbus_addr] = bool(value)
+            else:
+                self.memory.words[modbus_addr] = int(value)
+        for plc_addr, words in df_words.items():
+            if math.isnan(cast(float, unpack_value(list(words), DataType.FLOAT))):
+                self.memory.nan_words[plc_addr] = words
+            else:
+                self.memory.nan_words.pop(plc_addr, None)
         return None
+
+    def _read_words(self, plc_addr: str, data_type: DataType) -> list[int]:
+        """The registers of a value the provider holds.
+
+        A DF that still holds the NaN a client wrote gives the registers as written.
+        """
+        value = self.provider.read(plc_addr)
+        if data_type == DataType.FLOAT:
+            words = self.memory.nan_words.get(plc_addr)
+            if words is not None and _same_float(
+                value, cast(float, unpack_value(list(words), DataType.FLOAT))
+            ):
+                return list(words)
+        return pack_value(value, data_type)
 
     # --- Coil helpers ---
 
@@ -371,10 +428,11 @@ class _ClickDeviceContext:
         for i in range(count):
             mapped = modbus_to_plc(address + i, is_coil=True)
             if mapped is None:
-                # A CLICK reads a gap between X or Y slots as OFF and refuses the rest.
+                # A gap between X or Y slots reads what a client wrote to it, OFF until then.
+                # An address outside every bank is refused.
                 if not _in_sparse_coil_span(address + i):
                     return _ILLEGAL_ADDRESS
-                result.append(False)
+                result.append(self.memory.coils.get(address + i, False))
             else:
                 bank, index = mapped
                 plc_addr = _format_plc_address(bank, index)
@@ -389,11 +447,14 @@ class _ClickDeviceContext:
         for i, val in enumerate(values):
             mapped = modbus_to_plc(address + i, is_coil=True)
             if mapped is None:
-                if len(values) == 1 or not _in_sparse_coil_span(address + i):
+                if not _in_sparse_coil_span(address + i):
                     return _ILLEGAL_ADDRESS
-                continue  # FC 15 skips a gap between X or Y slots.
+                # A gap between X or Y slots keeps what a client writes to it.
+                plan.append((address + i, bool(val)))
+                continue
             bank, index = mapped
-            if not _is_address_writable(bank, index):
+            # An X input takes a write too. Whatever drives the inputs may write it again.
+            if bank != "X" and not _is_address_writable(bank, index):
                 return _ILLEGAL_ADDRESS
             plan.append((_format_plc_address(bank, index), bool(val)))
         return plan
@@ -407,11 +468,15 @@ class _ClickDeviceContext:
             reg_addr = address + i
             mapped = modbus_to_plc_register(reg_addr)
             if mapped is None:
-                return _ILLEGAL_ADDRESS
+                if reg_addr not in _PAST_XD_YD:
+                    return _ILLEGAL_ADDRESS
+                result.append(0)
+                i += 1
+                continue
 
             bank, index, reg_position = mapped
             if _is_unnamed_word(bank, index):
-                result.append(self.spare_words.get(reg_addr, 0))
+                result.append(self.memory.words.get(reg_addr, 0))
                 i += 1
                 continue
             mapping = MODBUS_MAPPINGS[bank]
@@ -434,17 +499,13 @@ class _ClickDeviceContext:
                 i += 1
                 continue
 
-            # Read the PLC value
-            val = self.provider.read(plc_addr)
-
-            # Pack the value
             data_type = BANKS[bank].data_type
             if data_type == DataType.BIT:
-                result.append(int(bool(val)))
+                result.append(int(bool(self.provider.read(plc_addr))))
                 i += 1
                 continue
 
-            regs = pack_value(val, data_type)
+            regs = self._read_words(plc_addr, data_type)
 
             if mapping.width == 1:
                 result.append(regs[0])
@@ -466,8 +527,16 @@ class _ClickDeviceContext:
                     i += 1
         return result
 
-    def _plan_registers(self, address: int, values: list[int] | list[bool]) -> list[_Store] | int:
-        """Resolve a register write into (address, value) stores without storing any."""
+    def _plan_registers(
+        self,
+        address: int,
+        values: list[int] | list[bool],
+        df_words: dict[str, tuple[int, int]],
+    ) -> list[_Store] | int:
+        """Resolve a register write into (address, value) stores without storing any.
+
+        Puts the two registers each DF will hold in ``df_words``.
+        """
         if not 1 <= len(values) <= MAX_WRITE_REGISTERS:
             return _ILLEGAL_VALUE
         plan: list[_Store] = []
@@ -503,18 +572,20 @@ class _ClickDeviceContext:
             if mapping.width == 1:
                 plan.append((plc_addr, unpack_value([reg_val], data_type)))
                 i += 1
-            elif reg_position == 0 and i + 1 < len(values):
+                continue
+            if reg_position == 0 and i + 1 < len(values):
                 regs = [reg_val, int(values[i + 1])]
                 if not 0 <= regs[1] <= 0xFFFF:
                     return _ILLEGAL_VALUE
-                plan.append((plc_addr, unpack_value(regs, data_type)))
                 i += 2
             else:
                 # Half a value: keep the other register as stored.
-                current_regs = pack_value(self.provider.read(plc_addr), data_type)
-                current_regs[reg_position] = reg_val
-                plan.append((plc_addr, unpack_value(current_regs, data_type)))
+                regs = self._read_words(plc_addr, data_type)
+                regs[reg_position] = reg_val
                 i += 1
+            plan.append((plc_addr, unpack_value(regs, data_type)))
+            if data_type == DataType.FLOAT:
+                df_words[plc_addr] = (regs[0], regs[1])
 
         for plc_addr, value in plan:
             if not isinstance(plc_addr, str):
@@ -1049,7 +1120,7 @@ class ClickServer:
         # The only lifecycle state. Every change to it is made before the next await, so a
         # cancel or another call at any await finds it whole.
         self._run: _Run | None = None
-        self._spare_words: dict[int, int] = {}
+        self._memory = _ServerMemory()
         # Client ids count up across runs, so an old id never names a newer client.
         self._client_ids = itertools.count(1)
 
@@ -1201,7 +1272,7 @@ class ClickServer:
             if listener.is_listening():
                 raise RuntimeError("ClickServer is already running")
             break  # It stopped listening on its own: replace it, keeping the run.
-        new = _Listener(_ClickDeviceContext(self.provider, self._spare_words), self._client_ids)
+        new = _Listener(_ClickDeviceContext(self.provider, self._memory), self._client_ids)
         old: _Listener | None = None
         if run is None:
             run = self._run = _Run(new)
