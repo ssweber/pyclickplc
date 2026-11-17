@@ -51,8 +51,11 @@ _CDV_CODE_TO_DATA_TYPE: dict[int, DataType] = {
 _DATA_TYPE_TO_CDV_CODE: dict[DataType, int] = {v: k for k, v in _CDV_CODE_TO_DATA_TYPE.items()}
 
 
-# SC addresses that are writable (most SC are read-only system controls)
-WRITABLE_SC: frozenset[int] = frozenset({50, 51, 53, 55, 60, 61, 65, 66, 67, 75, 76, 120, 121})
+# SC addresses that take a New Value (most SC are read-only system controls). SC50
+# (_PLC_Mode_Change_to_STOP) and SC51 (_Watchdog_Timer_Reset) are left out: only ladder writes
+# them, and every installed PLCType.ini (2.60 to 4.00; 3.60 has none) marks both R under
+# [DATAVIEW_RW0].
+WRITABLE_SC: frozenset[int] = frozenset({53, 55, 60, 61, 65, 66, 67, 75, 76, 120, 121})
 
 # SD addresses that are writable (most SD are read-only system data)
 WRITABLE_SD: frozenset[int] = frozenset(
@@ -118,7 +121,7 @@ def is_address_writable(address: str) -> bool:
     XD and YD are read-only.
 
     Args:
-        address: Address string like "X001", "SC50"
+        address: Address string like "X001", "SC53"
 
     Returns:
         True if the address can have a New Value written to it.
