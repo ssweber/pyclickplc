@@ -1253,7 +1253,7 @@ class ClickServer:
             run.listener.abandon()
             return None
         if run.ended.get_loop() is not asyncio.get_running_loop():
-            raise RuntimeError("ClickServer is running on another event loop; stop it there")
+            raise RuntimeError("ClickServer is running on another event loop. Stop it there.")
         return run
 
     def _end(self, run: _Run, reason: BaseException | None) -> None:
