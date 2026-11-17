@@ -1,4 +1,4 @@
-"""Maintained AutomationDirect CLICK system-address guidance."""
+"""CLICK's current nicknames for its SC and SD system addresses."""
 
 from ._nicknames import (
     AUTOMATIONDIRECT_SYSTEM_CONTROL_RELAY_SOURCE,

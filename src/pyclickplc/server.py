@@ -92,11 +92,11 @@ class MemoryDataProvider(AddressNormalizerMixin):
         self._data[normalized] = value
 
     def get(self, address: str) -> PlcValue:
-        """Synchronous read convenience."""
+        """Return the value at *address*. This method calls ``read``."""
         return self.read(address)
 
     def set(self, address: str, value: PlcValue) -> None:
-        """Synchronous write convenience."""
+        """Set *address* to *value*. This method calls ``write``."""
         self.write(address, value)
 
     def bulk_set(self, values: Mapping[str, PlcValue]) -> None:
@@ -132,11 +132,11 @@ def _format_plc_address(bank: str, index: int) -> str:
 
 
 def _is_unnamed_word(bank: str, index: int) -> bool:
-    """Return True for an XD or YD register that no address names (MDB 3, 5, ..., 15).
+    """Return True for an XD or YD register that has no address name (MDB 3, 5, ..., 15).
 
-    XDn sits at MDB 2n, so the odd registers above XD0u have no name. A CLICK keeps each one
-    as a spare word that drives no X or Y. If you format one as an address, you get the address
-    of the register before it.
+    XDn is at MDB 2n, so each odd register above XD0u has no name. A CLICK stores what a client
+    writes to such a register, but the value drives no X or Y. This module calls such a register
+    a spare word. If you format one as an address, you get the address of the register before it.
     """
     return bank in ("XD", "YD") and index >= 3 and index % 2 == 1
 
@@ -151,8 +151,11 @@ _ILLEGAL_ADDRESS = 0x02
 _ILLEGAL_VALUE = 0x03
 _DEVICE_FAILURE = 0x04
 
-# A store pairs a value with its target. The target is a provider address, or the Modbus address
-# of a spare word or a gap coil.
+# A pending write: a target and the value to write there. The target is either a PLC address,
+# which the provider stores, or an int Modbus address, which the server stores itself. An int
+# target is a spare word (see _is_unnamed_word) or a gap coil. A gap coil is a coil between X or
+# Y slots that no address names. _plan_coils and _plan_registers build a list of pending writes,
+# called a plan, and _commit writes it.
 _Store = tuple[str | int, PlcValue]
 
 # The register after XD8 and the register after YD8. No address names them. A read returns 0
@@ -164,19 +167,20 @@ _PAST_XD_YD = frozenset(
 
 @dataclass(frozen=True)
 class _ServerMemory:
-    """Holds what the server keeps itself, so a DataProvider never sees it.
+    """The values that the server stores itself. A DataProvider never sees them.
 
-    ``words`` and ``coils`` hold what a client wrote to the unnamed YD registers and to the X
-    and Y gap coils, by Modbus address. No PLC address names them. ``nan_words`` holds the two
-    registers of each DF that a client wrote as a NaN, by PLC address.
+    ``words`` and ``coils`` map a Modbus address to what a client wrote to an unnamed YD
+    register or to an X or Y gap coil. No PLC address names them. ``nan_words`` maps the PLC
+    address of each DF that a client wrote as a NaN to the two registers that the client wrote.
 
-    A NaN that goes through a Python float can come back with other bits. Python 3.11 to 3.13
-    and 3.15 set a signalling NaN's quiet bit. 3.14 keeps it. So the server answers with the
-    registers as written for as long as the provider holds that NaN.
+    A NaN that passes through a Python float can come back with different bits. Python 3.11 to
+    3.13 and 3.15 set the quiet bit of a signalling NaN. Python 3.14 leaves it as it is. So while
+    the provider still returns that NaN, the server answers a read with the registers that the
+    client wrote.
 
-    Where Python sets the quiet bit, two NaNs that differ only in that bit give the same Python
-    float. A provider change from one to the other can't be seen, so the registers as written
-    win.
+    Where Python sets the quiet bit, two NaNs that differ only in that bit become the same
+    Python float. If the provider's value changes from one to the other, the server can't tell.
+    It answers with the registers that the client wrote.
     """
 
     words: dict[int, int] = field(default_factory=dict)
@@ -260,8 +264,8 @@ def _write_coils(context: _ClickDeviceContext, function_code: int, data: bytes) 
     """Answer FC 15. If the byte count disagrees with the count or with the data, the answer is
     exception 03.
 
-    The context refuses a count outside 1 to 1968 with 03. So a bad request never stores
-    anything.
+    The context answers 03 for a count outside 1 to 1968. Both checks run before anything is
+    stored, so a bad request stores nothing.
     """
     fields = _unpack(">HHB", data)
     if fields is None:
@@ -280,8 +284,8 @@ def _write_registers(context: _ClickDeviceContext, function_code: int, data: byt
     """Answer FC 16. If the byte count disagrees with the count or with the data, the answer is
     exception 03.
 
-    The context refuses a count outside 1 to 123 with 03. So a bad request never stores
-    anything.
+    The context answers 03 for a count outside 1 to 123. Both checks run before anything is
+    stored, so a bad request stores nothing.
     """
     fields = _unpack(">HHB", data)
     if fields is None:
@@ -359,9 +363,9 @@ class _ClickDeviceContext:
         """Write values to the DataProvider.
 
         A refused request leaves the provider unchanged. The server checks every target and
-        reads its old value first, so it can put the old values back. If the provider's
-        ``read`` raises for an address in the request, the whole request fails with exception
-        04.
+        reads every old value before it writes anything. If a provider ``write`` raises
+        partway through, the server writes the old values back. If the provider's ``read``
+        raises for an address in the request, the whole request fails with exception 04.
         """
         if func_code not in _CLICK_FUNCTION_CODES:
             return _ILLEGAL_FUNCTION
@@ -382,10 +386,11 @@ class _ClickDeviceContext:
     def _commit(
         self, plan: list[_Store], *, coils: bool, df_words: dict[str, tuple[int, int]]
     ) -> int | None:
-        """Store a checked plan, putting the old values back if the provider fails midway.
+        """Write a checked plan. Return None, or exception 04 if a provider ``write`` raises.
 
-        An int address in the plan is a gap coil if ``coils`` is set, else a spare word.
-        ``df_words`` has the two registers written to each DF in the plan.
+        After a provider ``write`` raises, write the old values back. An int target in the
+        plan is a gap coil if ``coils`` is set, and a spare word otherwise.
+        ``df_words`` holds the two registers that each DF in the plan will hold.
         """
         stores = [(plc_addr, value) for plc_addr, value in plan if isinstance(plc_addr, str)]
         old = [self.provider.read(plc_addr) for plc_addr, _ in stores]
@@ -457,11 +462,13 @@ class _ClickDeviceContext:
             if mapped is None:
                 if not _in_sparse_coil_span(address + i):
                     return _ILLEGAL_ADDRESS
-                # A write to a gap between X or Y slots is kept, so a later read returns it.
+                # The server stores a write to a gap between X or Y slots itself. A later read
+                # returns the value.
                 plan.append((address + i, bool(val)))
                 continue
             bank, index = mapped
-            # A client may write an X input too. Whatever drives the inputs may write it again.
+            # MODBUS_MAPPINGS makes X read only, but a client may write an X input too. Whatever
+            # drives the inputs may overwrite the value later.
             if bank != "X" and not _is_address_writable(bank, index):
                 return _ILLEGAL_ADDRESS
             plan.append((_format_plc_address(bank, index), bool(val)))
@@ -541,9 +548,10 @@ class _ClickDeviceContext:
         values: list[int] | list[bool],
         df_words: dict[str, tuple[int, int]],
     ) -> list[_Store] | int:
-        """Resolve a register write into (address, value) stores without storing any.
+        """Return the plan for a register write, or an exception code if the write is refused.
 
-        Put the two registers that each DF will hold in ``df_words``.
+        This method writes nothing. It puts the two registers that each DF will hold in
+        ``df_words``.
         """
         if not 1 <= len(values) <= MAX_WRITE_REGISTERS:
             return _ILLEGAL_VALUE
@@ -587,7 +595,8 @@ class _ClickDeviceContext:
                     return _ILLEGAL_VALUE
                 i += 2
             else:
-                # Half a value: keep the other register as stored.
+                # The client wrote one register of a two-register value. Keep the other
+                # register as it is stored.
                 regs = self._read_words(plc_addr, data_type)
                 regs[reg_position] = reg_val
                 i += 1
@@ -615,7 +624,8 @@ class _ClickDeviceContext:
 _MBAP = struct.Struct(">HHHB")
 # The shortest frame is a function code and no data. The longest well-formed request is FC15 or
 # FC16 with a byte count of 255. It holds the unit id, function code, address, count, byte count
-# and 255 data bytes. Up to that length, a write too large for a CLICK gets exception 03.
+# and 255 data bytes. A write that is too large for a CLICK but no longer than this gets
+# exception 03. A frame with a length outside these bounds closes the connection.
 _MIN_LENGTH = 2
 _MAX_LENGTH = 262
 # How long a closing connection may take to send its pending answers before the server drops it.
@@ -631,8 +641,9 @@ _BACKLOG = 100
 # connections wait in TIME_WAIT be listened on again. On Windows it would let two sockets share
 # a port.
 _REUSE_ADDRESS = os.name == "posix" and sys.platform != "cygwin"
-# The errors that mean the system is out of sockets or memory for now. Accepting waits, then
-# tries again. asyncio does the same.
+# The errors that mean the system is out of sockets or memory for the moment. After one of
+# them, the server waits _ACCEPT_RETRY_DELAY seconds and then accepts again. asyncio does the
+# same.
 _OUT_OF_RESOURCES = frozenset(
     {
         errno.EMFILE,
@@ -687,7 +698,8 @@ async def _readable(loop: asyncio.AbstractEventLoop, sock: socket.socket) -> Non
     try:
         await ready
     finally:
-        # shut() stops watching a socket before it closes it.
+        # shut() stops watching a socket before it closes it. So a closed socket has no reader to
+        # remove.
         if sock.fileno() != -1:
             loop.remove_reader(sock)
 
@@ -704,7 +716,8 @@ class _Connection(asyncio.Protocol):
     def __init__(self, listener: _Listener, client_id: str, sock: socket.socket) -> None:
         self.listener = listener
         self.client_id = client_id
-        # The accepted socket, which the listener closes if the event loop closes first.
+        # The accepted socket. If the event loop closes before this connection does, the
+        # listener's abandon() closes the socket.
         self.sock = sock
         self.transport: asyncio.Transport | None = None
         self.lost: asyncio.Future[None] = asyncio.get_running_loop().create_future()
@@ -720,7 +733,7 @@ class _Connection(asyncio.Protocol):
         self.transport = cast(asyncio.Transport, transport)
         self.listener.accepted.pop(self.sock, None)
         self.listener.connections[self.client_id] = self
-        # If the listener shut while it was making this connection, close it now.
+        # If the listener shut while asyncio was making this connection, close the connection.
         if self.listener.closed:
             self.close()
 
@@ -733,8 +746,10 @@ class _Connection(asyncio.Protocol):
             self.lost.set_result(None)
 
     def pause_writing(self) -> None:
-        # If a client sends requests without reading the answers, the server stops reading from
-        # it until it reads. So the server holds at most one read of its requests.
+        # asyncio calls this when the answers waiting to go to the client fill the write buffer.
+        # That happens when a client sends requests and does not read the answers. The server
+        # then stops reading from the client and stops answering it until the buffer drains. So
+        # the server never buffers more than one read of the client's requests.
         self._paused = True
         if self.transport is not None:
             self.transport.pause_reading()
@@ -762,7 +777,9 @@ class _Connection(asyncio.Protocol):
             if not _MIN_LENGTH <= length <= _MAX_LENGTH:
                 self.close()
                 return
-            # Only the length ends a frame. pymodbus took 9 bytes for length 2 if 9 had arrived.
+            # The length field alone says where a frame ends, whatever the function code. The
+            # pymodbus server that this code replaced took 9 bytes as one frame of length 2 when
+            # 9 bytes had arrived.
             end = 6 + length
             if len(buffer) < end:
                 return
@@ -783,7 +800,9 @@ class _Connection(asyncio.Protocol):
             return
         self.transport.close()
         if self._abort_timer is None:
-            # If a client does not read, its answers stay queued and close() waits for them.
+            # If the client does not read, its answers stay in the write buffer, and the
+            # transport's close() waits to send them. So this timer aborts the connection after
+            # _CLOSE_TIMEOUT seconds.
             self._abort_timer = self.lost.get_loop().call_later(_CLOSE_TIMEOUT, self.abort)
 
     def abort(self) -> None:
@@ -795,11 +814,12 @@ class _Listener:
     """Owns the listening sockets of a ClickServer, the tasks that accept their clients, and the
     connections.
 
-    A listener opens once and shuts once. ``shut()`` never waits, so the listener is shut even
-    if something cancels the code that called it. ``wait_closed()`` only waits.
+    A listener opens once and shuts once. ``start()`` makes a new listener rather than open an
+    old one again. ``shut()`` never awaits. So the listener is shut even if something cancels
+    the code that called ``shut()``. ``wait_closed()`` changes nothing. It only waits.
 
-    A client stays in ``accepted`` from the moment it is accepted until its connection is made.
-    So ``shut()`` and ``abandon()`` close it however far its connection had got.
+    A client is in ``accepted`` from the moment it is accepted until its connection is made. So
+    ``shut()`` and ``abandon()`` can close a client at any stage of making its connection.
     """
 
     port: int
@@ -807,18 +827,20 @@ class _Listener:
     def __init__(self, context: _ClickDeviceContext, client_ids: Iterator[int]) -> None:
         self.context = context
         self.connections: dict[str, _Connection] = {}
-        # Each client accepted and not yet connected, with its connection once it is being made.
+        # Maps each accepted client socket to its _Connection. The value is None until
+        # connect_accepted_socket creates the connection. connection_made removes the entry.
         self.accepted: dict[socket.socket, _Connection | None] = {}
         self.sockets: list[socket.socket] = []
         self.attached = False
         self.closed = False
-        # Done once start() has finished with this listener, listening or not.
+        # Resolves when start() has finished with this listener, whether or not it is listening.
         self.opened: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._client_ids = client_ids
         # One task for each listening socket, accepting its clients one after another.
         self._serving: list[asyncio.Task[None]] = []
-        # On a loop that can't watch sockets, the accept that each of those tasks waits on. It
-        # stays here until the task has taken its result.
+        # On a loop that can't watch sockets, each of those tasks waits on a loop.sock_accept
+        # task. This set holds those accept tasks. An accept task stays here until the task that
+        # waits on it has taken its result.
         self._accepting: set[asyncio.Task[tuple[socket.socket, Any]]] = set()
 
     def _new_connection(self, client: socket.socket) -> _Connection:
@@ -880,7 +902,10 @@ class _Listener:
     async def _accept_when_ready(
         self, loop: asyncio.AbstractEventLoop, sock: socket.socket
     ) -> socket.socket:
-        """Accept a client on a loop that can watch sockets, keeping it as it is accepted."""
+        """Accept a client on a loop that can watch sockets, and return it.
+
+        The client goes into ``accepted`` as soon as it is accepted.
+        """
         while True:
             try:
                 client, _address = sock.accept()
@@ -893,10 +918,11 @@ class _Listener:
     async def _accept_on_completion(
         self, loop: asyncio.AbstractEventLoop, sock: socket.socket
     ) -> socket.socket | None:
-        """Accept a client through ``loop.sock_accept``; None if the accept was cancelled."""
+        """Accept a client through ``loop.sock_accept`` and return it, or None if cancelled."""
         accepting = loop.create_task(loop.sock_accept(sock))
         self._accepting.add(accepting)
-        # Runs right after the accept's first step, in the same loop step.
+        # The accept task's first step is already scheduled, so _watch runs right after it, in
+        # the same iteration of the event loop.
         loop.call_soon(self._watch, accepting)
         # asyncio.wait leaves the accept alone when this task is cancelled.
         await asyncio.wait([accepting])
@@ -908,13 +934,14 @@ class _Listener:
         return client
 
     def _watch(self, accepting: asyncio.Task[tuple[socket.socket, Any]]) -> None:
-        """Keep the client of an accept as soon as the accept has it.
+        """Pass the client of an accept task to ``_take`` as soon as the accept completes.
 
-        An accept's task holds its client in the future that it awaits until the task wakes.
-        A cancel in between drops the client without closing it. On the Proactor loop this
-        happens to an accept that completes in the same loop step as a stop() or a cancel. So
-        this method takes the client from that future, because its callbacks run in the step
-        where it completes, before the loop can stop.
+        The accept task waits on a future. When that future completes, its result holds the
+        client socket until the task wakes up and takes it. If the task is cancelled in between,
+        the client socket is lost and never closed. On the Proactor loop this happens when an
+        accept completes in the same iteration of the event loop as a stop() or a cancel. So
+        this method adds a callback to the future. The callbacks of a future run in the
+        iteration where it completes, before the loop can stop.
         """
         if accepting.done():
             self._took(accepting)
@@ -932,14 +959,20 @@ class _Listener:
             self._take(result[0])
 
     def _take(self, client: socket.socket) -> None:
-        """Keep a client that was just accepted. A listener that has shut closes it instead."""
+        """Add a client that was just accepted to ``accepted``.
+
+        If the listener has shut, close the client instead.
+        """
         if self.closed:
             client.close()
         else:
             self.accepted.setdefault(client, None)
 
     async def _connect(self, client: socket.socket) -> None:
-        """Make a connection of an accepted client."""
+        """Make the connection for an accepted client.
+
+        Close the client instead if the listener has shut or the connection can't be made.
+        """
         if self.closed:
             self.accepted.pop(client, None)
             client.close()
@@ -972,7 +1005,8 @@ class _Listener:
             accepting.cancel()
         for task in self._serving:
             task.cancel()
-        # A client whose connection is being made is closed as the connection is made.
+        # Close each accepted client that has no connection yet. A client whose connection is
+        # being made is closed in connection_made, which sees that the listener has shut.
         for client, connection in list(self.accepted.items()):
             if connection is None:
                 del self.accepted[client]
@@ -980,14 +1014,17 @@ class _Listener:
         loop = self.opened.get_loop()
         for sock in self.sockets:
             if sock.fileno() != -1:
-                # A selector loop stops watching the socket now, before it closes, and does not
-                # wait for the cancelled accept to run. Other loops have no readers.
+                # On a selector loop, stop watching the socket before closing it. Do not leave
+                # that to the cancelled accept, which runs later. Other loops have no readers.
                 with contextlib.suppress(NotImplementedError):
                     loop.remove_reader(sock)
             sock.close()
 
     def abandon(self) -> None:
-        """Close the sockets of a listener whose event loop has closed, without that loop."""
+        """Close the sockets of a listener whose event loop has closed.
+
+        This method does not call into the closed loop.
+        """
         self.closed = True
         sockets = [*self.sockets, *self.accepted]
         sockets += [connection.sock for connection in self.connections.values()]
@@ -1004,7 +1041,7 @@ class _Listener:
     async def wait_closed(self) -> None:
         """Wait for start() to finish with this listener, then for its accepts to end and its
         connections to close."""
-        # asyncio.wait never cancels what it waits on, so cancelling the caller leaves them alone.
+        # If the caller is cancelled, asyncio.wait does not cancel the futures that it waits on.
         await asyncio.wait([self.opened])
         tasks = [*self._serving, *self._accepting]
         if tasks:
@@ -1036,9 +1073,9 @@ class _Run:
 def _free_port(addresses: list[tuple[Any, ...]]) -> int | None:
     """Bind a socket to port 0 and return the port the system gave it.
 
-    The socket uses the first address in ``addresses`` that takes one. ``addresses`` are
-    ``getaddrinfo`` results. Return None when no address takes a socket, as for ``::1`` on a
-    host with IPv6 turned off.
+    Use the first address in ``addresses`` where a socket can be made and bound. ``addresses``
+    are ``getaddrinfo`` results. Return None when no address works, as for ``::1`` on a host
+    with IPv6 turned off.
     """
     for family, kind, proto, _canonname, sockaddr in addresses:
         try:
@@ -1051,10 +1088,10 @@ def _free_port(addresses: list[tuple[Any, ...]]) -> int | None:
 
 
 def _reason(exc: OSError) -> str:
-    """Return why a bind failed, worded as create_server words it on the running Python.
+    """Return the reason that a bind failed, in the words that create_server uses on this Python.
 
-    Before Python 3.12.5, create_server uses the bare reason. From 3.12.5 on it uses the whole
-    error, errno included.
+    Before Python 3.12.5, create_server uses only the error's ``strerror``. From 3.12.5 on, it
+    uses the whole error, including the errno.
     """
     if sys.version_info >= (3, 12, 5):
         return str(exc).lower()
@@ -1064,12 +1101,12 @@ def _reason(exc: OSError) -> str:
 def _bind(addresses: list[tuple[Any, ...]], port: int) -> list[socket.socket]:
     """Bind a non-blocking socket to each address on ``port``, as asyncio's create_server does.
 
-    ``addresses`` are ``getaddrinfo`` results. The function skips an address that takes no
-    socket or that the host does not have (EADDRNOTAVAIL). On any other error it closes every
-    socket it made.
+    ``addresses`` are ``getaddrinfo`` results. The function skips an address where a socket
+    can't be made, and an address that the host does not have (EADDRNOTAVAIL). On any other
+    error it closes every socket it made.
 
     Raises:
-        OSError: An address could not be bound, or none took a socket.
+        OSError: An address could not be bound, or the function skipped every address.
     """
     sockets: list[socket.socket] = []
     bound = False
@@ -1136,8 +1173,8 @@ class ClickServer:
         self.provider = provider
         self.host = host
         self.port = port
-        # The only lifecycle state. Every change to it happens before the next await. So a
-        # cancel or another call at any await finds it whole.
+        # The server's only lifecycle state. No change to it spans an await. So a cancel, or
+        # another call that runs during an await, never sees a change half made.
         self._run: _Run | None = None
         self._memory = _ServerMemory()
         # Client ids count up across runs, so an old id never names a newer client.
@@ -1180,7 +1217,10 @@ class ClickServer:
         ]
 
     def disconnect_client(self, client_id: str) -> bool:
-        """Disconnect one client by its ``client_id``; False if no such client is connected."""
+        """Disconnect the client with this ``client_id``.
+
+        Return True if that client was connected, and False otherwise.
+        """
         listener = self._server
         if listener is None:
             return False
@@ -1203,13 +1243,13 @@ class ClickServer:
     async def _listen(self) -> list[socket.socket]:
         """Bind a socket to every address the host resolves to, all on one port.
 
-        The method awaits nothing once the first socket is made, so a cancel can't leave a
-        socket unowned.
+        The method awaits nothing once the first socket is made. So a cancel can't leave
+        behind a socket that nothing will close.
         """
         loop = asyncio.get_running_loop()
         host = self.host or None
-        # Resolve in a task of its own, as create_server does. So start() always lets other
-        # calls run before it binds.
+        # Resolve the host in a task of its own. create_server does the same. Awaiting a task
+        # always yields to the event loop, so other calls get to run before start() binds.
         found = await loop.create_task(
             loop.getaddrinfo(host, self.port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
         )
@@ -1218,8 +1258,9 @@ class ClickServer:
         addresses = list(dict.fromkeys(found))
         if self.port != 0 or len({(address[0], address[4][0]) for address in addresses}) < 2:
             return _bind(addresses, self.port)
-        # Port 0 would give each address its own port. So take the port that the system gives
-        # the first address that takes one, and listen on that port on every address.
+        # Binding each address to port 0 would give each address a different port. So ask the
+        # system for a free port on the first address that can be bound, and then listen on
+        # that port on every address.
         error: OSError | None = None
         for _attempt in range(_PORT_ATTEMPTS):
             port = _free_port(addresses)
@@ -1236,7 +1277,7 @@ class ClickServer:
         ) from error
 
     def _current_run(self) -> _Run | None:
-        """Return the run in the slot, or None.
+        """Return the current run, or None.
 
         If the run's event loop has closed, drop the run and close its sockets without calling
         into that loop. This happens when a server started in one asyncio.run() is never
@@ -1257,7 +1298,7 @@ class ClickServer:
         return run
 
     def _end(self, run: _Run, reason: BaseException | None) -> None:
-        """End a run by emptying the slot, if it still holds the run, and shutting its listener.
+        """End a run. Clear ``self._run`` if it still holds the run, and shut the run's listener.
 
         This never waits. ``ended`` is resolved first, so serve_forever() returns even if
         closing the listener raises.
@@ -1287,10 +1328,11 @@ class ClickServer:
         while (run := self._current_run()) is not None:
             listener = run.listener
             if not listener.opened.done():
-                # Another start() is opening this listener; see how it went.
+                # Another start() is opening this listener. Wait for it, then check the result.
                 await asyncio.wait([listener.opened])
                 if self._run is not run and run.ended.done() and run.ended.result() is None:
-                    # A stop() ended the run while this call waited, so it stopped this call too.
+                    # A stop() ended the run while this call waited. That stop() applies to this
+                    # call too, so return without listening.
                     return run
                 continue
             if listener.is_listening():
@@ -1308,8 +1350,8 @@ class ClickServer:
                 # Its clients close before the new listener opens, as they would for stop().
                 await old.wait_closed()
             if not new.closed:
-                # Nothing is awaited between making the sockets and attaching them, so a
-                # cancel can't leave a listener nobody owns.
+                # Nothing is awaited between making the sockets and attaching them. So a
+                # cancel can't leave behind sockets that nothing will close.
                 new.attach(await self._listen())
         except BaseException as exc:
             if isinstance(exc, OSError):
@@ -1330,7 +1372,7 @@ class ClickServer:
         stops what that ``start()`` opens.
 
         Raises:
-            RuntimeError: The server runs on another event loop; stop it on that loop.
+            RuntimeError: The server runs on another event loop. Stop it on that loop.
         """
         run = self._current_run()
         if run is None:

@@ -47,30 +47,34 @@ _XY_ROW_STARTS = (1, 101, 201, 301, 401, 501, 601, 701, 801)
 _STD_STRIDE = 10
 _STD_HEADER_OFFSETS = list(range(1, _STD_STRIDE + 1))
 
-# CLICK shows this for a DF value it can't display. CLICK's editor can't enter a NaN or
-# an infinity, so write_plc_data refuses them. A program or a Modbus write can still put
-# one in the PLC.
+# CLICK writes this in a DF cell when it can't display the value. read_plc_data reads it as a
+# NaN. write_plc_data refuses a NaN or an infinity, because CLICK's editor can't enter one. A
+# PLC can still hold one, because a program or a Modbus write can put it there.
 _DF_ERROR = "Err-Format"
 
-# CLICK writes a DF value in fixed point with 8 decimals and no more than 40 digits in all
-# (3e38 has one decimal). For a large value it writes 19 or 20 significant digits and zeros
-# after them. No rule for which is known. Near 1e30 the switch falls between the float32
-# values 0x7154FFFF (20 kept) and 0x71550000 (19). But 1.0548e35 and 1.0548e38 keep 20 and
-# 1.0546e25 keeps 19, so no one limit on the first 20 digits fits. CLICK writes 1.07e30 with a
-# last digit that neither rounding of the exact value gives. This code keeps 20 digits while
-# they make a number below _DF_KEPT_LIMIT, and otherwise 19, rounded. The limit lies between
-# the first 20 digits of 0x7154FFFF (kept) and of 0x71550000 (not kept). It matches CLICK for
-# 70 of the 74 large values known. The four that differ are 1.0546e25, 1.0548e35, 1.0548e38
-# and 1.07e30. Most of the 74 lie near 1.05e30. A value that differs in its last digits reads
-# back as the same float32.
+# CLICK writes a DF value in fixed point with 8 decimals, and with no more than 40 digits in all.
+# So it writes 3e38 with one decimal. For a large value, CLICK writes 19 or 20 significant digits
+# and then zeros. No rule is known that says which. Near 1e30, CLICK changes from 20 digits to 19
+# between the float32 values 0x7154FFFF (20 digits) and 0x71550000 (19 digits). But no single
+# limit on the first 20 digits fits every value. CLICK writes 20 digits for 1.0548e35 and
+# 1.0548e38, and 19 for 1.0546e25. For 1.07e30, CLICK writes a last digit that neither rounding
+# up nor rounding down of the exact value gives.
+#
+# This code writes 20 significant digits when the first 20 digits, read as an integer, are less
+# than _DF_KEPT_LIMIT. Otherwise it writes 19. It rounds half to even. The limit lies between the
+# first 20 digits of 0x7154FFFF and those of 0x71550000. The result matches CLICK for 70 of the 74
+# large values whose CLICK text is known. The four that differ are 1.0546e25, 1.0548e35,
+# 1.0548e38 and 1.07e30. Most of the 74 lie near 1.05e30. Where the result differs from CLICK's
+# text in the last digits, it still reads back as the same float32.
 _DF_DECIMALS = 8
 _DF_MAX_DIGITS = 40
 _DF_KEPT_LIMIT = 10_547_249 * 10**12
 
-# CLICK writes a TXT space, control character or byte above 0x7E as "$" and its code in
-# uppercase hex without leading zeros ("$20", "$D", "$C8"). It writes other characters plain,
-# with no quotes: '"' as itself and "$" as a lone "$". A cell holds one character, so "$"
-# with hex digits after it is a code. CLICK writes "," plain too, which splits its row.
+# CLICK writes a TXT space, a control character or a character above 0x7E as "$" and its code
+# in uppercase hex, without leading zeros. A space becomes "$20", a carriage return "$D" and 0xC8
+# "$C8". CLICK writes every other character as itself, without quotes. So '"' is written as '"',
+# and "$" as a lone "$". A TXT cell holds one character, so a cell that holds "$" and hex digits
+# is a code. CLICK also writes "," as itself, and the comma splits the row into one cell too many.
 _TXT_ESCAPE = re.compile(r"\$([0-9A-Fa-f]{1,2})")
 
 # Defaults per data type (used by skip_default)
@@ -123,8 +127,8 @@ def read_plc_data(
         (``" "``).
 
     Raises:
-        ValueError: A row has cells that don't match the addresses its header gives
-            it. The message names the row's first address. CLICK writes a TXT comma
+        ValueError: A row has more or fewer cells than the header has addresses
+            for it. The message names the row's first address. CLICK writes a TXT comma
             unquoted, so a row that holds one has a cell too many and can't be read.
     """
     text = Path(path).read_text()
@@ -204,7 +208,11 @@ def read_plc_data(
 
 
 def _show(value: object) -> str:
-    """Return ``repr(value)`` for an error message. It never raises and never runs long."""
+    """Return ``repr(value)`` for an error message, cut to 40 characters.
+
+    An integer of more than 133 bits is described by its size. If ``repr`` raises ValueError
+    or OverflowError, the text is the type name.
+    """
     if isinstance(value, int) and not isinstance(value, bool) and value.bit_length() > 133:
         return f"an integer of {value.bit_length()} bits"
     try:
@@ -215,7 +223,10 @@ def _show(value: object) -> str:
 
 
 def _format_float(value: bool | int | float | str, addr: str) -> str:
-    """Format a DF value as CLICK does: the float32 value in CLICK's fixed point."""
+    """Return the text that CLICK writes in a DF cell for *value*.
+
+    CLICK rounds the value to a float32 and writes it in fixed point.
+    """
     try:
         number = float(value)
     except OverflowError:
@@ -240,7 +251,10 @@ def _format_float(value: bool | int | float | str, addr: str) -> str:
 
 
 def _format_text(value: bool | int | float | str, addr: str) -> str:
-    """Format a TXT value as CLICK does: plain, or ``$`` and its code in hex."""
+    """Return the text that CLICK writes in a TXT cell for *value*.
+
+    That is the character itself, or ``$`` and the character's code in hex.
+    """
     if value == "" or value == "\x00":
         return ""
     if not isinstance(value, str) or len(value) != 1 or ord(value) > 0xFF:
@@ -279,12 +293,12 @@ def write_plc_data(
     """Write a Click PLC data CSV to load via PLC > Write Data into PLC > File Select.
 
     Warning:
-        CLICK's Write Data into PLC writes every address of each memory type in
-        the file, so an address the file leaves blank is cleared in the PLC.
-        The file has every address of each bank written, with the bank's
-        default where *data* has no value. To change some addresses and keep
-        the rest, read the PLC's data first, then write it back with your
-        changes.
+        CLICK's Write Data into PLC writes every address of each memory type
+        that is in the file. It clears an address that the file leaves blank.
+        This function writes every address of each bank that it includes, with
+        the bank's default where *data* has no value. To change some addresses
+        and keep the rest, read the PLC's data first, then write it back with
+        your changes.
 
     Args:
         path: Output file path.
@@ -299,19 +313,19 @@ def write_plc_data(
               "CTD", "TXT"]``.
 
     Raises:
-        ValueError: A DF value is not a number in the float32 range, or a TXT value
-            is not one character with code 0..255, or is a comma. The message names the
-            address. CLICK writes a TXT comma unquoted, so the row can't be read back.
-            A NaN or an infinity raises too, because CLICK's editor can't enter them. A
-            program or a Modbus write can still put one in the PLC. When it raises,
-            nothing is written.
+        ValueError: A DF value is not a number in the float32 range, or is a NaN or
+            an infinity. Or a TXT value is not one character with code 0..255, or is a
+            comma. The message names the address. CLICK's editor can't enter a NaN or
+            an infinity, though a program or a Modbus write can still put one in the
+            PLC. CLICK writes a TXT comma unquoted, so it couldn't read the row back. If
+            this function raises, it writes nothing.
     """
-    # About the warning, on CLICK 4.00 and a C2-03CPU: a file that held 28 TXT cells left every
-    # other TXT address blank, and CLICK did not ask. For C, DS, DF and TD, CLICK asks about
-    # each blank cell ("illegal value") and writes 0 on Yes. No cancels the write. A bank absent
-    # from the file is left alone. Outside TXT this function writes 0 for an unset address and
-    # never a blank, so CLICK is not expected to ask about its files (X, Y, T, CT, DD, DH and
-    # CTD not tried).
+    # The warning comes from trials with CLICK 4.00 and a C2-03CPU. A file that held 28 TXT
+    # cells cleared all the other TXT addresses, and CLICK did not ask first. For C, DS, DF and
+    # TD, CLICK asks about each blank cell ("illegal value"). Yes writes 0, and No cancels the
+    # write. CLICK leaves alone a bank that is not in the file. Outside TXT, this function writes
+    # 0 for an unset address and never a blank cell. So CLICK should not ask about a file that
+    # this function writes. That was not tried for X, Y, T, CT, DD, DH or CTD.
     if banks is not None:
         selected = list(banks)
     else:
