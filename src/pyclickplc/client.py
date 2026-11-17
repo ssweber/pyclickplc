@@ -199,7 +199,7 @@ class AddressAccessor(Generic[TValue_co]):
         """Read single value or range (inclusive).
 
         Always returns a ModbusResponse, even for a single address.
-        Use ``await plc.ds[1]`` for a bare value.
+        Use ``await plc.ds[1]`` to get the value alone, without a ModbusResponse.
         """
         bank = self._bank
 
@@ -397,7 +397,8 @@ class AddressAccessor(Generic[TValue_co]):
             all_regs: list[int] = []
             for v in values:
                 all_regs.extend(pack_value(v, data_type))
-            # A request holds whole values, so a width-2 bank gets 122 registers a request.
+            # Each request writes whole values. For a bank whose values take two registers,
+            # a request writes at most 122 registers.
             width = self._mapping.width
             step = MAX_WRITE_REGISTERS - MAX_WRITE_REGISTERS % width
             for offset in range(0, len(all_regs), step):
@@ -441,7 +442,7 @@ class AddressAccessor(Generic[TValue_co]):
         await self._plc._write_coils(addr_first, coil_data)
 
     async def _write_txt(self, index: int, char: str) -> None:
-        """Write a single TXT character, preserving the twin byte."""
+        """Write a single TXT character and keep the other character in the same register."""
         reg_index = (index - 1) // 2
         reg_addr = MODBUS_MAPPINGS["TXT"].base + reg_index
 
@@ -495,10 +496,11 @@ class AddressAccessor(Generic[TValue_co]):
 
 
 class DisplayAddressAccessor(Generic[TValue_co]):
-    """Display-indexed accessor for XD/YD banks.
+    """Accessor for the XD and YD banks, indexed by the numbers that CLICK displays.
 
-    Uses display index range ``0..display_max_addr`` (``0..8``) and excludes
-    hidden odd MDB slots.
+    The index runs from 0 to ``display_max_addr`` (``0..8``). This accessor does not
+    reach the odd MDB slots. They are XD0u (or YD0u) and the slots that CLICK does not
+    show.
     """
 
     def __init__(self, plc: ClickClient, bank: str) -> None:
@@ -561,7 +563,7 @@ class DisplayAddressAccessor(Generic[TValue_co]):
 
 
 class FixedAddressAccessor(Generic[TValue_co]):
-    """Fixed-address alias accessor (e.g. XD0u/YD0u)."""
+    """Accessor for one fixed address, such as XD0u or YD0u."""
 
     def __init__(self, plc: ClickClient, bank: str, index: int) -> None:
         self._plc = plc
@@ -772,8 +774,8 @@ class ClickClient:
         """Call a pymodbus client method with device_id.
 
         pymodbus exceptions are translated to ``OSError`` subclasses so callers
-        never see pymodbus types. pymodbus wraps task cancellation in
-        ``ModbusIOException``; that is unwrapped back to ``CancelledError``.
+        never see pymodbus types. pymodbus wraps a task cancellation in
+        ``ModbusIOException``. This method raises ``CancelledError`` in that case.
         """
         try:
             return await method(device_id=self._device_id, **kwargs)
@@ -904,7 +906,8 @@ class ClickClient:
     async def _read_registers(self, address: int, count: int, bank: str) -> list[int]:
         """Read registers, one request per MAX_READ_REGISTERS.
 
-        A request holds whole values, so a width-2 bank gets 124 registers a request.
+        Each request reads whole values. For a bank whose values take two registers, a
+        request reads at most 124 registers.
         """
         width = MODBUS_MAPPINGS[bank].width
         step = MAX_READ_REGISTERS - MAX_READ_REGISTERS % width
