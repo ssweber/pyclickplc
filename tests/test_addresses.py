@@ -174,7 +174,7 @@ class TestParseAddress:
     @pytest.mark.parametrize(
         ("address", "expected"),
         [
-            # Kept until CLICK's own handling of these is checked
+            # These stay accepted until someone checks how CLICK handles them
             ("XD01", ("XD", 2)),
             (" DS1 ", ("DS", 1)),
             ("\tx1\n", ("X", 1)),

@@ -347,7 +347,7 @@ def test_layout_agrees_with_channel_parameters(tmp_path):
     assert parameters.outputs == {a for io in layout for a in io.analog_outputs if a}
 
 
-# CLICK 4 renames the sections and keys; the values are the same module IDs.
+# CLICK 4 renames the sections and keys. The values are the same module IDs.
 CLICK_4_LAYOUT = "\n".join(
     [
         "[Sec21]",
@@ -384,8 +384,8 @@ def test_layout_reads_click_4_placeholder_names(tmp_path):
     assert slot.analog_outputs == ("DF10", "DF11")
 
 
-# CLICK 4 matches section and key names regardless of case and takes the first match.
-# ClickNick's runner saw it for [Sec20] Key1 only; the other sections are inferred.
+# CLICK 4 matches section and key names regardless of case and reads the first match.
+# ClickNick's runner saw this for [Sec20] Key1 only. The other sections are inferred.
 @pytest.mark.parametrize("spell", [str.lower, str.upper], ids=["lower", "upper"])
 def test_readers_find_sections_and_keys_in_any_case(tmp_path, spell):
     lines = []
@@ -418,7 +418,7 @@ def test_click_3_sections_match_regardless_of_case(tmp_path):
         ("[sec21]\nKey3_1=241\n[Sec21]\nKey3_1=199", "C0-02DD1-D"),
         ("[Sec21]\nKey3_1=199\n[SEC21]\nKey3_1=241", "C2-01CPU-2"),
         ("[systemconfig]\nItem1=241\n[SystemConfig]\nItem1=199", "C0-02DD1-D"),
-        # [Sec23] decides the CPU when [Sec21] doesn't, and its first spelling wins.
+        # [Sec23] decides the CPU when [Sec21] does not. Its first spelling wins.
         ("[Sec21]\n[sec23]\nKey1=241\n[Sec23]\nKey1=199", "C0-02DD1-D"),
         # The same spelling twice, and a key repeated in any case.
         ("[Sec21]\nKey3_1=241\n[Sec21]\nKey3_1=199", "C0-02DD1-D"),
@@ -426,7 +426,7 @@ def test_click_3_sections_match_regardless_of_case(tmp_path):
         ("[Sec21]\nKey3_1=241\nKey3_1=199", "C0-02DD1-D"),
         ("[Sec21]\nKey3_1=241\nKEY3_1=199", "C0-02DD1-D"),
         ("[Sec21]\n[Sec23]\nKey1=241\nkey1=199", "C0-02DD1-D"),
-        # A repeat is not read, so its value is not checked.
+        # The reader skips a repeat, so it does not check the repeat's value.
         ("[Sec21]\nKey3_1=241\nKey3_1=x", "C0-02DD1-D"),
     ],
 )
@@ -436,8 +436,8 @@ def test_the_first_section_and_key_in_any_case_win(tmp_path, text, model):
 
 
 def test_a_later_section_and_key_are_dropped_whole(tmp_path):
-    # The second [Sec21] adds no expansion; the second Key3_1 and the line continuing it
-    # are dropped, and the Key3_2 after them is read.
+    # The second [Sec21] adds no expansion. The reader drops the second Key3_1 and the line
+    # that continues it, and reads the Key3_2 after them.
     text = "[Sec21]\nKey3_1=241\nKey3_1=199\n  more\nKey3_2=160\n[sec21]\nKey3_3=160\n"
     cpu, expansion = _layout(tmp_path, text)
     assert (cpu.module.model, expansion.module.model, expansion.position) == (
@@ -448,15 +448,15 @@ def test_a_later_section_and_key_are_dropped_whole(tmp_path):
 
 
 def test_a_dropped_header_leaves_the_next_indented_header_a_header(tmp_path):
-    # "  [Sec22]" follows a header, so it is one; dropping the repeated [sec21] must not put it
-    # under Key3_2.
+    # "  [Sec22]" follows a header, so it is a header. Dropping the repeated [sec21] must not
+    # put it under Key3_2.
     text = "[Sec21]\nKey3_1=241\nKey3_2=160\n[sec21]\n  [Sec22]\nKey1_2="
     _, expansion = _layout(tmp_path, text + _channels("DF5", "DF6", "DF7", "DF8"))
     assert expansion.analog_inputs == ("DF5", "DF6", "DF7", "DF8")
 
 
 def test_systemconfig_in_any_case_marks_a_click_3_file(tmp_path):
-    # Its [Sec21] and [Sec20] are not CLICK 4's, for the hardware readers and the PLC name alike.
+    # Its [Sec21] and [Sec20] are not CLICK 4's sections, for the hardware readers and the PLC name.
     path = _project(tmp_path, b"[SYSTEMCONFIG]\nItem1=241\n[Sec21]\nKey3_1=199\n[Sec20]\nKey1=A")
     assert [io.module.model for io in read_io_layout(path)] == ["C0-02DD1-D"]
     assert read_plc_name(path) is None
@@ -471,7 +471,7 @@ def test_systemconfig_in_any_case_marks_a_click_3_file(tmp_path):
         ("[sec21]\nKey3_1=241\n[sec23]\nkey9=DS1,5,0", "Invalid channel address at CPUBuild.AD1"),
         # A line that is not INI is refused, even in a section that a repeat drops.
         ("[sec21]\nKey3_1=241\n[Sec21]\nnot an option", "Invalid CLICK project"),
-        # So is an option with no name.
+        # The reader also refuses an option with no name.
         ("[Sec21]\nKey3_1=241\n[sec21]\n=7\n", "Invalid CLICK project"),
         ("[Sec21]\nKey3_1=241\n[sec21]\n:7\n", "Invalid CLICK project"),
         ("[Sec21]\nKey3_1=241\n[sec21]\n  = z\n", "Invalid CLICK project"),
@@ -513,7 +513,7 @@ def test_layout_is_immutable(tmp_path):
 # read_plc_name / write_plc_name
 # ==============================================================================
 
-# CLICK 4 writes [PLCName] PLCName= as [Sec20] Key1=; Sec21 marks a CLICK 4 file.
+# CLICK 4 writes [PLCName] PLCName= as [Sec20] Key1=. Sec21 marks a CLICK 4 file.
 CLICK_3 = b"[SystemConfig]\r\nItem1=199\r\n[PLCName]\r\nPLCName=Line 1\r\n[Other]\r\nValue=1\r\n"
 CLICK_4_HEAD = b"[Sec21]\r\nKey3_1=199\r\n"
 CLICK_4 = b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Line 1\r\n[Sec22]\r\nKey1_2=\r\n"
@@ -557,7 +557,7 @@ def test_read_plc_name_errors(tmp_path):
         read_plc_name(_project(tmp_path, b"not an ini file"))
     with pytest.raises(ValueError, match="Invalid CLICK project"):
         read_plc_name(_project(tmp_path, b"[PLCName]\r\nPLCName=\xff\r\n"))
-    # An option with no name, even in a repeated section that is not read.
+    # An option with no name raises, even in a repeated section that the reader skips.
     with pytest.raises(ValueError, match="Invalid CLICK project"):
         read_plc_name(_project(tmp_path, CLICK_4_HEAD + b"[Sec20]\r\nKey1=A\r\n[sec20]\r\n=x\r\n"))
 
@@ -568,7 +568,7 @@ def test_placeholder_plc_name_leaves_hardware_readers_alone(tmp_path):
     assert [io.module.model for io in read_io_layout(path)] == ["C2-01CPU-2"]
 
 
-# A CLICK 4 file that also has the named sections, as another tool may have added them.
+# A CLICK 4 file that also has the named sections, which another tool may have added.
 # CLICK 4 writes the placeholders, so their values win.
 BOTH_NAMES = "\r\n".join(
     [
@@ -617,7 +617,7 @@ def test_readers_take_the_placeholder_when_both_sections_exist(tmp_path):
 
 @pytest.mark.parametrize("cpubuild", ["CPUBuild", "cpubuild"])
 def test_readers_ignore_every_key_of_a_stray_named_section(tmp_path, cpubuild):
-    # [Sec23] has no AD2 and [Sec22] no Item2, so a stray section's keys must not fill them.
+    # [Sec23] has no AD2 and [Sec22] has no Item2, so the keys of a stray section must not fill them.
     text = "\n".join(
         [
             "[Sec21]",
@@ -651,11 +651,11 @@ def test_write_sets_the_placeholder_when_both_sections_exist(tmp_path):
     )
 
 
-# Project.ini files CLICK wrote, with the name line as CLICK wrote it (empty for a project with
-# no name) and the modules [SystemConfig] or [Sec21] lists. Credential-like values are blanked
-# in the CLICK 3 files (14 in [wsnc], [emsnc] and [rpsnc]), and long hex values in the CLICK 4
-# files ([Sec55] Key1, [Sec52] Key3_1, and Key4_1 in the named one). Every other byte is as
-# CLICK wrote it.
+# Project.ini files that CLICK wrote. Each entry gives the name line as CLICK wrote it (empty
+# for a project with no name) and the modules that [SystemConfig] or [Sec21] lists.
+# Credential-like values are blanked in the CLICK 3 files (14 in [wsnc], [emsnc] and [rpsnc]).
+# Long hex values are blanked in the CLICK 4 files ([Sec55] Key1, [Sec52] Key3_1, and Key4_1 in
+# the named one). Every other byte is as CLICK wrote it.
 CLICK_FIXTURES = [
     pytest.param("Project_click3.ini", b"[PLCName]\r\nPLCName=", "V3PLC", [], id="click3"),
     pytest.param(
@@ -740,9 +740,10 @@ def test_write_keeps_the_name_line_as_written(tmp_path, line, expected):
         # A CLICK 4 file gets the placeholder name.
         (b"[Sec21]\r\nKey3_1=199\r\n", b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Mixer\r\n"),
         (b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n", b"[Sec21]\r\n[Sec20]\r\nKey1=Mixer\r\nKey2=x\r\n"),
-        # A CLICK 4 file that already has [PLCName] keeps the name there, where it is read.
+        # A CLICK 4 file that already has [PLCName] gets the new name there, where the reader finds it.
         (b"[Sec21]\r\n[PLCName]\r\nPLCName=A\r\n", b"[Sec21]\r\n[PLCName]\r\nPLCName=Mixer\r\n"),
-        # With both sections the name goes where it was read: [Sec20] unless only [PLCName] has it.
+        # With both sections, the writer puts the name where the reader found it. That is [Sec20],
+        # unless only [PLCName] has it.
         (
             b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n[PLCName]\r\nPLCName=A\r\n",
             b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n[PLCName]\r\nPLCName=Mixer\r\n",
@@ -757,9 +758,9 @@ def test_write_adds_a_missing_name(tmp_path, data, expected):
     assert _write(tmp_path, data, "Mixer") == expected
 
 
-# CLICK 4.00's System Configuration, run on the real program (ClickNick's
-# buildbot/jobs/runner-jobs/RESULTS-C.md, section C2, live-p3 to p10 and p12): it shows the
-# PLC name from [Sec20] Key1 whatever the case of the section and key, and takes the
+# These cases ran in CLICK 4.00's System Configuration on the real program (ClickNick's
+# buildbot/jobs/runner-jobs/RESULTS-C.md, section C2, live-p3 to p10 and p12). It shows the
+# PLC name from [Sec20] Key1 whatever the case of the section and key. It reads the
 # first of two matching sections or two matching keys.
 C2_CASES = [
     pytest.param(b"[Sec20]\r\nKey1=UpperCase\r\n", "UpperCase", id="p3-Sec20-Key1"),
@@ -806,8 +807,8 @@ def test_write_keeps_the_files_spelling_when_adding_a_key(tmp_path):
     )
 
 
-# configparser reads a line indented under an option as part of the option's value; Windows'
-# INI functions likely trim the indent and read a line of its own (inferred). Reads follow
+# configparser reads a line indented under an option as part of the option's value. Windows'
+# INI functions likely trim the indent and read the line on its own (inferred). Reads follow
 # configparser, and a write to such a file is refused. CLICK writes no such line.
 def _refused(tmp_path, data, line):
     path = _project(tmp_path, data)
@@ -839,8 +840,8 @@ def test_an_indented_header_under_an_option_continues_it(tmp_path, data, name, l
 
 
 def test_an_indented_header_after_a_header_is_a_header(tmp_path):
-    # No option comes before it, so configparser reads a section header, as Windows' INI
-    # functions likely do (inferred).
+    # No option comes before it, so configparser reads it as a section header. Windows' INI
+    # functions likely do the same (inferred).
     data = CLICK_4_HEAD + b"[Other]\r\n  [Sec20]\r\nKey1=Old\r\n"
     assert read_plc_name(_project(tmp_path, data)) == "Old"
     assert _write(tmp_path, data, "Mixer") == data.replace(b"=Old", b"=Mixer")
@@ -886,7 +887,7 @@ def test_write_strips_the_name(tmp_path):
         (CLICK_3, "Línea", "Use only letters"),
         (b"not an ini file", "Mixer", "Invalid CLICK project"),
         (b"\xff[PLCName]\r\n", "Mixer", "Invalid CLICK project"),
-        # The name's value goes on to a second line.
+        # The name's value continues on a second line.
         (b"[PLCName]\r\nPLCName=Old\r\n  more\r\n", "Mixer", "line 3 is indented under the"),
         # An option with no name is malformed, even in a repeated section that is not read.
         (CLICK_4_HEAD + b"[Sec20]\r\nKey1=A\r\n[sec20]\r\n=x\r\n", "Mixer", "Invalid CLICK"),
@@ -942,8 +943,9 @@ def test_write_replaces_in_one_step(tmp_path, monkeypatch):
 # The line reading against configparser
 # ==============================================================================
 #
-# pyclickplc classes each line itself (_roles) to take the first of repeated sections and keys
-# and to find the PLC name's line. These checks compare it with configparser on random files.
+# pyclickplc assigns a role to each line itself (_roles). It uses the roles to read the first
+# of repeated sections and keys, and to find the PLC name's line. These checks compare the
+# roles with configparser's on random files.
 
 
 class _HeaderRecorder:
@@ -962,7 +964,7 @@ class _HeaderRecorder:
 
 
 def _configparser_roles(lines):
-    """Each line's role and lowercase name, as configparser reads the file."""
+    """Return each line's role and lowercase name, as configparser reads the file."""
     parser = ConfigParser(interpolation=None, strict=False)
     recorder = parser.SECTCRE = _HeaderRecorder()  # ty: ignore[invalid-assignment]
     with suppress(ConfigParserError):  # A parsing error is raised after every line is read.
@@ -991,7 +993,7 @@ def _configparser_roles(lines):
 
 
 def _first_wins(lines, roles):
-    """The sections and values with the first of each repeat, from configparser's roles."""
+    """Return the sections and values, keeping the first of each repeat, from configparser's roles."""
     if any(role == "other" for role, _ in roles):
         return None
     sections = {}
@@ -1014,8 +1016,8 @@ def _sections(parser):
 
 
 def _random_project(rng):
-    """A CLICK 4 file of a few lines. Each line that is not blank is unique, so the lines
-    configparser tries can be told apart."""
+    """Return a CLICK 4 file of a few lines. Each line that is not blank is unique, so the lines
+    that configparser tries can be told apart."""
     lines = ["[Sec21]"]
     for number in range(rng.randint(1, 9)):
         indent = rng.choice(["", "", "", " ", "  ", "\t"])
@@ -1066,8 +1068,8 @@ def test_line_reading_matches_configparser(tmp_path):
             if len(_sections(plain)) == len(plain.sections()):
                 assert actual == _sections(plain), text
 
-        # read_plc_name gives configparser's first [Sec20] Key1. Its body is called on the
-        # bytes, as opening thousands of files is slow on Windows.
+        # read_plc_name returns the first [Sec20] Key1 that configparser finds. The test calls its
+        # body on the bytes, because opening thousands of files is slow on Windows.
         if expected is None:
             continue
         value = expected.get("sec20", {}).get("key1")
@@ -1086,8 +1088,8 @@ def test_line_reading_matches_configparser(tmp_path):
         try:
             write_plc_name(path, "Mixer")
         except ValueError:
-            # A line added at the margin can put an indented line after it under it; the
-            # check after the edit refuses that, and the file is unchanged.
+            # A line added at the margin can leave an indented line under it. The check
+            # after the edit refuses that, and the file is unchanged.
             indented = [
                 line
                 for line, (role, _) in zip(lines, roles, strict=True)

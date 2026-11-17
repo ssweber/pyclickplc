@@ -421,7 +421,7 @@ class TestContextCoilWrites:
         assert p.get("SC53") is True
 
     def test_write_x_is_stored(self):
-        """X inputs take a write (b4 R3 and R6, 2026-11-17)."""
+        """A write to an X input is stored (b4 R3 and R6, 2026-11-17)."""
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         assert ctx.setValues(5, 0, [True]) is None
@@ -744,7 +744,7 @@ class TestRequestLimits:
 
 
 class TestAnswersAsAClick:
-    """What a CLICK answered to raw requests on 2026-11-10 (pyrung's modbus_raw part)."""
+    """A CLICK answered raw requests this way on 2026-11-10 (pyrung's modbus_raw part)."""
 
     @pytest.mark.parametrize(
         ("func_code", "address", "count"),
@@ -852,7 +852,7 @@ class TestAnswersAsAClick:
     @pytest.mark.parametrize("base", [0, 8192], ids=["X", "Y"])
     def test_fc05_to_a_reserved_coil_stores_it(self, base, offset):
         # b4 R1 and R6 (2026-11-17) wrote Y offsets 48, 80 and 272 (coils 8240, 8272 and 8464)
-        # and X offset 48; the other gap coils are taken to match.
+        # and X offset 48. The other gap coils are assumed to behave the same.
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
         assert ctx.setValues(5, base + offset, [True]) is None
@@ -950,7 +950,7 @@ class TestAnswersAsAClickB4:
         assert ctx.memory.words == {}
 
     def test_r3_a_write_to_x001_is_answered_and_stored(self):
-        # The CLICK's input scan rewrote X001 to 0; the server has no input scan, so whatever
+        # The CLICK's input scan rewrote X001 to 0. The server has no input scan, so whatever
         # drives the provider's inputs does that.
         p = MemoryDataProvider()
         ctx = _ClickDeviceContext(p)
@@ -1053,7 +1053,7 @@ class TestAnswersAsAClickB4:
         assert ctx.setValues(16, df1, list(words)) is None
         assert ctx.getValues(3, df1, 2) == list(words)
         assert ctx.getValues(3, df1 + 1, 1) == [words[1]]
-        # Writing the high word alone keeps the low word as written.
+        # A write to the high word alone leaves the low word as it was written.
         assert ctx.setValues(6, df1 + 1, [words[1]]) is None
         assert ctx.getValues(3, df1, 2) == list(words)
 
