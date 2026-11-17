@@ -49,7 +49,15 @@ Other modules and their internal imports:
 - File output must match CLICK byte for byte (encoding, BOM, line ends, quoting). Test against a CLICK-written fixture.
 - `DataType` is the single source of truth for PLC types; Modbus properties derive from it.
 - Dataclasses are `frozen=True`, except the editing models `BlockRange`, `BlockTag`, `DataViewRecord` and `DataViewFile`.
-- `pymodbus` is for `ClickClient` only, `>=3.12,<4` (see `pyproject.toml`). `server.py` and `server_tui.py` import no pymodbus: `ClickServer` reads and answers Modbus TCP frames itself on asyncio (`tests/test_server.py` checks the imports). CI also runs the suite on the floor, 3.12.0.
+- Only `ClickClient` uses `pymodbus`, at `>=3.12,<4` (see `pyproject.toml`). `server.py` and `server_tui.py` import no pymodbus. `ClickServer` reads and answers Modbus TCP frames itself on asyncio, and `tests/test_server.py` checks the imports. CI also runs the suite on the floor, 3.12.0.
 - Tests in `tests/` mirror source modules. pytest also collects from `src/` (`python_files = ["*.py"]`), and async tests need no decorator (`asyncio_mode = "auto"`).
 - src layout; Python 3.11+ (CI runs 3.11-3.14); ruff line length 100.
-- CHANGELOG: write for a user deciding whether to upgrade, one line per item, with a "Behaviour changes" block (what changed, then what to do) for anything a caller could trip on. Leave out internal names and fixes to unreleased work. Entries say what pyclickplc does, what the last release did and what to do, with no account of what CLICK was seen to do or how it was found.
+
+## Writing
+
+Prose in this repo follows the `writing` skill in the bob plugin (`/bob:writing`, or `skills/writing/SKILL.md` in https://github.com/ssweber/bob). Read it before you write a commit message, a changelog entry, docs, a docstring, a comment or a message. The rules below are only the ones specific to this repo.
+
+- A CHANGELOG entry is for a user who is deciding whether to upgrade. Leave out internal names and fixes to unreleased work.
+- Put anything a caller could trip on in the "Behaviour changes" block. Say what changed, then what the caller should do.
+- An entry says what pyclickplc does now and what the last release did. It does not record what CLICK was seen to do or how you found out.
+- A fine edge goes in a test, not in a paragraph of the changelog or docs.
