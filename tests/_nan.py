@@ -1,4 +1,7 @@
-"""Report whether this Python keeps a signalling float32 NaN, for tests that pin its registers."""
+"""Report whether this Python keeps the bits of a signalling float32 NaN.
+
+Tests that check the exact register words of a signalling NaN use the answer.
+"""
 
 import struct
 
