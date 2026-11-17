@@ -55,7 +55,7 @@ record = make_address_record("DS1", nickname="TankTemp")
 # AddressRecord(address='DS1', data_type='INT', nickname='TankTemp')
 ```
 
-Address normalization, data type inference, and default values are handled automatically.
+`make_address_record` normalizes the address (`ds1` becomes `DS1`) and sets the data type from the bank. If you leave out `retentive`, it uses the bank's default.
 
 ### CLICK's Address.csv
 
@@ -136,7 +136,7 @@ Unspecified addresses within included banks get bank defaults. Banks not in `ban
 
 `write_plc_data` writes a DF value as the float32 that the PLC holds, in CLICK's fixed-point form (`66.7` is written `66.69999695`). For some values above about 1e19, CLICK's last digits differ from pyclickplc's. Both read back as the same value.
 
-CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` raises `ValueError` naming the address for such a DF value. A program or a Modbus write can still put one in the PLC. `write_plc_data` also raises `ValueError` for a TXT comma. CLICK writes a TXT comma unquoted, so `read_plc_data` could not read the file back.
+CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` raises `ValueError` naming the address for such a DF value. A program or a Modbus write can still put one in the PLC. `write_plc_data` also raises `ValueError` for a TXT comma. CLICK's format does not quote a comma in a TXT cell. The comma would give its row a cell too many, and `read_plc_data` could not read the row back.
 
 ### Modify and write back
 

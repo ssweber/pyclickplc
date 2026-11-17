@@ -57,9 +57,9 @@ do not change the test matrix before then.
 - A bug fix comes with a regression test that fails on the base and passes on the branch.
 - Add a CHANGELOG (Unreleased) entry when a user sees the change. Add none for lockfile or CI
   changes. Never rewrite a published entry. Change user docs (`docs/`, CHANGELOG) only where
-  what a user sees or does changes. A fine edge goes in a test, not a paragraph. Prose follows
-  the Writing section of AGENTS.md. Do not tell the history of a change in docs or comments,
-  and do not use marketing words.
+  what a user sees or does changes. Put a narrow edge case in a test, not in a paragraph. Prose
+  follows the Writing section of AGENTS.md. Do not tell the history of a change in docs or
+  comments, and do not use marketing words.
 
 ## Ground truth
 

@@ -35,7 +35,7 @@ values["ds1"]  # 100 — lookups are case-insensitive
 Writes are validated before being sent to the PLC:
 
 - **Type mismatch** — writing `str` to `DS` raises `ValueError`.
-- **Out of range** — value exceeds the bank's data type limits raises `ValueError`.
+- **Out of range** — writing a value outside the range of the bank's data type raises `ValueError`.
 - **Not writable** — some addresses (certain SC/SD) are read-only and raise `ValueError`.
 
 ## See also

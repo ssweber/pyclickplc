@@ -38,7 +38,7 @@ Other modules and their internal imports:
 
 ### Addresses
 
-`parse_address()` returns `(memory_type, mdb_address)` and `format_address_display()` reverses it. Use these two everywhere; don't parse or format addresses by hand. XD/YD are MDB indices 0-16; display XD0-XD8 maps through `xd_yd_display_to_mdb()` (`XD1` → 2, `XD0u` → 1).
+`parse_address()` returns `(memory_type, mdb_address)` and `format_address_display()` reverses it. Use these two everywhere. Do not parse or format addresses by hand. For XD and YD, `mdb_address` is not the number in the address. `XD0` is 0, `XD0u` is 1, and `XD1` to `XD8` are 2 to 16 in steps of 2. `xd_yd_display_to_mdb()` does this conversion (`XD1` → 2, `XD0u` → 1).
 
 ### Modbus mapping
 
@@ -49,7 +49,7 @@ Other modules and their internal imports:
 - File output must match CLICK byte for byte (encoding, BOM, line ends, quoting). Test against a CLICK-written fixture.
 - `DataType` is the single source of truth for PLC types; Modbus properties derive from it.
 - Dataclasses are `frozen=True`, except the editing models `BlockRange`, `BlockTag`, `DataViewRecord` and `DataViewFile`.
-- Only `ClickClient` uses `pymodbus`, at `>=3.12,<4` (see `pyproject.toml`). `server.py` and `server_tui.py` import no pymodbus. `ClickServer` reads and answers Modbus TCP frames itself on asyncio, and `tests/test_server.py` checks the imports. CI also runs the suite on the floor, 3.12.0.
+- Only `ClickClient` uses `pymodbus`, at `>=3.12,<4` (see `pyproject.toml`). `server.py` and `server_tui.py` import no pymodbus. `ClickServer` reads and answers Modbus TCP frames itself on asyncio, and `tests/test_server.py` checks the imports. CI also runs the suite on pymodbus 3.12.0, the lowest version that `pyproject.toml` allows.
 - Tests in `tests/` mirror source modules. pytest also collects from `src/` (`python_files = ["*.py"]`), and async tests need no decorator (`asyncio_mode = "auto"`).
 - src layout; Python 3.11+ (CI runs 3.11-3.14); ruff line length 100.
 
@@ -60,4 +60,4 @@ Prose in this repo follows the `writing` skill in the bob plugin (`/bob:writing`
 - A CHANGELOG entry is for a user who is deciding whether to upgrade. Leave out internal names and fixes to unreleased work.
 - The skill gives the CHANGELOG layout: the summary, the headings and their order, and the length of an entry. pyclickplc is a library, so an entry has three sentences at most.
 - An entry says what pyclickplc does now and what the last release did. It does not record what CLICK was seen to do or how you found out.
-- A fine edge goes in a test, not in a paragraph of the changelog. Do not open a guide with one.
+- Put a narrow edge case in a test, not in a paragraph of the changelog. Do not open a guide with an edge case.
