@@ -54,11 +54,11 @@ class ChannelParameters:
 
 @dataclass(frozen=True)
 class ModuleIO:
-    """One installed module and the addresses of its I/O points.
+    """Describe one installed module and the addresses of its I/O points.
 
     Position is 0 for the CPU, 0/1 for CLICK PLUS slots, and 1..8 for
-    expansions. Discrete addresses follow the module's point counts. Analog
-    tuples hold one DF address per channel in channel order, or None for a
+    expansions. Discrete addresses follow the module's point counts. Each analog
+    tuple has one DF address per channel, in channel order, or None for a
     channel with no assignment.
     """
 
@@ -91,9 +91,9 @@ def _module(module_id: int, location: str) -> Module | None:
 
 
 # CLICK 4 writes Project.ini with placeholder section and key names. The values are
-# unchanged; this table (from CLICK's SCFS.dll, the same in 3.92 and 4.00) maps back
-# the names read here. A key ending in "_" is a prefix for numbered keys (Key3_1 ->
-# Item1); every other key must match exactly.
+# unchanged. This table maps each placeholder back to the name that this module reads. It
+# is the same in CLICK 3.92 and 4.00. A key ending in "_" is a prefix for numbered keys
+# (Key3_1 -> Item1). Every other key must match exactly.
 _PLACEHOLDER_NAMES = {
     "Sec20": ("PLCName", {"Key1": "PLCName"}),
     "Sec21": ("SystemConfig", {"Key3_": "Item"}),
@@ -125,7 +125,10 @@ def _placeholder_key(key: str, names: Mapping[str, str]) -> str | None:
 
 
 def _is_click_4(parser: ConfigParser) -> bool:
-    """Whether the file uses CLICK 4's placeholder names; section names match regardless of case."""
+    """Return True if the file uses CLICK 4's placeholder names.
+
+    Section names match regardless of case.
+    """
     names = {name.lower() for name in parser.sections()}
     return "systemconfig" not in names and "sec21" in names
 
@@ -148,7 +151,7 @@ _Role = Literal["blank", "section", "option", "continuation", "other"]
 
 
 def _roles(lines: Sequence[str]) -> list[tuple[_Role, str]]:
-    """How configparser reads each line, with the lowercase name of a section or option.
+    """Return how configparser reads each line, with the lowercase name of a section or option.
 
     A line indented more than the line before it continues the value of the option above
     it, even one that looks like a section header. A comment counts as blank. A line that
@@ -184,16 +187,17 @@ def _roles(lines: Sequence[str]) -> list[tuple[_Role, str]]:
 
 
 def _first_matches(lines: list[str]) -> list[str]:
-    """The lines without the sections and options that an earlier one matches.
+    """Return the lines without the sections and options that an earlier one matches.
 
-    Names match regardless of case; a later section is dropped whole, and a later option
-    with the lines that continue it. CLICK 4 was seen to read the PLC name this way. The
-    same rule for every other section and key is inferred from how Windows' INI functions
-    behave. A line configparser refuses is kept, so the file is still refused.
+    Names match regardless of case. A later section is dropped whole, and a later option is
+    dropped with the lines that continue it. CLICK 4 reads the PLC name this way. This code
+    applies the same rule to every other section and key, on the assumption that Windows'
+    INI functions behave this way. A line configparser refuses is kept, so the file is
+    still refused.
 
-    Every kept line but a continuation loses its indent, which configparser strips from
-    the value anyway, so a dropped line can't make the next one continue the option
-    before it.
+    Every kept line but a continuation loses its indent. configparser strips that indent
+    from the value anyway. Without the indent, a dropped line can't make the next line
+    continue the option before it.
     """
     kept = []
     sections: set[str] = set()
@@ -226,7 +230,7 @@ def _spell_sections(parser: ConfigParser) -> None:
 
 
 def _placeholder_option(section: str, key: str) -> tuple[str, str]:
-    """The CLICK 4 placeholder section and key for a named section and key."""
+    """Return the CLICK 4 placeholder section and key for a named section and key."""
     for placeholder, (name, names) in _PLACEHOLDER_NAMES.items():
         if name != section:
             continue
@@ -246,10 +250,10 @@ def _restore_names(parser: ConfigParser) -> None:
     for placeholder, (section, names) in _PLACEHOLDER_NAMES.items():
         if not parser.has_section(placeholder):
             continue
-        # A file can hold both, such as a [CPUBuild] another tool added. The placeholder
-        # replaces the named section, so none of the named section's keys are read.
-        # CLICK 4 was seen to show the [Sec20] name over a stray [PLCName]; ignoring the
-        # other named sections is inferred.
+        # A file can hold both, such as a [CPUBuild] that another tool added. The placeholder
+        # replaces the named section, so none of the named section's keys are read. CLICK 4
+        # shows the [Sec20] name over a stray [PLCName]. This code assumes that CLICK 4
+        # ignores the other named sections the same way.
         parser.remove_section(section)
         parser.add_section(section)
         for key, value in parser.items(placeholder):
@@ -261,8 +265,8 @@ def _restore_names(parser: ConfigParser) -> None:
 def _parse_project(data: bytes, path: str | Path, *, restore: bool = True) -> ConfigParser:
     """Parse Project.ini bytes, taking the first of repeated sections and options.
 
-    With *restore*, as the hardware readers need, the sections are spelled as they are
-    looked up and CLICK 4's placeholder names are mapped back.
+    With *restore*, which the hardware readers need, the function spells the sections as
+    they are looked up and maps CLICK 4's placeholder names back.
     """
     parser = ConfigParser(interpolation=None)
     try:
@@ -326,7 +330,7 @@ _Channels = tuple[tuple[str | None, ...], tuple[str | None, ...]]
 
 
 def _installed(modules: Modules) -> list[tuple[_Location, int, Module]]:
-    """Installed modules in physical order: CPU, slots, then expansions."""
+    """Return the installed modules in physical order: CPU, slots, then expansions."""
     installed: list[tuple[_Location, int, Module]] = []
     if modules.cpu is not None:
         installed.append(("cpu", 0, modules.cpu))
@@ -345,7 +349,7 @@ def _cpu_channel(parser: ConfigParser, key: str) -> str | None:
 def _channels(
     parser: ConfigParser, location: _Location, position: int, module: Module
 ) -> _Channels:
-    """Read one module's analog DF assignments in channel order; None if unassigned."""
+    """Read one module's analog DF assignments in channel order. A channel with none is None."""
     if location == "cpu":
         return (
             tuple(_cpu_channel(parser, f"AD{n}") for n in range(1, module.analog_inputs + 1)),
@@ -376,7 +380,7 @@ def _channels(
 
 
 def _discrete(bank: str, location: _Location, position: int, count: int) -> tuple[str, ...]:
-    """Addresses of a module's discrete points of one kind.
+    """Return the addresses of a module's discrete points of one kind.
 
     Built-in CPU points and PLUS slot 0 start at *001, PLUS slot 1 at *021
     (the XD0u/YD0u word, which CLICK documents as Slot1), and expansion n
@@ -411,9 +415,9 @@ def read_channel_parameters(path: str | Path) -> ChannelParameters:
 def read_io_layout(path: str | Path) -> tuple[ModuleIO, ...]:
     """Read every installed module with its discrete and analog addresses.
 
-    Modules are returned in physical order: CPU, CLICK PLUS slots, then
-    expansions; empty positions are omitted. Discrete addresses are fixed by
-    position; analog channels use the DF assignments that
+    The function returns modules in physical order: CPU, CLICK PLUS slots, then
+    expansions. It omits empty positions. Discrete addresses are fixed by
+    position. Analog channels use the DF assignments that
     ``read_channel_parameters`` reads, one entry per channel. Power supplies
     are not included.
 
@@ -456,12 +460,12 @@ def _line_roles(lines: list[bytes]) -> list[tuple[_Role, str]]:
 
 
 def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None, int | None]:
-    """Line numbers of the first section named *section* and its first option *key*.
+    """Return the line numbers of the first section named *section* and its first option *key*.
 
     Both match regardless of case, as CLICK matches them. Either is None if missing.
-    Only the first matching section is searched for the key, as Windows'
-    GetPrivateProfileString does: inferred, not tested in CLICK. Lines are read as
-    configparser reads them (``_roles``).
+    The function searches only the first matching section for the key, as Windows'
+    GetPrivateProfileString does. That CLICK does the same is inferred and not tested.
+    Lines are read as configparser reads them (``_roles``).
     """
     header, option = section.lower(), key.lower()
     start = None
@@ -479,7 +483,7 @@ def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None
 def _plc_name_line(
     lines: list[bytes], written: ConfigParser
 ) -> tuple[str, str, int | None, int | None]:
-    """The section and key the name is read from, and their line numbers if present.
+    """Return the section and key that the name is read from, and their line numbers if present.
 
     *written* is the file parsed as written, to tell a CLICK 4 file from a CLICK 3 one.
     """
@@ -516,8 +520,8 @@ def _plc_name(lines: list[bytes], written: ConfigParser) -> str | None:
 def read_plc_name(path: str | Path) -> str | None:
     """Read the PLC name from a CLICK Project.ini file.
 
-    The name is ``[PLCName] PLCName=``, which CLICK 4 writes as ``[Sec20] Key1=``.
-    Section and key names match regardless of case, and the first match in the
+    The name is ``[PLCName] PLCName=``. CLICK 4 writes it as ``[Sec20] Key1=``.
+    Section and key names match regardless of case. The first match in the
     file wins, as in CLICK 4. If a CLICK 4 file has both, ``[Sec20]`` wins.
     Returns None if the project has no PLC name.
 
@@ -536,11 +540,11 @@ def _line_end(line: bytes) -> bytes:
 def _set_option(data: bytes, section: str, key: str, value: str) -> bytes:
     """Set one option in INI bytes, changing only its line, or add it if it's missing.
 
-    The first section matching *section* and its first option matching *key*,
-    regardless of case, are the ones used, and they keep their spelling. The
+    The function uses the first section matching *section* and its first option
+    matching *key*, regardless of case, and they keep their spelling. The
     value replaces whatever follows the option's delimiter, and the line keeps
-    its own line end. A missing option goes right after its section header; a
-    missing section goes at the end, with the line end the file already uses.
+    its own line end. A missing option goes right after its section header. A
+    missing section goes at the end, with the line end that the file already uses.
     """
     bom, lines = _lines(data)
     newline = next((_line_end(line) for line in lines if _line_end(line)), b"\r\n")
@@ -565,9 +569,9 @@ def _set_option(data: bytes, section: str, key: str, value: str) -> bytes:
 
 
 def _only_name_changed(before: list[bytes], after: list[bytes]) -> bool:
-    """Whether *after* is *before* with one line changed, one line inserted or two appended.
+    """Return True if *after* is *before* with one line changed, one line inserted or two appended.
 
-    Line ends are ignored: adding a line may add the end the line before it lacked.
+    Line ends are ignored, because adding a line may add the end that the line before it lacked.
     """
     old = [line.rstrip(b"\r\n") for line in before]
     new = [line.rstrip(b"\r\n") for line in after]
@@ -600,17 +604,18 @@ def _replace(path: Path, data: bytes) -> None:
 def write_plc_name(path: str | Path, name: str) -> None:
     """Set the PLC name in a CLICK Project.ini file.
 
-    Only the line holding the name changes, or is added if the project has no
-    name; every other byte stays as it was. The name goes where ``read_plc_name``
-    reads it; a CLICK 4 file with no name gets ``[Sec20] Key1=``, any other file
-    ``[PLCName] PLCName=``. The name is checked with ``validate_click_name`` and
-    written without surrounding whitespace. The new file goes to a temporary
-    file in the same folder, which then replaces Project.ini in one step.
+    The function changes only the line that holds the name, or adds that line if
+    the project has no name. Every other byte stays as it was. The name goes where
+    ``read_plc_name`` reads it. A CLICK 4 file with no name gets ``[Sec20] Key1=``,
+    and any other file gets ``[PLCName] PLCName=``. The function checks the name with
+    ``validate_click_name`` and writes it without surrounding whitespace. It writes the
+    new file to a temporary file in the same folder, which then replaces Project.ini in
+    one step.
 
-    Raises ValueError for an invalid name, malformed INI data, or a line indented
-    under an option: readers may take it as part of the option's value or as a line of
-    its own, so remove it or outdent it first. Raises OSError if the file can't be read
-    or replaced. On an error the file is unchanged.
+    Raises ValueError for an invalid name, for malformed INI data, and for a line
+    indented under an option. Readers may take that line as part of the option's value
+    or as a line of its own, so remove it or outdent it first. Raises OSError if the
+    file can't be read or replaced. If it raises, the file is unchanged.
     """
     is_valid, error = validate_click_name(name)
     if not is_valid:
@@ -620,9 +625,9 @@ def write_plc_name(path: str | Path, name: str) -> None:
     original = path.read_bytes()
     written = _parse_project(original, path, restore=False)
     lines = _lines(original)[1]
-    # configparser reads a line indented under an option as part of its value, while
-    # Windows' INI functions likely trim the indent and read a line of its own (inferred).
-    # CLICK writes no such line.
+    # configparser reads a line indented under an option as part of its value. Windows' INI
+    # functions likely trim the indent and read a line of its own. That is inferred. CLICK
+    # writes no such line.
     for number, (role, _) in enumerate(_line_roles(lines), start=1):
         if role == "continuation":
             raise ValueError(
@@ -636,7 +641,7 @@ def write_plc_name(path: str | Path, name: str) -> None:
     except ValueError as exc:
         raise ValueError(f"Cannot set the PLC name in {path}: {exc}") from exc
 
-    # Check the edit before writing: only the name's line moved and the name reads back.
+    # Check the edit before writing. Only the name's line may change, and the name must read back.
     after = _parse_project(updated, path, restore=False)
     updated_lines = _lines(updated)[1]
     if (

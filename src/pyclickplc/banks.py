@@ -84,7 +84,7 @@ class BankConfig:
 
     @property
     def display_max_addr(self) -> int:
-        """The highest address CLICK shows: 8 for XD/YD (MDB 16 is XD8), else ``max_addr``."""
+        """Return the highest address CLICK shows: 8 for XD/YD (MDB 16 is XD8), else ``max_addr``."""
         if self.name in ("XD", "YD"):
             return self.max_addr // 2
         return self.max_addr
