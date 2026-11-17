@@ -19,6 +19,7 @@ from pyclickplc.modbus import (
     plc_to_modbus,
     unpack_value,
 )
+from tests._nan import KEEPS_SIGNALLING_NAN
 
 # ==============================================================================
 # ModbusMapping & MODBUS_MAPPINGS
@@ -68,11 +69,11 @@ class TestModbusMappings:
         assert m.function_codes == frozenset({2})
         assert not m.is_writable
 
-    def test_t_read_only(self):
-        assert not MODBUS_MAPPINGS["T"].is_writable
-
-    def test_ct_read_only(self):
-        assert not MODBUS_MAPPINGS["CT"].is_writable
+    @pytest.mark.parametrize("bank", ["T", "CT"])
+    def test_t_and_ct_writable(self, bank):
+        m = MODBUS_MAPPINGS[bank]
+        assert m.function_codes == frozenset({1, 2, 5, 15})
+        assert m.is_writable
 
     def test_xd_read_only(self):
         assert not MODBUS_MAPPINGS["XD"].is_writable
@@ -602,11 +603,26 @@ class TestPackFloatNonFinite:
     def _nan(bits: int) -> float:
         return struct.unpack("<f", struct.pack("<I", bits))[0]
 
-    @pytest.mark.parametrize("bits", [0x7FC00000, 0xFFC00000, 0x7F800001, 0xFFA12345])
-    def test_every_nan_packs_as_ffff_ffff(self, bits):
+    @pytest.mark.parametrize(
+        ("value", "registers"), [(math.nan, [0x0000, 0x7FC0]), (-math.nan, [0x0000, 0xFFC0])]
+    )
+    def test_nan_packs_as_its_own_bits(self, value, registers):
+        assert pack_value(value, DataType.FLOAT) == registers
+
+    @pytest.mark.parametrize(
+        ("bits", "registers"),
+        [
+            (0x7FC00000, [0x0000, 0x7FC0]),
+            (0xFFC00000, [0x0000, 0xFFC0]),
+            # Some Python versions set a signalling NaN's quiet bit on the way to a float.
+            (0x7F800001, [0x0001, 0x7F80] if KEEPS_SIGNALLING_NAN else [0x0001, 0x7FC0]),
+            (0xFFA12345, [0x2345, 0xFFA1] if KEEPS_SIGNALLING_NAN else [0x2345, 0xFFE1]),
+        ],
+    )
+    def test_every_nan_packs_as_python_holds_it(self, bits, registers):
         nan = self._nan(bits)
         assert math.isnan(nan)
-        assert pack_value(nan, DataType.FLOAT) == [0xFFFF, 0xFFFF]
+        assert pack_value(nan, DataType.FLOAT) == registers
 
     def test_infinities_pack_as_their_own_bits(self):
         assert pack_value(math.inf, DataType.FLOAT) == [0x0000, 0x7F80]

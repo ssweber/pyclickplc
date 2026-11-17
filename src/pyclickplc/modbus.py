@@ -117,8 +117,8 @@ MODBUS_MAPPINGS: dict[str, ModbusMapping] = {
     "X": ModbusMapping("X", 0, frozenset({2}), is_coil=True),
     "Y": ModbusMapping("Y", 8192, frozenset({1, 5, 15}), is_coil=True),
     "C": ModbusMapping("C", 16384, frozenset({1, 5, 15}), is_coil=True),
-    "T": ModbusMapping("T", 45056, frozenset({2}), is_coil=True),
-    "CT": ModbusMapping("CT", 49152, frozenset({2}), is_coil=True),
+    "T": ModbusMapping("T", 45056, frozenset({1, 2, 5, 15}), is_coil=True),
+    "CT": ModbusMapping("CT", 49152, frozenset({1, 2, 5, 15}), is_coil=True),
     "SC": ModbusMapping("SC", 61440, frozenset({2}), is_coil=True, writable=_MODBUS_WRITABLE_SC),
     # --- Register banks ---
     "DS": ModbusMapping("DS", 0, frozenset({3, 6, 16}), is_coil=False, width=1, signed=True),
@@ -213,7 +213,8 @@ _SPARSE_COIL_SPAN = 9 * 32  # 288
 def _in_sparse_coil_span(address: int) -> bool:
     """True if a coil address falls in the X or Y span, the reserved units of each slot included.
 
-    A CLICK reads a reserved coil as OFF and refuses an address outside every bank.
+    A CLICK keeps what a client writes to a reserved coil, reads it as OFF until then, and
+    refuses an address outside every bank.
     """
     return any(
         MODBUS_MAPPINGS[bank].base <= address < MODBUS_MAPPINGS[bank].base + _SPARSE_COIL_SPAN
@@ -420,13 +421,10 @@ def pack_value(value: bool | int | float | str, data_type: DataType) -> list[int
     if data_type == DataType.TXT:
         return [ord(str(value)) & 0xFFFF]
 
-    if data_type == DataType.FLOAT and isinstance(value, float) and math.isnan(value):
-        # A CLICK serves every NaN as 0xFFFF:0xFFFF, whatever its sign or payload.
-        return [0xFFFF, 0xFFFF]
-
     fmt = STRUCT_FORMATS[data_type]
     if data_type == DataType.FLOAT:
-        # A finite value past the float32 range is held as +inf or -inf.
+        # A NaN keeps the bits struct gives it (0x0000:0x7FC0 for math.nan). A finite value
+        # past the float32 range is held as +inf or -inf.
         number = cast(int | float, value)
         try:
             raw = struct.pack("<f", float(number))

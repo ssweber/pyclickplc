@@ -427,6 +427,17 @@ class TestWriteBehavior:
         result = service.write([("DF1", float("nan")), ("DF2", float("inf"))])
         assert [r["ok"] for r in result] == [True, True]
 
+    def test_write_t_and_ct(self, service: ModbusService):
+        service.connect("localhost", 15020)
+        result = service.write([("T1", True), ("CT2", True)])
+        assert result == [
+            {"address": "T1", "ok": True, "error": None},
+            {"address": "CT2", "ok": True, "error": None},
+        ]
+        fake = _FakeClickClient.instances[-1]
+        assert fake.data["T1"] is True
+        assert fake.data["CT2"] is True
+
     def test_write_non_writable_address_fails_per_item(self, service: ModbusService):
         service.connect("localhost", 15020)
         result = service.write([("X1", True)])
