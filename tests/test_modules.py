@@ -1,4 +1,4 @@
-"""Installed hardware uses CLICK positions and preserves unknown I/O counts."""
+"""read_modules reports installed hardware at CLICK's positions, with each module's I/O counts."""
 
 from dataclasses import FrozenInstanceError
 

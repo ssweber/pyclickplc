@@ -503,7 +503,7 @@ class TestRoundTripConversion:
             assert display == char
 
     def test_full_pipeline_snapshot(self):
-        """Full pipeline: CDV storage -> datatype -> display string."""
+        """Each CDV storage token, converted to its native value, displays as expected."""
         cases = [
             ("4286578685", DataType.FLOAT, "-3.402823E+38"),
             ("2139095037", DataType.FLOAT, "3.402823E+38"),
@@ -522,7 +522,7 @@ class TestRoundTripConversion:
             )
 
     def test_full_pipeline_float_pi(self):
-        """Full pipeline for pi-ish float value."""
+        """The CDV storage token for the float32 3.14 displays as text that starts with 3.14."""
         native = storage_to_datatype("1078523331", DataType.FLOAT)
         display = datatype_to_display(native, DataType.FLOAT)
         assert display.startswith("3.14")
@@ -548,9 +548,10 @@ class TestValidateNewValue:
         ],
     )
     def test_edge_whitespace_still_valid(self, display, data_type):
-        """A New Value with edge whitespace is valid.
+        """A New Value with a space or tab at either end is valid.
 
-        The value is parsed to a number, so the nickname CSV's edge rule does not apply.
+        The nickname CSV refuses a numeric initial value like that. The rule does not apply
+        here, because the DataView parses a New Value as a number and does not store its text.
         """
         assert validate_new_value(display, data_type) == (True, "")
         row = DataViewRecord(address="DS1", data_type=data_type)
@@ -566,7 +567,10 @@ class TestValidateNewValue:
         ],
     )
     def test_nickname_import_number_rules_do_not_apply(self, display, data_type):
-        """A New Value ignores the underscore, 0x and non-ASCII rules of CLICK's nickname import."""
+        """validate_new_value accepts 1_000, a 0x prefix and a fullwidth digit.
+
+        CLICK's nickname import refuses all three, but those rules do not apply to a New Value.
+        """
         assert validate_new_value(display, data_type) == (True, "")
 
 
@@ -873,7 +877,7 @@ class TestCdvBytes:
         fixture = Path(__file__).parent / "fixtures" / "DataView1.cdv"
         original = fixture.read_bytes()
         dataview = DataViewFile.load(fixture)
-        dataview._original_bytes = None  # skip the unchanged-file shortcut
+        dataview._original_bytes = None  # make save() encode the rows, not copy the bytes it read
         out = tmp_path / "out.cdv"
         dataview.save(out)
         assert out.read_bytes() == original

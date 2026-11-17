@@ -91,7 +91,7 @@ class TestParseBlockTag:
         assert result.bg_color == "Blue"
 
     def test_closing_tag_no_bg(self):
-        """Closing tags don't have bg attribute."""
+        """A closing tag with a bg attribute still parses as a closing tag."""
         result = parse_block_tag('</Motor bg="Red">')
         assert result.tag_type == "close"
 
