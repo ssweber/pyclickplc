@@ -1,6 +1,6 @@
 """Tests for pyclickplc.client — ClickClient, AddressAccessor, etc.
 
-Uses mocked transport (patching internal _read/_write methods).
+The tests replace the client's internal read and write methods with mocks.
 """
 
 from __future__ import annotations
@@ -258,7 +258,7 @@ class TestCallModbusErrors:
         started = asyncio.Event()
 
         async def pymodbus_like_request(**kwargs: Any) -> None:
-            # Mirrors pymodbus.transaction.TransactionManager.execute
+            # pymodbus's TransactionManager.execute also turns a cancel into ModbusIOException.
             started.set()
             try:
                 await asyncio.sleep(10)
@@ -911,7 +911,7 @@ class TestAddressAccessorTxtWrite:
     @pytest.mark.asyncio
     async def test_write_single_txt(self):
         plc = _make_plc()
-        # Mock read of current register value (for twin byte preservation)
+        # TXT1 and TXT2 share a register. The write reads it first to keep TXT2's byte.
         _set_read_registers(plc, [0])
         await plc.txt.write(1, "A")
         _get_write_registers_mock(plc).assert_called_once()
@@ -919,9 +919,9 @@ class TestAddressAccessorTxtWrite:
     @pytest.mark.asyncio
     async def test_write_empty_string_clears_txt(self):
         plc = _make_plc()
-        _set_read_registers(plc, [0x4142])  # "AB"
+        _set_read_registers(plc, [0x4142])  # TXT1 is "B" and TXT2 is "A".
         await plc.txt.write(1, "")
-        # Empty string → null byte in low position, high byte preserved
+        # Writing "" sets the low byte (TXT1) to 0 and keeps the high byte (TXT2).
         _get_write_registers_mock(plc).assert_called_once_with(
             MODBUS_MAPPINGS["TXT"].base, [0x4100]
         )

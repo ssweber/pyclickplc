@@ -21,7 +21,6 @@ async def sync_click_datetime(
     settle_seconds: float = 1.0,
 ) -> None:
     try:
-        # Extract components from the provided datetime object.
         year = dt.year
         month = dt.month
         day = dt.day
@@ -29,7 +28,6 @@ async def sync_click_datetime(
         minute = dt.minute
         second = dt.second
 
-        # Connect to the PLC.
         async with ClickClient(plc_ip) as plc:
             print(f"Connecting to PLC at {plc_ip}...")
 
