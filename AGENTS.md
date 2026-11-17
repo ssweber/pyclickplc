@@ -58,6 +58,7 @@ Other modules and their internal imports:
 Prose in this repo follows the `writing` skill in the bob plugin (`/bob:writing`, or `skills/writing/SKILL.md` in https://github.com/ssweber/bob). Read it before you write a commit message, a changelog entry, docs, a docstring, a comment or a message. The rules below are only the ones specific to this repo.
 
 - A CHANGELOG entry is for a user who is deciding whether to upgrade. Leave out internal names and fixes to unreleased work.
-- Put anything a caller could trip on in the "Behaviour changes" block. Say what changed, then what the caller should do.
+- Put anything a caller could trip on under "Breaking changes". Say what changed, what the last release did, and what the caller should do.
+- A version section opens with one or two sentences of summary. The headings follow in this order: `Breaking changes`, `Added`, `Changed`, `Fixed`. Leave out a heading that has no entries.
 - An entry says what pyclickplc does now and what the last release did. It does not record what CLICK was seen to do or how you found out.
 - A fine edge goes in a test, not in a paragraph of the changelog or docs.

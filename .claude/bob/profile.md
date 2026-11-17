@@ -48,7 +48,7 @@ do not change the test matrix before then.
   check it in CLICK. The hand-back and the pull request both say what to check.
 - ClickNick, pyrung and laddercodec (checkouts beside this repo) consume this library. A change
   to a public name, an output byte or an exception is a change for them. The hand-back lists
-  each one, and each gets a line in the CHANGELOG's "Behaviour changes" block (AGENTS.md says
+  each one, and each gets a line under the CHANGELOG's "Breaking changes" heading (AGENTS.md says
   how). Reviewers grep those repos' `src/` for the callers. Before a release, run their suites
   against the branch. For ClickNick, run
   `cd ../clicknick && uv run --no-sync --with-editable ../pyclickplc pytest -q`. For pyrung, the
