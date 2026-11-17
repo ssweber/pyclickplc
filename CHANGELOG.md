@@ -4,32 +4,32 @@
 
 ### Fixed
 
-- On Windows, `ClickServer` keeps listening after a client resets before it is accepted; before, it took no more clients, and `is_running()` gave False until `start()` listened again.
+- On Windows, `ClickServer` now keeps listening when a client resets its connection before the server accepts it. In 0.8.0 the server then accepted no more clients, and `is_running()` returned False until `start()` listened again.
 
 ### Behaviour changes
 
 Modbus client and server:
 
-- A DF NaN goes out as the float's own bits, low word first: `0x0000:0x7FC0` for `math.nan` and `0x0000:0xFFC0` for `-math.nan`. This holds for `ClickClient` and `ModbusService` writes, for `pack_value`, and for a NaN that `ClickServer` reads from its provider. 0.8.0 sent and served every NaN as `0xFFFF:0xFFFF`.
-  - Test for NaN with `math.isnan` on the unpacked value, not by comparing registers with `0xFFFF`. To send `0xFFFF:0xFFFF`, write `struct.unpack("<f", b"\xff\xff\xff\xff")[0]`.
-- `ClickServer` reads a DF back as the two registers a client wrote, a NaN's payload included, for as long as the provider holds that value. An FC06 to one register of a DF keeps the other register as written. In 0.8.0 a NaN read back as `0xFFFF:0xFFFF`, and an FC06 to one register of a DF holding a NaN set the other register to `0xFFFF`.
-  - Compare a NaN read from the server by its registers, not as a Python float, if its payload matters.
-- T and CT bits take Modbus writes. `ClickClient` (`plc.t.write(1, True)`) and `ModbusService.write` send them, and `ClickServer` stores an FC05 or FC15 to them through the provider. `MODBUS_MAPPINGS["T"]` and `MODBUS_MAPPINGS["CT"]` list function codes 1, 2, 5 and 15. In 0.8.0 they listed only 2, the client and the service raised `ValueError` (`not writable`), and the server answered exception 02.
-  - Code that counted on that `ValueError` to keep T and CT unwritten must check the address itself.
-- `ClickServer` answers an FC05 or FC15 to an X coil normally and stores it through the provider. 0.8.0 answered exception 02 and stored nothing. `ClickClient` still refuses an X write.
-  - The server has no input scan: whatever drives the inputs in your provider writes them again, or the client's value stays.
-  - `ClickServer` now calls `DataProvider.write` for X addresses. A provider that refuses an X write raises in `write`, and the client gets exception 04.
-- `ClickServer` keeps a write to a coil between X or Y slots, units 17 to 32 of slots 1 to 8, and reads it back with FC01 or FC02. For X these are coils 48-63, 80-95 and so on, every 32 coils, to 272-287; for Y, 8240-8255 to 8464-8479. The server holds them itself, so a DataProvider never sees them, and they last across `stop()` and `start()`. 0.8.0 answered an FC05 to one with exception 02, skipped them in an FC15, and read them as OFF. `ClickClient` still refuses them.
-  - Write 0 to a gap coil to clear it; `stop()` and `start()` don't.
-- `ClickServer` answers a read of the register after XD8 (57361) or after YD8 (57873) with 0. 0.8.0 answered exception 02. A write to either, and a read of any register past them, still gets 02.
-  - Don't count on exception 02 to find the end of XD or YD: XD8 is register 57360 and YD8 is 57872.
-- `ClickServer` answers an FC05 or FC06 with the request echoed. 0.8.0 answered with the value read back after the write, which differs when the provider doesn't keep what was written.
-  - Read the address back to learn what the provider kept.
+- A DF NaN is now sent as the float's own bits, low word first. `math.nan` goes out as `0x0000:0x7FC0` and `-math.nan` as `0x0000:0xFFC0`. This applies to `ClickClient` and `ModbusService` writes, to `pack_value`, and to a NaN that `ClickServer` reads from its provider. 0.8.0 sent every NaN as `0xFFFF:0xFFFF`.
+  - Test for NaN with `math.isnan` on the unpacked value. Do not compare registers with `0xFFFF`. To send `0xFFFF:0xFFFF`, write `struct.unpack("<f", b"ÿÿÿÿ")[0]`.
+- `ClickServer` now returns a DF as the two registers that the client wrote, including the payload of a NaN, as long as the provider still holds that value. An FC06 write to one register of a DF leaves the other register as it was. 0.8.0 returned every NaN as `0xFFFF:0xFFFF`. It also set the other register to `0xFFFF` when an FC06 write hit a DF that held a NaN.
+  - If a NaN's payload matters, compare the registers that the server returns. Do not compare it as a Python float.
+- You can now write T and CT bits over Modbus. `ClickClient` (`plc.t.write(1, True)`) and `ModbusService.write` send the write. `ClickServer` stores an FC05 or FC15 write to them through the provider. `MODBUS_MAPPINGS["T"]` and `MODBUS_MAPPINGS["CT"]` now list function codes 1, 2, 5 and 15. 0.8.0 listed only 2. Its client and service raised `ValueError` (`not writable`), and its server answered exception 02.
+  - If your code relied on that `ValueError` to keep T and CT unwritten, check the address yourself.
+- `ClickServer` now accepts an FC05 or FC15 write to an X coil and stores it through the provider. 0.8.0 answered exception 02 and stored nothing. `ClickClient` still rejects a write to an X address.
+  - The server does not scan inputs. Whatever drives the inputs in your provider must write them again, or the client's value stays.
+  - `ClickServer` now calls `DataProvider.write` for X addresses. If your provider refuses an X write, raise in `write` and the client gets exception 04.
+- `ClickServer` now stores a write to a coil between X or Y slots and returns it on an FC01 or FC02 read. These are units 17 to 32 of slots 1 to 8. For X they are coils 48-63, 80-95 and so on, every 32 coils, up to 272-287. For Y they are 8240-8255 up to 8464-8479. The server keeps these coils itself, so your `DataProvider` never sees them. 0.8.0 answered an FC05 write to one with exception 02, skipped them in an FC15 write, and read them as OFF. `ClickClient` still rejects a write to them.
+  - To clear a gap coil, write 0 to it. `stop()` and `start()` do not clear it.
+- `ClickServer` now answers 0 when a client reads the register after XD8 (57361) or after YD8 (57873). 0.8.0 answered exception 02. A write to either register, and a read of any register past them, still gets exception 02.
+  - Do not use exception 02 to find the end of XD or YD. XD8 is register 57360 and YD8 is 57872.
+- `ClickServer` now answers an FC05 or FC06 write by echoing the request. 0.8.0 answered with the value it read back after the write. That differed from the request when the provider did not keep what was written.
+  - To learn what the provider kept, read the address back.
 
 Data View:
 
-- A Data View row for SC50 (`_PLC_Mode_Change_to_STOP`) or SC51 (`_Watchdog_Timer_Reset`) takes no New Value: `is_address_writable` gives False and `DataViewRecord.from_address(..., new_value=...)` raises `ValueError`; before, both took one.
-  - Set them from the ladder program. A `.cdv` holding a New Value on them still reads, `check_cdv_file` reports it, and `write_cdv` writes it back.
+- You can no longer set a New Value on SC50 (`_PLC_Mode_Change_to_STOP`) or SC51 (`_Watchdog_Timer_Reset`) in a Data View. `is_address_writable` now returns False for both, and `DataViewRecord.from_address(..., new_value=...)` raises `ValueError`. 0.8.0 accepted a New Value on them.
+  - Set them from the ladder program. A `.cdv` file that holds a New Value on them still loads, `check_cdv_file` reports it, and `write_cdv` writes it back.
 
 ## 0.8.0 - 2026-11-16
 
