@@ -1,6 +1,6 @@
 """Validation functions for PLC address data.
 
-Validates nicknames, comments, initial values, and PLC and DataView names
+This module validates nicknames, comments, initial values, and PLC and DataView names
 against CLICK PLC rules.
 """
 
@@ -81,19 +81,18 @@ _EDGE_WHITESPACE_ERROR = "Cannot start or end with a space"
 _NUMBER_TYPES: frozenset[int] = frozenset(
     {DataType.INT, DataType.INT2, DataType.FLOAT, DataType.HEX}
 )
-# int(value, 16) takes a 0x prefix, after a sign too; CLICK refuses "0x1F".
+# int(value, 16) accepts a 0x prefix, after a sign too. CLICK refuses "0x1F".
 _HEX_PREFIX = re.compile(r"[+-]?0[xX]")
 
 
 def _has_edge_whitespace(text: str) -> bool:
-    """True if *text* starts or ends with a space, tab or other code up to 0x20.
+    """Return True if *text* starts or ends with a space, tab or other code up to 0x20.
 
-    What CLICK was seen to do on import: it drops a leading or trailing space
-    or tab from a nickname or comment, even quoted; it drops a space, tab, VT
-    or FF at the ends of a bare Text value; it refuses a quoted number with an
-    edge space or tab, and strips an edge space from a bare one. The rest of
-    the range up to 0x20 is inferred: CLICK looks like a Delphi program, and
-    Delphi's ``Trim`` drops every code up to 0x20.
+    On import, CLICK drops a leading or trailing space or tab from a nickname or comment,
+    even a quoted one. It drops a space, tab, VT or FF at the ends of a bare Text value. It
+    refuses a quoted number with an edge space or tab, and strips an edge space from a bare
+    one. For the rest of the range up to 0x20, this code assumes that CLICK behaves like
+    Delphi's ``Trim``, which drops every code up to 0x20.
     """
     return bool(text) and (text[0] <= " " or text[-1] <= " ")
 
@@ -106,8 +105,8 @@ def _has_edge_whitespace(text: str) -> bool:
 def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple[bool, str]:
     """Validate nickname format (length, characters, reserved words).
 
-    A leading or trailing space, tab or other character up to 0x20 is
-    invalid: CLICK strips it, so "Pump " and "Pump" would be one nickname.
+    A nickname with a leading or trailing space, tab or other character up to 0x20 is
+    invalid. CLICK strips those characters, so "Pump " and "Pump" would be one nickname.
     Does NOT check uniqueness -- that is application-specific.
 
     Args:
@@ -165,8 +164,8 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
 def validate_comment(comment: str) -> tuple[bool, str]:
     """Validate comment length and edge whitespace.
 
-    A leading or trailing space, tab or other character up to 0x20 is
-    invalid: CLICK strips it. A tab inside the comment is kept.
+    A comment with a leading or trailing space, tab or other character up to 0x20 is
+    invalid, because CLICK strips those characters. A tab inside the comment is kept.
 
     Does NOT check block tag uniqueness -- that requires blocks.py context.
 
@@ -216,15 +215,14 @@ def validate_initial_value(
 ) -> tuple[bool, str]:
     """Validate an initial value against the data type rules.
 
-    A value of any type but Text that starts or ends with a space, tab or other
-    character up to 0x20 is invalid: CLICK refuses it quoted and strips it bare.
-    A Text value may be a space or a tab.
+    A value of any type but Text is invalid if it starts or ends with a space, tab or other
+    character up to 0x20. CLICK refuses it when quoted and strips it when bare. A Text value
+    may be a space or a tab.
 
-    Some INT, INT2, FLOAT and HEX forms that Python's ``int()`` and ``float()``
-    take are invalid because CLICK's import refuses them: a non-ASCII
-    character (an Arabic-Indic or fullwidth digit, a no-break space), an
-    underscore (``1_000``) and a ``0x`` prefix on a hex value. CLICK takes
-    ``+5``, and ``1e3`` and ``.5`` as a float.
+    Python's ``int()`` and ``float()`` accept some INT, INT2, FLOAT and HEX forms that
+    CLICK's import refuses, so they are invalid here: a non-ASCII character (an Arabic-Indic
+    or fullwidth digit, a no-break space), an underscore (``1_000``) and a ``0x`` prefix on a
+    hex value. CLICK accepts ``+5``. For a float it also accepts ``1e3`` and ``.5``.
 
     Args:
         initial_value: The initial value string to validate
@@ -250,10 +248,10 @@ def validate_initial_value(
 def _validate_typed_value(initial_value: str, data_type: int) -> tuple[bool, str]:
     """Check a value's text against its data type, without the import rules.
 
-    The import rules are the ones ``validate_initial_value`` adds for CLICK's
-    nickname import: edge whitespace, and non-ASCII, underscores and a hex
-    ``0x`` prefix in a number. A DataView new value is parsed to a number,
-    not written as text, so it takes this check alone.
+    The import rules are the extra checks that ``validate_initial_value`` makes for CLICK's
+    nickname import. They cover edge whitespace, and non-ASCII characters, underscores and a
+    hex ``0x`` prefix in a number. A DataView new value is parsed to a number and not written
+    as text, so it gets this check alone.
     """
     if initial_value == "":
         return True, ""  # Empty is valid (means no initial value set)
@@ -325,7 +323,7 @@ def assert_runtime_value(
     """Assert runtime write value validity for a specific PLC address.
 
     Raises ValueError with a deterministic, actionable message on invalid values.
-    A DF takes +inf, -inf and NaN unless ``allow_non_finite`` is False.
+    A DF accepts +inf, -inf and NaN unless ``allow_non_finite`` is False.
     """
     target = f"{bank}{index}"
 

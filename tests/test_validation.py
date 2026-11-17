@@ -121,23 +121,23 @@ class TestValidateNickname:
         ["MAX", "Max", "max", "MIN", "ABS", "abs", "RAND", "MDN", "AVG", "LOG", "Log", "log"],
     )
     def test_click4_refused_names(self, name):
-        # Source: ClickNick runner RESULTS-F.md (real CLICK 4.00): the Address Picker and the
+        # Source: ClickNick runner RESULTS-F.md (real CLICK 4.00). The Address Picker and the
         # CSV import refuse these. PLCType.ini [NGWORD] WORD lists MAX MIN MDN AVG RAND ABS
-        # for 4.00 only; refused for CLICK 3 projects too by ruling.
+        # for 4.00 only. We refuse them for CLICK 3 projects too, by ruling.
         assert validate_nickname(name) == (False, "Reserved keyword")
 
     @pytest.mark.parametrize("name", ["MAXIMUM", "Max_Speed", "Speed"])
     def test_click4_accepted_names(self, name):
-        # Source: RESULTS-F.md: CLICK 4.00 stores these, so only a whole-name match is refused.
+        # Source: RESULTS-F.md. CLICK 4.00 stores these names, so only a whole-name match is refused.
         assert validate_nickname(name) == (True, "")
 
     def test_click4_names_refused_for_system_banks(self):
-        # Reserved words are checked after the bank rules, so SC still refuses them.
+        # The reserved-word check runs after the bank rules, so SC still refuses these names.
         assert validate_nickname("MAX", system_bank="SC") == (False, "Reserved keyword")
 
     def test_comma_refused(self):
-        # Source: RESULTS-F.md refused `A,B` ("reserved character"); PLCType.ini [NGWORD]
-        # `All =` lists `,` in every CLICK version.
+        # Source: RESULTS-F.md, where CLICK refused `A,B` ("reserved character"). PLCType.ini
+        # [NGWORD] `All =` lists `,` in every CLICK version.
         assert validate_nickname("A,B") == (False, "Invalid: ,")
 
     def test_forbidden_chars(self):
@@ -181,7 +181,7 @@ class TestValidateComment:
         assert validate_comment(comment) == (False, "Cannot start or end with a space")
 
     def test_inner_tab_valid(self):
-        # CLICK keeps a tab inside a comment
+        # CLICK stores a tab inside a comment
         assert validate_comment("inner\ttab") == (True, "")
 
     def test_inner_spaces_valid(self):
@@ -301,7 +301,7 @@ class TestValidateInitialValue:
     # --- TXT ---
     @pytest.mark.parametrize("char", ["A", " ", "\t", "\x0b", "\x0c"])
     def test_txt_valid(self, char):
-        # A Text space or tab is a value; write_csv quotes it so CLICK keeps it
+        # A Text space or tab is a value. write_csv quotes it, so CLICK stores it.
         assert validate_initial_value(char, DataType.TXT) == (True, "")
 
     @pytest.mark.parametrize(
@@ -321,7 +321,8 @@ class TestValidateInitialValue:
         ],
     )
     def test_number_with_edge_whitespace_invalid(self, value, data_type):
-        # CLICK refuses " 5" quoted and strips it bare, though int(" 5") takes it
+        # CLICK refuses " 5" when it is quoted and strips the space when it is bare.
+        # int(" 5") accepts it.
         assert validate_initial_value(value, data_type) == (
             False,
             "Cannot start or end with a space",
@@ -346,7 +347,7 @@ class TestValidateInitialValue:
 
     @pytest.mark.parametrize("value", ["1e3", ".5"])
     def test_int_refuses_exponent_and_bare_decimal(self, value):
-        # CLICK refuses these as INT and takes them as FLOAT
+        # CLICK refuses these as INT and accepts them as FLOAT
         assert validate_initial_value(value, DataType.INT) == (False, "Must be integer")
         assert validate_initial_value(value, DataType.INT2) == (False, "Must be integer")
 
@@ -361,12 +362,12 @@ class TestValidateInitialValue:
         ],
     )
     def test_underscore_invalid(self, value, data_type):
-        # int() and float() take digit-group underscores; CLICK refuses them
+        # int() and float() accept digit-group underscores. CLICK refuses them.
         assert validate_initial_value(value, data_type) == (False, "Cannot contain _")
 
     @pytest.mark.parametrize("value", ["0x1F", "0X1F", "0x1", "+0x1"])
     def test_hex_prefix_invalid(self, value):
-        # int("0x1F", 16) takes the prefix; CLICK refuses it
+        # int("0x1F", 16) accepts the prefix. CLICK refuses it.
         assert validate_initial_value(value, DataType.HEX) == (False, "Cannot start with 0x")
 
     @pytest.mark.parametrize(
@@ -385,8 +386,8 @@ class TestValidateInitialValue:
         ],
     )
     def test_number_with_non_ascii_invalid(self, value, data_type):
-        # int() and float() take Unicode digits and strip Unicode spaces;
-        # CLICK refuses them from a file without a BOM, which write_csv writes
+        # int() and float() accept Unicode digits and strip Unicode spaces.
+        # CLICK refuses them from a file without a BOM, which is what write_csv writes.
         assert validate_initial_value(value, data_type) == (False, "Must be ASCII")
 
     @pytest.mark.parametrize(
@@ -400,7 +401,7 @@ class TestValidateInitialValue:
         ],
     )
     def test_already_invalid_keeps_its_message(self, value, data_type, error):
-        # The import-only checks run only on a value the type check takes
+        # The import-only checks run only on a value that passes the type check
         assert validate_initial_value(value, data_type) == (False, error)
 
     def test_txt_too_long(self):

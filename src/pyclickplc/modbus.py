@@ -211,9 +211,9 @@ _SPARSE_COIL_SPAN = 9 * 32  # 288
 
 
 def _in_sparse_coil_span(address: int) -> bool:
-    """True if a coil address falls in the X or Y span, the reserved units of each slot included.
+    """Return True if a coil address is in the X or Y span, reserved slot units included.
 
-    A CLICK keeps what a client writes to a reserved coil, reads it as OFF until then, and
+    A CLICK keeps what a client writes to a reserved coil and reads it as OFF until then. It
     refuses an address outside every bank.
     """
     return any(
@@ -423,8 +423,8 @@ def pack_value(value: bool | int | float | str, data_type: DataType) -> list[int
 
     fmt = STRUCT_FORMATS[data_type]
     if data_type == DataType.FLOAT:
-        # A NaN keeps the bits struct gives it (0x0000:0x7FC0 for math.nan). A finite value
-        # past the float32 range is held as +inf or -inf.
+        # A NaN keeps the bits that struct gives it (0x0000:0x7FC0 for math.nan). A finite value
+        # past the float32 range becomes +inf or -inf.
         number = cast(int | float, value)
         try:
             raw = struct.pack("<f", float(number))

@@ -122,7 +122,7 @@ def test_help_page_forms_are_not_repaired():
 
 
 def test_catalog_agrees_with_clicks_own_csv_exports():
-    # Rows the user named (First/Last SC and SD) are not CLICK's names.
+    # The user named the first and last SC and SD rows, so those rows do not hold CLICK's names.
     user_set = {("SC", 1), ("SC", 1000), ("SD", 1), ("SD", 1000)}
     checked = 0
     for name in ("NicknameExport.csv", "NicknameExportTxtSpecials.csv"):

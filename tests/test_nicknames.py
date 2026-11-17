@@ -158,7 +158,7 @@ class TestReadCsv:
 
         assert [r.nickname for r in records.values()] == ["Pump", "pump", "Other"]
         assert records.addr["X003"].nickname == "Other"
-        # Every .tag lookup raises while a nickname repeats, not only the repeated one
+        # While a nickname repeats, every .tag lookup raises, including a lookup of a unique nickname.
         with pytest.raises(ValueError, match="duplicate tag nickname.*'pump'"):
             _ = records.tag["pump"]
         with pytest.raises(ValueError, match="duplicate tag nickname"):
@@ -286,7 +286,7 @@ class TestReadCsv:
         [("true", True), ("False", False), ("no", False), ("garbage", False), ("", True)],
     )
     def test_read_retentive_on_a_retentive_bank(self, tmp_path, cell, expected):
-        """DS is retentive by default: only Yes/True/1 keep it on, a blank cell keeps the default."""
+        """DS is retentive by default. A blank cell keeps that default, and only Yes/True/1 keep it on."""
         csv_path = tmp_path / "test.csv"
         csv_path.write_text(
             "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\n"
@@ -487,7 +487,7 @@ class TestWriteCsv:
 
     @pytest.mark.parametrize("initial", ["1,5", 'a"b', "1\r\n2"])
     def test_write_quotes_a_numeric_initial_value_that_needs_it(self, tmp_path, initial):
-        """CLICK never writes such a value; quoted, it reads back as one value."""
+        """CLICK never writes such a value. The writer quotes it, and it reads back as one value."""
         csv_path = tmp_path / "test.csv"
         record = AddressRecord(
             memory_type="DF",
@@ -570,7 +570,7 @@ class TestReadMdbCsv:
         assert [r.display_address for r in records.values()] == ["DS1"]
 
     def test_data_type_is_the_banks(self, tmp_path):
-        """A DataType that isn't the bank's is not taken, so format_csv's text reads back."""
+        """The reader ignores a DataType that differs from the bank's, so format_csv's text reads back."""
         csv_path = self.write(
             tmp_path,
             "100663297,DS,1,4,Speed,1,5,1,",
@@ -588,7 +588,7 @@ class TestReadMdbCsv:
         assert sorted((r.display_address, r.data_type) for r in loaded.values()) == expected
 
     def test_skips_xd_hidden_slots(self, tmp_path):
-        """MDB XD3 is not shown by CLICK; it would display as XD1 beside the real XD1."""
+        """The reader skips MDB XD3. CLICK does not show it, and it would display as XD1 beside XD1."""
         csv_path = self.write(
             tmp_path,
             "167772163,XD,3,4,Hidden,0,0,0,",
@@ -660,7 +660,7 @@ class TestRoundTrip:
 
 
 class TestCsvFormat:
-    """Byte-level form of the CSV, as CLICK writes it."""
+    """The bytes of the CSV, as CLICK writes them."""
 
     HEADER = "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment"
 
@@ -726,7 +726,7 @@ class TestCsvFormat:
     )
     def test_txt_initial_value_bare_unless_whitespace_comma_or_quote(self, tmp_path, initial, cell):
         """CLICK writes Text bare, but imports a space, tab, VT, FF, comma or double quote
-        only quoted: bare, it stores an edge space, tab, VT or FF as no value."""
+        only quoted. Bare, it stores an edge space, tab, VT or FF as no value."""
         csv_path = tmp_path / "txt.csv"
         record = AddressRecord(
             memory_type="TXT",
@@ -751,7 +751,7 @@ class TestCsvFormat:
     def test_number_with_edge_whitespace_is_written_bare(
         self, tmp_path, initial, data_type, memory_type
     ):
-        """CLICK refuses a quoted number with an edge space or tab, and strips it bare."""
+        """CLICK refuses a quoted number with an edge space or tab. It strips the space from a bare one."""
         csv_path = tmp_path / "num.csv"
         record = AddressRecord(
             memory_type=memory_type,
@@ -769,7 +769,7 @@ class TestCsvFormat:
         [("X", 1, DataType.BIT), ("DS", 1, DataType.INT), ("TXT", 1, DataType.TXT)],
     )
     def test_address_is_never_quoted(self, memory_type, address, data_type):
-        """CLICK refuses a quoted address with an edge space and writes the row over the last."""
+        """CLICK refuses a quoted address with an edge space. It writes that row over the last one."""
         record = AddressRecord(
             memory_type=memory_type,
             address=address,
@@ -806,14 +806,14 @@ class TestClickExports:
     """Real CSV files exported by CLICK."""
 
     def test_click_export_rewrites_to_the_same_bytes(self, tmp_path):
-        """Every bank and column type, as CLICK exported it."""
+        """Rewrite a file that has every bank and column type, as CLICK exported it."""
         fixture = FIXTURES / "NicknameExport.csv"
         out = tmp_path / "out.csv"
         write_csv(out, read_csv(fixture))
         assert out.read_bytes() == fixture.read_bytes()
 
     def test_reads_clicks_bare_comma_and_quote(self):
-        """CLICK exports these Text values bare; no value is lost and no row shifts."""
+        """CLICK exports these Text values bare. The reader loses no value and shifts no row."""
         records = read_csv(FIXTURES / "NicknameExportTxtSpecials.csv")
         txt = [records[get_addr_key("TXT", i)] for i in range(1, 6)]
         assert [(r.nickname, r.initial_value, r.retentive, r.comment) for r in txt] == [
@@ -826,7 +826,7 @@ class TestClickExports:
         assert records[get_addr_key("DF", 1)].comment == "Degrees, F"
 
     def test_click_export_rewrites_with_comma_and_quote_importable(self, tmp_path):
-        """Only TXT2, TXT3 and TXT4 change: CLICK cannot import its own bare form of them."""
+        """Only TXT2, TXT3 and TXT4 change, because CLICK cannot import its own bare form of them."""
         fixture = FIXTURES / "NicknameExportTxtSpecials.csv"
         out = tmp_path / "out.csv"
         write_csv(out, read_csv(fixture))

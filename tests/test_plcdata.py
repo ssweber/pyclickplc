@@ -694,8 +694,8 @@ class TestClickDump:
         assert not out.exists()
 
 
-# CLICK's DF and TXT forms: rows DF251 and TXT961..TXT991 of a dump CLICK v4.00 wrote,
-# with their sections' start, header and end lines.
+# The DF and TXT cell forms that CLICK writes. The file holds rows DF251 and TXT961..TXT991
+# of a dump that CLICK v4.00 wrote, with each section's start, header and end lines.
 CLICK_FORMS = Path(__file__).parent / "fixtures" / "PlcDataDumpForms.csv"
 # CLICK writes TXT972's comma unquoted, so its row has 11 cells.
 COMMA_ROW = "TXT971,*,,,/,:,;,<,=,>,?,@,"
@@ -735,7 +735,7 @@ class TestClickForms:
         p.write_bytes("\r\n".join(_forms_lines_without_comma_row()).encode("ascii"))
         data = read_plc_data(p)
         df = {a: _float32(v) for a, v in _forms_df().items()}
-        # CLICK keeps 8 decimals of 0.001953125, so it reads back as 0.00195312.
+        # CLICK writes 8 decimals of 0.001953125, so it reads back as 0.00195312.
         df["DF258"] = 0.00195312
         assert data == {**df, **_forms_txt()}
         assert str(data["DF257"]) == "-0.0"
@@ -789,10 +789,10 @@ class TestWriteDfForm:
         ],
     )
     def test_writes_click_float_form(self, tmp_path: Path, value: float, cell: str) -> None:
-        """The cell matches CLICK's cell for this value."""
+        """The writer produces the same cell as CLICK for this value."""
         assert _first_cell(tmp_path, {"DF1": value}, "DF") == cell
 
-    # Neighbouring float32 values CLICK wrote with 20 and 19 digits in ClickNick's run D2
+    # CLICK wrote these neighbouring float32 values with 20 and 19 digits in ClickNick's run D2
     # (runner-jobs/d2/live-r8 DF251 and live-r6 DF258).
     @pytest.mark.parametrize(
         ("bits", "cell"),
@@ -804,12 +804,12 @@ class TestWriteDfForm:
     def test_writes_click_cell_either_side_of_the_limit(
         self, tmp_path: Path, bits: int, cell: str
     ) -> None:
-        """The cell matches CLICK's cell for this value."""
+        """The writer produces the same cell as CLICK for this value."""
         (value,) = struct.unpack("<f", struct.pack("<I", bits))
         assert _first_cell(tmp_path, {"DF1": value}, "DF") == cell
 
-    # Cells CLICK wrote in ClickNick's run D2 (runner-jobs/d2/live-r2, live-r6 and live-r8),
-    # with the float32 values written. pyclickplc writes some of them with other last digits.
+    # CLICK wrote these cells in ClickNick's run D2 (runner-jobs/d2/live-r2, live-r6, live-r8)
+    # for the float32 values given as bits. pyclickplc writes some with other last digits.
     @pytest.mark.parametrize(
         ("bits", "cell"),
         [
@@ -926,9 +926,9 @@ class TestTxtForm:
         assert not out.exists()
 
     def test_punctuation_round_trips(self, tmp_path: Path) -> None:
-        """The 28 marks among CLICK_FORMS's test values, all written plain.
+        """Write and read back the 28 marks among CLICK_FORMS's test values, all written plain.
 
-        They are all ASCII punctuation but ``+ , - .``.
+        They are all the ASCII punctuation marks except ``+ , - .``.
         """
         punctuation = [
             chr(c) for c in range(0x21, 0x7F) if not chr(c).isalnum() and chr(c) not in "+,-."
