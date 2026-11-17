@@ -7,10 +7,13 @@ routed to a user-supplied DataProvider.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import errno
 import itertools
+import os
 import socket
 import struct
+import sys
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast, runtime_checkable
@@ -542,6 +545,24 @@ _CLOSE_TIMEOUT = 1.0
 _PORT_ATTEMPTS = 5
 # The errors that mean another socket holds the port; Windows gives 10013 for a port it reserves.
 _PORT_TAKEN = frozenset({errno.EADDRINUSE, errno.EACCES, getattr(errno, "WSAEACCES", errno.EACCES)})
+# How many connections may wait to be accepted, as asyncio's create_server allows.
+_BACKLOG = 100
+# As asyncio's create_server: SO_REUSEADDR on POSIX, so a port whose closed connections wait
+# in TIME_WAIT can be listened on again. On Windows it would let two sockets share a port.
+_REUSE_ADDRESS = os.name == "posix" and sys.platform != "cygwin"
+# The errors that mean the system is out of sockets or memory for now; accepting waits, then
+# tries again, as asyncio does.
+_OUT_OF_RESOURCES = frozenset(
+    {
+        errno.EMFILE,
+        errno.ENFILE,
+        errno.ENOBUFS,
+        errno.ENOMEM,
+        # Windows gives 10024 when a process has no more sockets.
+        getattr(errno, "WSAEMFILE", errno.EMFILE),
+    }
+)
+_ACCEPT_RETRY_DELAY = 1.0
 
 
 def _format_peer(transport: asyncio.BaseTransport | None) -> str:
@@ -556,6 +577,38 @@ def _format_peer(transport: asyncio.BaseTransport | None) -> str:
     return "unknown"
 
 
+def _resolve(future: asyncio.Future[None]) -> None:
+    if not future.done():
+        future.set_result(None)
+
+
+def _can_watch(loop: asyncio.AbstractEventLoop, sock: socket.socket) -> bool:
+    """True if the loop can watch the socket for reading, as selector loops can and asyncio's
+    Proactor loop can't."""
+    try:
+        loop.add_reader(sock, _ignore)
+    except NotImplementedError:
+        return False
+    loop.remove_reader(sock)
+    return True
+
+
+def _ignore() -> None:
+    pass
+
+
+async def _readable(loop: asyncio.AbstractEventLoop, sock: socket.socket) -> None:
+    """Wait until a listening socket has a client to accept."""
+    ready: asyncio.Future[None] = loop.create_future()
+    loop.add_reader(sock, _resolve, ready)
+    try:
+        await ready
+    finally:
+        # shut() stops watching a socket before it closes it.
+        if sock.fileno() != -1:
+            loop.remove_reader(sock)
+
+
 class _Connection(asyncio.Protocol):
     """One client: reads Modbus TCP frames and answers each in the order received.
 
@@ -564,9 +617,11 @@ class _Connection(asyncio.Protocol):
     field outside 2 to 262 leaves no way to find the next frame, so the connection is closed.
     """
 
-    def __init__(self, listener: _Listener, client_id: str) -> None:
+    def __init__(self, listener: _Listener, client_id: str, sock: socket.socket) -> None:
         self.listener = listener
         self.client_id = client_id
+        # The accepted socket, which the listener closes if the event loop closes first.
+        self.sock = sock
         self.transport: asyncio.Transport | None = None
         self.lost: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._buffer = bytearray()
@@ -579,8 +634,9 @@ class _Connection(asyncio.Protocol):
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = cast(asyncio.Transport, transport)
+        self.listener.accepted.pop(self.sock, None)
         self.listener.connections[self.client_id] = self
-        # On Windows, an accept that completes after the listener shut still makes a connection.
+        # A connection the listener was making when it shut is closed as it arrives.
         if self.listener.closed:
             self.close()
 
@@ -651,51 +707,163 @@ class _Connection(asyncio.Protocol):
 
 
 class _Listener:
-    """The listening sockets of a ClickServer and their connections.
+    """The listening sockets of a ClickServer, the tasks that accept their clients, and the
+    connections.
 
     A listener opens once and shuts once. ``shut()`` never waits, so whatever cancels the
     code that called it, the listener is shut; ``wait_closed()`` only waits.
+
+    A client is kept in ``accepted`` from the moment it is accepted until its connection is
+    made, so ``shut()`` and ``abandon()`` close it however far its connection had got.
     """
 
-    # The asyncio.Server. Named ``transport`` because pyrung reads the bound port through
-    # ``ClickServer._server.transport.sockets``; drop the name once pyrung uses ``bound_port``.
-    transport: asyncio.Server
     port: int
 
     def __init__(self, context: _ClickDeviceContext, client_ids: Iterator[int]) -> None:
         self.context = context
         self.connections: dict[str, _Connection] = {}
+        # Each client accepted and not yet connected, with its connection once it is being made.
+        self.accepted: dict[socket.socket, _Connection | None] = {}
+        self.sockets: list[socket.socket] = []
         self.attached = False
         self.closed = False
         # Done once start() has finished with this listener, listening or not.
         self.opened: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._client_ids = client_ids
+        # One task for each listening socket, accepting its clients one after another.
+        self._serving: list[asyncio.Task[None]] = []
+        # On a loop that can't watch sockets, the accept each of those tasks waits on, kept
+        # until the task has taken its result.
+        self._accepting: set[asyncio.Task[tuple[socket.socket, Any]]] = set()
 
-    def new_connection(self) -> _Connection:
-        return _Connection(self, str(next(self._client_ids)))
+    def _new_connection(self, client: socket.socket) -> _Connection:
+        connection = _Connection(self, str(next(self._client_ids)), client)
+        self.accepted[client] = connection
+        return connection
 
     def open_connections(self) -> list[_Connection]:
         return [connection for connection in self.connections.values() if connection.is_open]
 
-    def attach(self, transport: asyncio.Server) -> bool:
-        """Take the asyncio.Server start() made; a shut listener closes it, giving False."""
+    def attach(self, sockets: list[socket.socket]) -> bool:
+        """Take the sockets start() bound and accept clients on them; a shut listener closes
+        them, giving False."""
         if self.closed:
-            transport.close()
+            for sock in sockets:
+                sock.close()
             return False
-        self.transport = transport
+        self.sockets = sockets
         self.attached = True
-        self.port = int(transport.sockets[0].getsockname()[1])
+        self.port = int(sockets[0].getsockname()[1])
+        loop = asyncio.get_running_loop()
+        for sock in sockets:
+            sock.listen(_BACKLOG)
+            self._serving.append(loop.create_task(self._serve(sock)))
         return True
 
     def is_listening(self) -> bool:
-        # On Windows, a client that resets before asyncio has accepted it makes asyncio close
-        # the listening socket, while the asyncio.Server still says it is serving.
         return (
             self.attached
             and not self.closed
-            and self.transport.is_serving()
-            and all(sock.fileno() != -1 for sock in self.transport.sockets)
+            and all(sock.fileno() != -1 for sock in self.sockets)
+            and not any(task.done() for task in self._serving)
         )
+
+    async def _serve(self, sock: socket.socket) -> None:
+        """Accept the clients of one listening socket until the listener shuts.
+
+        A failed accept, as for a client that reset before it was accepted, is passed over;
+        the socket goes on listening.
+        """
+        loop = asyncio.get_running_loop()
+        # A loop that can't watch sockets (Proactor) accepts through sock_accept.
+        accept = self._accept_when_ready if _can_watch(loop, sock) else self._accept_on_completion
+        while not self.closed:
+            try:
+                client = await accept(loop, sock)
+            except OSError as error:
+                if self.closed or sock.fileno() == -1:
+                    return
+                if error.errno in _OUT_OF_RESOURCES:
+                    await asyncio.sleep(_ACCEPT_RETRY_DELAY)
+                continue
+            if client is None:
+                return
+            await self._connect(client)
+
+    async def _accept_when_ready(
+        self, loop: asyncio.AbstractEventLoop, sock: socket.socket
+    ) -> socket.socket:
+        """Accept a client on a loop that can watch sockets, keeping it as it is accepted."""
+        while True:
+            try:
+                client, _address = sock.accept()
+            except (BlockingIOError, InterruptedError):
+                await _readable(loop, sock)
+            else:
+                self._take(client)
+                return client
+
+    async def _accept_on_completion(
+        self, loop: asyncio.AbstractEventLoop, sock: socket.socket
+    ) -> socket.socket | None:
+        """Accept a client through ``loop.sock_accept``; None if the accept was cancelled."""
+        accepting = loop.create_task(loop.sock_accept(sock))
+        self._accepting.add(accepting)
+        # Runs right after the accept's first step, in the same loop step.
+        loop.call_soon(self._watch, accepting)
+        # asyncio.wait leaves the accept alone when this task is cancelled.
+        await asyncio.wait([accepting])
+        self._accepting.discard(accepting)
+        if accepting.cancelled():
+            return None
+        client, _address = accepting.result()
+        self._take(client)
+        return client
+
+    def _watch(self, accepting: asyncio.Task[tuple[socket.socket, Any]]) -> None:
+        """Keep the client of an accept as soon as the accept has it.
+
+        An accept's task holds its client in the future it awaits until the task wakes, and a
+        cancel in between drops the client unclosed. That happens on the Proactor loop to an
+        accept that completes in the same loop step as a stop() or a cancel, so the client is
+        kept from that future: its callbacks run in the step it completes in, before the loop
+        can stop.
+        """
+        if accepting.done():
+            self._took(accepting)
+            return
+        # asyncio gives no public way to the future a task awaits.
+        waiting = getattr(accepting, "_fut_waiter", None)
+        if isinstance(waiting, asyncio.Future):
+            waiting.add_done_callback(self._took)
+
+    def _took(self, accept: asyncio.Future[Any]) -> None:
+        if accept.cancelled() or accept.exception() is not None:
+            return
+        result = accept.result()
+        if isinstance(result, tuple) and result and isinstance(result[0], socket.socket):
+            self._take(result[0])
+
+    def _take(self, client: socket.socket) -> None:
+        """Keep a client just accepted; a listener that has shut closes it."""
+        if self.closed:
+            client.close()
+        else:
+            self.accepted.setdefault(client, None)
+
+    async def _connect(self, client: socket.socket) -> None:
+        """Make a connection of an accepted client."""
+        if self.closed:
+            self.accepted.pop(client, None)
+            client.close()
+            return
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.connect_accepted_socket(lambda: self._new_connection(client), client)
+        except OSError:
+            # The client went away before its connection was made.
+            self.accepted.pop(client, None)
+            client.close()
 
     def shut(self) -> None:
         """Stop listening and close every connection, without waiting; a second call does
@@ -705,29 +873,39 @@ class _Listener:
             return
         self.closed = True
         try:
-            if self.attached:
-                self.transport.close()
+            self._stop_accepting()
         finally:
             for connection in list(self.connections.values()):
                 connection.close()
 
+    def _stop_accepting(self) -> None:
+        for accepting in self._accepting:
+            accepting.cancel()
+        for task in self._serving:
+            task.cancel()
+        # A client whose connection is being made is closed as the connection is made.
+        for client, connection in list(self.accepted.items()):
+            if connection is None:
+                del self.accepted[client]
+                client.close()
+        loop = self.opened.get_loop()
+        for sock in self.sockets:
+            if sock.fileno() != -1:
+                # A selector loop stops watching the socket now, before it is closed, rather
+                # than once the cancelled accept has run; other loops have no readers.
+                with contextlib.suppress(NotImplementedError):
+                    loop.remove_reader(sock)
+            sock.close()
+
     def abandon(self) -> None:
         """Close the sockets of a listener whose event loop has closed, without that loop."""
         self.closed = True
-        sockets: list[socket.socket] = []
-        listening = getattr(self.transport, "_sockets", None) if self.attached else None
-        if isinstance(listening, list):
-            sockets += listening
-            # The asyncio.Server then lists no sockets. Emptied, not set to None as its own
-            # close() does: with None, from Python 3.13 each of its transports collected later
-            # asks it to wake its waiters again, and the second time asyncio raises.
-            listening.clear()
-        for connection in self.connections.values():
-            sock = getattr(connection.transport, "_sock", None)
-            if isinstance(sock, socket.socket):
-                sockets.append(sock)
+        sockets = [*self.sockets, *self.accepted]
+        sockets += [connection.sock for connection in self.connections.values()]
         for sock in sockets:
             sock.close()
+        self._accepting.clear()
+        self.accepted.clear()
         self.connections.clear()
 
     def finish_opening(self) -> None:
@@ -735,9 +913,13 @@ class _Listener:
             self.opened.set_result(None)
 
     async def wait_closed(self) -> None:
-        """Wait for start() to finish with this listener, then for its connections to close."""
-        # asyncio.wait never cancels what it waits on, so a cancelled caller leaves both alone.
+        """Wait for start() to finish with this listener, then for its accepts to end and its
+        connections to close."""
+        # asyncio.wait never cancels what it waits on, so a cancelled caller leaves all alone.
         await asyncio.wait([self.opened])
+        tasks = [*self._serving, *self._accepting]
+        if tasks:
+            await asyncio.wait(tasks, timeout=2 * _CLOSE_TIMEOUT)
         pending = [connection.lost for connection in self.connections.values()]
         if pending:
             await asyncio.wait(pending, timeout=2 * _CLOSE_TIMEOUT)
@@ -778,6 +960,67 @@ def _free_port(addresses: list[tuple[Any, ...]]) -> int | None:
     return None
 
 
+def _reason(exc: OSError) -> str:
+    """Why a bind failed, worded as create_server words it on the running Python.
+
+    create_server gives the bare reason before Python 3.12.5 and the whole error, errno
+    included, from 3.12.5 on.
+    """
+    if sys.version_info >= (3, 12, 5):
+        return str(exc).lower()
+    return (exc.strerror or str(exc)).lower()
+
+
+def _bind(addresses: list[tuple[Any, ...]], port: int) -> list[socket.socket]:
+    """Bind a non-blocking socket to each address on ``port``, as asyncio's create_server does.
+
+    ``addresses`` are ``getaddrinfo`` results. An address that takes no socket, or that the
+    host does not have (EADDRNOTAVAIL), is passed over. On any other error every socket made
+    is closed.
+
+    Raises:
+        OSError: An address could not be bound, or none took a socket.
+    """
+    sockets: list[socket.socket] = []
+    bound = False
+    try:
+        for family, kind, proto, _canonname, sockaddr in addresses:
+            try:
+                sock = socket.socket(family, kind, proto)
+            except OSError:
+                continue
+            sockets.append(sock)
+            if _REUSE_ADDRESS:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+            if family == socket.AF_INET6 and hasattr(socket, "IPPROTO_IPV6"):
+                # Listen on IPv6 only, so that a socket for an IPv4 address can share the port.
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
+            address = (sockaddr[0], port, *sockaddr[2:])
+            try:
+                sock.bind(address)
+            except OSError as exc:
+                if exc.errno == errno.EADDRNOTAVAIL:
+                    sockets.pop()
+                    sock.close()
+                    continue
+                raise OSError(
+                    exc.errno,
+                    f"error while attempting to bind on address {address!r}: {_reason(exc)}",
+                ) from None
+        if not sockets:
+            raise OSError(
+                f"could not bind on any address out of {[address[4] for address in addresses]!r}"
+            )
+        for sock in sockets:
+            sock.setblocking(False)
+        bound = True
+    finally:
+        if not bound:
+            for sock in sockets:
+                sock.close()
+    return sockets
+
+
 # ==============================================================================
 # ClickServer
 # ==============================================================================
@@ -813,7 +1056,6 @@ class ClickServer:
     @property
     def _server(self) -> _Listener | None:
         """The current run's listener once it has its sockets, or None."""
-        # pyrung reads the bound port through ``_server.transport.sockets``.
         run = self._run
         if run is None or not run.listener.attached or run.loop_closed():
             return None
@@ -866,26 +1108,32 @@ class ClickServer:
             connection.close()
         return len(connections)
 
-    async def _listen(self, protocol_factory: Callable[[], _Connection]) -> asyncio.Server:
-        """Listen on every address the host resolves to, all on one port."""
+    async def _listen(self) -> list[socket.socket]:
+        """Bind a socket to every address the host resolves to, all on one port.
+
+        Nothing is awaited once the first socket is made, so a cancel can't leave one unowned.
+        """
         loop = asyncio.get_running_loop()
         host = self.host or None
-        if self.port != 0:
-            return await loop.create_server(protocol_factory, host, self.port, start_serving=False)
-        addresses = await loop.getaddrinfo(
-            host, 0, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
+        # Resolved in a task of its own, as create_server does, so start() always lets other
+        # calls run before it binds.
+        found = await loop.create_task(
+            loop.getaddrinfo(host, self.port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
         )
-        if len({(address[0], address[4][:2]) for address in addresses}) < 2:
-            return await loop.create_server(protocol_factory, host, 0, start_serving=False)
+        if not found:
+            raise OSError(f"getaddrinfo({host!r}) returned empty list")
+        addresses = list(dict.fromkeys(found))
+        if self.port != 0 or len({(address[0], address[4][0]) for address in addresses}) < 2:
+            return _bind(addresses, self.port)
         # Port 0 would give each address its own port, so take the port the system gives the
         # first address that takes one and listen on that port on every address.
         error: OSError | None = None
         for _attempt in range(_PORT_ATTEMPTS):
             port = _free_port(addresses)
             if port is None:
-                return await loop.create_server(protocol_factory, host, 0, start_serving=False)
+                return _bind(addresses, 0)
             try:
-                return await loop.create_server(protocol_factory, host, port, start_serving=False)
+                return _bind(addresses, port)
             except OSError as exc:
                 if exc.errno not in _PORT_TAKEN:
                     raise
@@ -967,9 +1215,7 @@ class ClickServer:
             if not new.closed:
                 # No await between the sockets being made and attached: a cancel can't
                 # leave a listener nobody owns.
-                transport = await self._listen(new.new_connection)
-                if new.attach(transport):
-                    await transport.start_serving()
+                new.attach(await self._listen())
         except BaseException as exc:
             if isinstance(exc, OSError):
                 error = RuntimeError(f"Could not listen on {self.host}:{self.port}: {exc}")
