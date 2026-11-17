@@ -2,6 +2,7 @@
 
 worktree_root = "../pyclickplc-wt"          # `run.py worktree new NAME` -> ../pyclickplc-wt/NAME
 procs_dir = "../pyclickplc-wt/.bob/procs"   # one file per live bounded run, and the slot locks
+jobs_dir = "../pyclickplc-wt/.bob/jobs"     # job notes; the read-only agents may write here too
 base = "origin/main"                        # new worktrees start here, with no upstream
 branch_prefix = "bob/"                      # `worktree new NAME` makes branch bob/NAME
 job_memory_mb = 4096                        # cap per run, all its processes; the suite needs little
