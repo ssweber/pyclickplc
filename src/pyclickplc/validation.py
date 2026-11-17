@@ -21,17 +21,18 @@ from .banks import (
 NICKNAME_MAX_LENGTH = 24
 COMMENT_MAX_LENGTH = 128
 
-# PLC and DataView names: letters, digits, space, underscore and hyphen.
+# A PLC or DataView name may contain letters, digits, spaces, underscores and hyphens.
 CLICK_NAME_MAX_LENGTH = 24
 CLICK_NAME_PATTERN = re.compile(r"[A-Za-z0-9_\- ]+")
 
-# Memory types whose nicknames may start with _ (PLC system-generated).
-# SC/SD have system-preset names; X gets auto-generated feedback signals
-# (e.g. _IO1_Module_Error) when analog input cards are installed.
+# The memory types whose nicknames may start with _. A name that starts with _ is one that
+# the PLC system generated. SC and SD addresses have names that the system presets. X
+# addresses get generated names for feedback signals, such as _IO1_Module_Error, when an
+# analog input card is installed.
 SYSTEM_NICKNAME_TYPES: frozenset[str] = frozenset({"SC", "SD", "X"})
 
-# Characters forbidden in nicknames
-# Note: Space is allowed; comma (,), hyphen (-) and period (.) are forbidden
+# The characters that a nickname may not contain. A space is allowed. A comma (,), a hyphen
+# (-) and a period (.) are not.
 FORBIDDEN_CHARS: frozenset[str] = frozenset(",%\"<>!#$&'()*+-./:;=?@[\\]^`{|}~")
 
 RESERVED_NICKNAMES: frozenset[str] = frozenset(
@@ -57,7 +58,8 @@ RESERVED_NICKNAMES: frozenset[str] = frozenset(
         "rsh",
         "lro",
         "rro",
-        # CLICK 4.00 adds these to its reserved list. They are refused for CLICK 3 too.
+        # CLICK 4.00 adds these to its reserved list. validate_nickname rejects them for a
+        # CLICK 3 project too.
         "max",
         "min",
         "mdn",
@@ -77,22 +79,26 @@ FLOAT_MAX = 3.4028235e38
 
 _EDGE_WHITESPACE_ERROR = "Cannot start or end with a space"
 
-# Types whose initial value Python's int() or float() parses, underscores and all.
+# The types whose initial value is parsed with Python's int() or float(). Those functions
+# accept forms that CLICK refuses, such as 1_000, so validate_initial_value checks these
+# types further.
 _NUMBER_TYPES: frozenset[int] = frozenset(
     {DataType.INT, DataType.INT2, DataType.FLOAT, DataType.HEX}
 )
-# int(value, 16) accepts a 0x prefix, after a sign too. CLICK refuses "0x1F".
+# int(value, 16) accepts a 0x prefix, with or without a sign before it. CLICK refuses a hex
+# value such as "0x1F".
 _HEX_PREFIX = re.compile(r"[+-]?0[xX]")
 
 
 def _has_edge_whitespace(text: str) -> bool:
     """Return True if *text* starts or ends with a space, tab or other code up to 0x20.
 
-    On import, CLICK drops a leading or trailing space or tab from a nickname or comment,
-    even a quoted one. It drops a space, tab, VT or FF at the ends of a bare Text value. It
-    refuses a quoted number with an edge space or tab, and strips an edge space from a bare
-    one. For the rest of the range up to 0x20, this code assumes that CLICK behaves like
-    Delphi's ``Trim``, which drops every code up to 0x20. CLICK looks like a Delphi program.
+    When CLICK imports a nickname or a comment, it drops a space or tab from either end, even
+    if the value is quoted. It drops a space, tab, VT or FF from either end of an unquoted Text
+    value. It refuses a quoted number with a space or tab at either end, and it strips a space
+    from either end of an unquoted number. For the other codes up to 0x20, this code assumes
+    that CLICK behaves like Delphi's ``Trim``, which drops every code up to 0x20. The
+    assumption rests on CLICK appearing to be a Delphi program.
     """
     return bool(text) and (text[0] <= " " or text[-1] <= " ")
 
@@ -112,8 +118,10 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
     Args:
         nickname: The nickname to validate
         system_bank: Optional system bank context:
-            - "SC"/"SD": allows PLC system punctuation
-            - "X": allows only _IO<number>... style system names
+            - "SC"/"SD": allows any punctuation and a leading underscore, as in the
+              PLC's system names
+            - "X": allows only system names that start with _IO and a digit, such as
+              _IO1_Module_Error
             - None: standard user nickname rules
 
     Returns:
@@ -138,7 +146,7 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
     bank = system_bank.upper() if system_bank else None
 
     if bank in {"SC", "SD"}:
-        # SC/SD may contain PLC-owned punctuation and leading underscores.
+        # SC and SD system names may contain any punctuation and may start with _.
         pass
     elif bank == "X":
         # X system names are PLC auto-generated feedback aliases (_IO...).
@@ -167,7 +175,8 @@ def validate_comment(comment: str) -> tuple[bool, str]:
     A comment with a leading or trailing space, tab or other character up to 0x20 is
     invalid, because CLICK strips those characters. A tab inside the comment is kept.
 
-    Does NOT check block tag uniqueness -- that requires blocks.py context.
+    Does NOT check that a block name is unique. That check needs the comments of the
+    other addresses. Use ``is_block_name_available`` in ``blocks.py`` for it.
 
     Args:
         comment: The comment to validate
@@ -216,13 +225,14 @@ def validate_initial_value(
     """Validate an initial value against the data type rules.
 
     A value of any type but Text is invalid if it starts or ends with a space, tab or other
-    character up to 0x20. CLICK refuses it when quoted and strips it when bare. A Text value
-    may be a space or a tab.
+    character up to 0x20. CLICK's import refuses such a value if it is quoted, and strips the
+    character if the value is unquoted. A Text value may be a space or a tab.
 
     Python's ``int()`` and ``float()`` accept some INT, INT2, FLOAT and HEX forms that
-    CLICK's import refuses, so they are invalid here: a non-ASCII character (an Arabic-Indic
-    or fullwidth digit, a no-break space), an underscore (``1_000``) and a ``0x`` prefix on a
-    hex value. CLICK accepts ``+5``. For a float it also accepts ``1e3`` and ``.5``.
+    CLICK's import refuses. This function rejects them. They are a non-ASCII character (an
+    Arabic-Indic or fullwidth digit, a no-break space), an underscore (``1_000``) and a
+    ``0x`` prefix on a hex value. CLICK accepts ``+5``. For a float it also accepts ``1e3``
+    and ``.5``.
 
     Args:
         initial_value: The initial value string to validate
@@ -246,12 +256,13 @@ def validate_initial_value(
 
 
 def _validate_typed_value(initial_value: str, data_type: int) -> tuple[bool, str]:
-    """Check a value's text against its data type, without the import rules.
+    """Validate *initial_value* against *data_type*, without the import rules.
 
-    The import rules are the extra checks that ``validate_initial_value`` makes for CLICK's
-    nickname import. They cover edge whitespace, and non-ASCII characters, underscores and a
-    hex ``0x`` prefix in a number. A DataView new value is parsed to a number and not written
-    as text, so it gets this check alone.
+    The import rules are the extra checks that ``validate_initial_value`` makes because
+    CLICK's nickname import refuses some values. They reject a space or other code up to 0x20
+    at either end of a value that is not Text. They also reject a non-ASCII character, an
+    underscore or a hex ``0x`` prefix in a number. A DataView new value is converted to a
+    number and is not written as text. So ``validate_new_value`` makes only this check.
     """
     if initial_value == "":
         return True, ""  # Empty is valid (means no initial value set)
@@ -320,10 +331,10 @@ def assert_runtime_value(
     index: int,
     allow_non_finite: bool = True,
 ) -> None:
-    """Assert runtime write value validity for a specific PLC address.
+    """Raise ``ValueError`` if *value* cannot be written to an address of *data_type*.
 
-    Raises ValueError with a deterministic, actionable message on invalid values.
-    A DF accepts +inf, -inf and NaN unless ``allow_non_finite`` is False.
+    *bank* and *index* name the address in the message. The message also says which values
+    the address accepts. A DF accepts +inf, -inf and NaN unless ``allow_non_finite`` is False.
     """
     target = f"{bank}{index}"
 

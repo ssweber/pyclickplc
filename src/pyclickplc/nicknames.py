@@ -33,9 +33,10 @@ from .banks import (
 # CSV column names (matching CLICK software export format)
 CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive", "Address Comment"]
 
-# CLICK exports a Text initial value bare, even a comma or a double quote, which
-# breaks CSV parsing. The value is one character between the always-quoted
-# Nickname and Retentive, so such a row is found by position and requoted.
+# CLICK exports a Text initial value without quotes, even when the value is a comma or a
+# double quote. A row like that does not parse as CSV. A Text value is one character, and it
+# sits between the quoted Nickname cell and the Retentive cell (Yes or No). This pattern finds
+# such a row by that position, and _requote_click_raw_txt puts the character in quotes.
 _CLICK_RAW_TXT_ROW = re.compile(
     r'^(?P<head>[^,\r\n]+,(?:TEXT|TXT),"(?:[^"\r\n]|"")*",)'
     r'(?P<char>[,"])'
@@ -45,7 +46,11 @@ _CLICK_RAW_TXT_ROW = re.compile(
 
 
 def _requote_click_raw_txt(text: str) -> str:
-    """Quote a bare comma or double quote Text initial value in CLICK's export."""
+    """Return *text* with quotes around each Text initial value that CLICK left unquoted.
+
+    Only a value that is a comma or a double quote is changed. If the first line of *text* is
+    not CLICK's header, return *text* unchanged.
+    """
     if text.split("\n", 1)[0].rstrip("\r") != ",".join(CSV_COLUMNS):
         return text
 
@@ -159,7 +164,8 @@ class AddressRecordMap(dict[int, AddressRecord]):
         self._tag_index: dict[str, AddressRecord] = {}
         self._tag_collision_error: str | None = None
         self._index_dirty = True
-        # The columns of the file it was read from. Empty when it was not read from a file.
+        # The column names in the header of the file that this map was read from. The tuple is
+        # empty if the map was not read from a file.
         self.columns: tuple[str, ...] = ()
         self.addr = AddressLookupView(self)
         self.tag = TagLookupView(self)
@@ -255,10 +261,11 @@ class AddressRecordMap(dict[int, AddressRecord]):
         self._mark_dirty()
 
 
-# Retentive as CLICK writes it (Yes) and as a spreadsheet may (True, 1)
+# The Retentive values that read_csv treats as on, in upper or lower case. CLICK writes Yes.
+# A spreadsheet may write True or 1.
 _RETENTIVE_ON = frozenset({"yes", "true", "1"})
 
-# A nickname CSV must have these columns unless the caller asks for fewer
+# The columns that read_csv requires by default. A caller can pass other columns in *required*.
 REQUIRED_COLUMNS = ("Address", "Nickname")
 
 
@@ -271,7 +278,7 @@ def _is_blank(row: Mapping[str | None, str | list[str] | None]) -> bool:
 
 
 def _initial_value(raw: str, data_type: int) -> str:
-    """Return a Text initial value as written (a space is a value) and trim any other type."""
+    """Return *raw* trimmed, unless *data_type* is Text. A space is part of a Text value."""
     return raw if data_type == DataType.TXT else raw.strip()
 
 
@@ -283,8 +290,9 @@ def read_csv(
     The CSV has columns: Address, Data Type, Nickname, Initial Value,
     Retentive, Address Comment. A UTF-8 byte order mark is accepted. Nickname,
     Address Comment and a Text initial value are kept as written, spaces
-    included. A Text initial value may be quoted, or bare as CLICK exports it,
-    even when it is a comma or a double quote. Retentive is on for ``Yes``,
+    included. A Text initial value may be quoted or unquoted. CLICK exports it
+    without quotes, even when it is a comma or a double quote. ``read_csv``
+    reads such a value correctly. Retentive is on for ``Yes``,
     ``True`` or ``1`` in any case, and off for anything else. Blank rows are
     skipped. If a nickname repeats, the read does not fail and ``.addr`` still
     works, but every ``.tag`` lookup raises ``ValueError``.
@@ -404,15 +412,18 @@ def _format_csv(
 
     lines = [",".join(CSV_COLUMNS)]
     for record in rows_to_write:
-        # A defaulted numeric is written "0", as CLICK does. Text's default is empty.
+        # An empty initial value is written as 0 for a numeric type and as an empty cell for
+        # Text. CLICK's export does the same.
         if record.initial_value:
             initial_value_str = str(record.initial_value)
-            # Bare as CLICK writes it, unless it would not read back as written. A comma, double
-            # quote or line break splits the cell. CLICK strips a space, tab, VT or FF at the
-            # ends of a bare Text value. Only those four are known. This code assumes that
-            # CLICK strips every code up to 0x20, as Delphi's Trim does. CLICK looks like a
-            # Delphi program. CLICK refuses a quoted number with an edge space, so only Text is
-            # quoted for that.
+            # CLICK writes an initial value without quotes, and this code does the same unless
+            # the value would then read back differently. An unquoted comma, double quote or
+            # line break splits the cell.
+            # CLICK also strips a space, tab, VT or FF from the ends of an unquoted Text value.
+            # Only those four are known. The code assumes that CLICK strips every code up to
+            # 0x20, as Delphi's Trim does, because CLICK appears to be a Delphi program. So a
+            # Text value with such a code at either end is quoted. A number is not quoted for
+            # this, because CLICK refuses a quoted number with a space at either end.
             edge_whitespace = initial_value_str[0] <= " " or initial_value_str[-1] <= " "
             if (record.data_type == DataType.TXT and edge_whitespace) or any(
                 char in initial_value_str for char in ',"\r\n'
@@ -454,13 +465,14 @@ def write_csv(
 ) -> int:
     """Write AddressRecords to a nickname CSV file.
 
-    Only records with content (nickname, comment, non-default initial value
-    or retentive) are written. Records are sorted by memory type order then
-    address. Lines end in CRLF and an initial value is bare, as in CLICK's
-    export. The function quotes an initial value that holds a comma, double
-    quote or line break. It also quotes a Text value that starts or ends with a
-    space, tab or other character up to 0x20. CLICK exports a Text space, comma
-    or double quote bare but can only import it quoted.
+    A record is written only if it has a nickname or a comment, or if its
+    initial value or Retentive setting is not the default. Records are sorted
+    by memory type order then address. As in CLICK's export, lines end in CRLF
+    and an initial value is written without quotes. The function quotes an
+    initial value that holds a comma, double quote or line break. It also
+    quotes a Text value that starts or ends with a space, tab or other
+    character up to 0x20. CLICK exports a Text value that is a space, comma or
+    double quote without quotes, but it can import that value only in quotes.
 
     Args:
         path: Path to write the CSV file.
