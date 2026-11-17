@@ -2,28 +2,29 @@
 
 ## What is pyclickplc
 
-pyclickplc is a shared utility library for AutomationDirect CLICK PLCs. It provides Modbus TCP client/server, PLC address parsing and normalization, nickname CSV and DataView CDV file I/O, and bank/register metadata. Consumed by ClickNick (GUI editor), pyrung (simulation), and standalone tooling.
+pyclickplc is a shared utility library for AutomationDirect CLICK PLCs. It provides a Modbus TCP client and server, PLC address parsing and normalization, nickname CSV and DataView CDV file I/O, and bank and register metadata. ClickNick (the GUI editor), pyrung (the simulator) and standalone tools use it.
 
-## Tone and style decisions
+## How to write the docs
 
-- **Direct, shows-don't-tells.** No marketing fluff, no "powerful" or "elegant." Say what it does.
-- **Code speaks first.** Lead with a working example, explain after. If the code is clear, don't restate it in prose.
-- **One concept per section.** Short paragraphs, minimal formatting. Don't pile concepts.
-- **Simple to complex.** Every guide starts with the 80% use case, then adds nuance. Don't front-load edge cases.
-- **Real scenarios, not API walkthroughs.** "Read a temperature register" not "Step 1: call read()."
-- **Link, don't repeat.** If types are explained in the types guide, link to it. Don't re-explain.
-- **Don't front-load internals.** Guides = how to use it. API Reference = exhaustive details. Keep them separate.
-- **Pick the best pattern.** Don't teach two ways to do the same thing in the same section. Put alternatives in reference docs.
+Sentence style is in the Writing section of `../AGENTS.md`. These decisions are about what the docs contain.
+
+- **Code first.** Start with a working example and explain it afterwards. If the code is clear, do not restate it in prose.
+- **One concept per section.** Keep paragraphs short and formatting minimal.
+- **Simple to complex.** Every guide starts with the 80% use case and adds detail after that. Leave edge cases for later in the guide.
+- **Real scenarios, not API walkthroughs.** Write "Read a temperature register", not "Step 1: call read()."
+- **Link, don't repeat.** If the types guide explains types, link to it.
+- **Keep internals out of the guides.** A guide shows how to use the library. The API Reference gives the exhaustive details.
+- **Pick the best pattern.** Teach one way to do a thing in a section. Put the alternatives in the reference docs.
 
 ## Audience
 
-Engineers who know CLICK PLCs, learning the Python library. Assume familiarity with PLC concepts (addresses, banks, registers, coils) but not with pymodbus or asyncio internals.
+The readers are engineers who know CLICK PLCs and are learning the Python library. They know PLC concepts (addresses, banks, registers, coils). They do not know pymodbus or asyncio internals.
 
 ## Key technical details
 
-- All read/write APIs use native Python types (bool, int, float, str) — never raw Modbus registers.
-- Address strings are case-insensitive on input, canonical normalized on output (`x1` → `X001`, `ds1` → `DS1`).
-- `ClickClient` is async (asyncio). `ModbusService` wraps it for sync/UI callers.
-- `ClickServer` simulates a CLICK PLC over Modbus TCP — no hardware needed for development.
-- Nickname CSV files are the same format CLICK programming software uses. DataView CDV files are UTF-16 LE CSV.
+- Every read and write API takes and returns native Python types (bool, int, float, str). None of them exposes raw Modbus registers.
+- Address strings are case-insensitive on input. Output is normalized (`x1` → `X001`, `ds1` → `DS1`).
+- `ClickClient` is async (asyncio). `ModbusService` wraps it for sync and UI callers.
+- `ClickServer` simulates a CLICK PLC over Modbus TCP, so you need no hardware for development.
+- Nickname CSV files have the same format as the ones CLICK programming software writes. DataView CDV files are UTF-16 LE CSV.
 - X/Y are sparse address banks (slot-based hardware I/O). XD/YD use display indexing (0..8).
