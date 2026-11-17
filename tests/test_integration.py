@@ -76,7 +76,7 @@ class TestRoundTrips:
         assert math.isnan(provider.get("DF3"))
         assert math.isnan(provider.get("DF4"))
         raw = (await plc._client.read_holding_registers(28672, count=8)).registers
-        # Some Python versions set DF4's quiet bit on the way to a float.
+        # Some Python versions set DF4's quiet bit when it becomes a float.
         df4 = [0x2345, 0xFFA1] if KEEPS_SIGNALLING_NAN else [0x2345, 0xFFE1]
         assert raw == [0x0000, 0x7F80, 0x0000, 0xFF80, 0x0000, 0x7FC0, *df4]
 
@@ -376,7 +376,7 @@ DS4500 = plc_to_modbus("DS", 4500)[0]
 def _write_coils(
     count: int, *, start: int = C1, byte_count: int | None = None, data: bytes | None = None
 ) -> bytes:
-    """An FC15 PDU setting every coil; byte_count and data default to what count needs."""
+    """Return an FC15 PDU that sets every coil. byte_count and data default to what count needs."""
     if data is None:
         data = b"\xff" * ((count + 7) // 8)
     if byte_count is None:
@@ -387,7 +387,10 @@ def _write_coils(
 def _write_registers(
     count: int, *, start: int = DS1, byte_count: int | None = None, data: bytes | None = None
 ) -> bytes:
-    """An FC16 PDU writing 7 to every register; byte_count and data default to what count needs."""
+    """Return an FC16 PDU that writes 7 to every register.
+
+    byte_count and data default to what count needs.
+    """
     if data is None:
         data = b"\x00\x07" * count
     if byte_count is None:
@@ -668,7 +671,7 @@ DS1_IS_0 = bytes([3, 2, 0, 0])
 def _frame(
     tid: int, pdu: bytes, *, unit: int = 1, protocol: int = 0, length: int | None = None
 ) -> bytes:
-    """A Modbus TCP frame; the length field defaults to the one the PDU needs."""
+    """Return a Modbus TCP frame. The length field defaults to the one the PDU needs."""
     if length is None:
         length = len(pdu) + 1
     return struct.pack(">HHHB", tid, protocol, length, unit) + pdu
@@ -753,13 +756,13 @@ class _SilentClient:
 async def _client_that_does_not_read(
     server: ClickServer, count: int = 60_000
 ) -> tuple[server_module._Connection, _SilentClient]:
-    """A client that sends count requests and reads no answer, once the server holds its
-    answers.
+    """Open a client that sends count requests and reads no answer, and wait until the server
+    holds its answers.
 
     Before any request, the client's receive buffer is set to 4 KiB and the server side's send
-    buffer to 64 KiB, as Windows has it, so the unread answers fill them well before the last.
-    Linux otherwise grows loopback buffers to megabytes, enough to take every answer without
-    the server holding any.
+    buffer to 64 KiB, as Windows has it. The unread answers then fill both buffers well before
+    the last. Linux otherwise grows loopback buffers to megabytes. Those can take every answer
+    without the server holding any.
     """
     port = server.bound_port
     assert port is not None
@@ -780,7 +783,7 @@ async def _client_that_does_not_read(
 
 
 async def _held_connection(server: ClickServer):
-    """The server's only connection, once it has paused for a client that does not read."""
+    """Return the server's only connection once it has paused for a client that does not read."""
     await _until(lambda: len(server.list_clients()) == 1)
     assert server._server is not None
     (connection,) = server._server.connections.values()
@@ -958,8 +961,8 @@ class TestFraming:
         server, _provider = framing_server
         count = 60_000
         connection, client = await _client_that_does_not_read(server, count)
-        # The server stops reading and answering, holding at most one read of requests and
-        # the answers its transport takes before it asks the server to pause.
+        # The server stops reading and answering. It holds at most one read of requests, and the
+        # answers that its transport takes before it asks the server to pause.
         assert connection.transport is not None
         assert connection.transport.get_write_buffer_size() <= ANSWERS_HELD + 11
         assert len(connection._buffer) <= REQUESTS_HELD
@@ -1221,8 +1224,8 @@ class TestServerControls:
         # A loop of its own, closed before the collection, so nothing it leaks outlives the test.
         with warnings.catch_warnings():
             if proactor:
-                # An accept that fails on the Proactor loop leaves open the socket asyncio made
-                # for it, and asyncio reports the error that nobody read; the log record of that
+                # An accept that fails on the Proactor loop leaves open the socket that asyncio made
+                # for it. asyncio then reports an error that nobody read. The log record of that
                 # report would hold the socket past the test, so the report is not logged.
                 warnings.simplefilter("ignore", ResourceWarning)
             with asyncio.Runner(loop_factory=loop_factory) as runner:
@@ -1232,7 +1235,7 @@ class TestServerControls:
             failed.clear()
             gc.collect()
         if proactor:
-            # Windows gives the first a connection; accepting the others fails (WinError 64).
+            # On Windows the first connection is accepted, and accepting the others fails (WinError 64).
             assert accepts_failed
 
     @pytest.mark.parametrize("loop_factory", _LOOP_FACTORIES, ids=_LOOP_FACTORY_IDS)
@@ -1362,7 +1365,7 @@ class TestServerControls:
 
 
 class TestLifecycle:
-    """start(), stop() and serve_forever() cancelled, or run together, at any await."""
+    """Cancel start(), stop() and serve_forever() at any await, or run them together."""
 
     @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
     async def test_a_start_cancelled_at_any_step_leaves_nothing_listening(self, monkeypatch, host):
@@ -1416,7 +1419,7 @@ class TestLifecycle:
         servers = _record_servers(monkeypatch)
         _resolve_without_a_thread(monkeypatch)
         server = ClickServer(MemoryDataProvider(), host="127.0.0.1", port=0)
-        # From 1: a start() cancelled before its first step leaves the old listener as it was.
+        # From 1: if start() is cancelled before its first step, the old listener stays as it was.
         for steps in range(1, 12):
             await server.start()
             old = _listener_stopped_listening(server)
@@ -1530,7 +1533,7 @@ class TestLifecycle:
         assert server.is_running() is False
         assert server._server is None
         assert _bindable(port)
-        # Dropped after 1 s, though nothing waits for it any more.
+        # The server drops the connection after 1 s, though nothing waits for it any more.
         assert connection.lost.done() is False
         await _until(lambda: connection.lost.done(), timeout=3)
         await client.close()
@@ -1700,8 +1703,8 @@ class TestLifecycle:
         assert server.is_running() is False
         gc.collect()
 
-    # The closed loop's transports can't be closed without it, and asyncio warns when they
-    # are collected; the server closes their sockets. Collecting them must raise nothing.
+    # The closed loop's transports can't be closed without the loop, so asyncio warns when they
+    # are collected. The server closes their sockets. Collecting them must raise nothing.
     @pytest.mark.filterwarnings("ignore::ResourceWarning")
     @pytest.mark.filterwarnings("error::pytest.PytestUnraisableExceptionWarning")
     @pytest.mark.parametrize("loop_factory", _LOOP_FACTORIES, ids=_LOOP_FACTORY_IDS)
@@ -1877,8 +1880,8 @@ class TestLifecycle:
 
 
 def _record_servers(monkeypatch: pytest.MonkeyPatch) -> list[list[socket.socket]]:
-    """Record the listening sockets of every server bound from here on, one list for each,
-    even one a cancel leaves unreturned."""
+    """Record the listening sockets that each later bind makes, one list per bind, even when a
+    cancel leaves the bind unreturned."""
     made: list[list[socket.socket]] = []
     bind = server_module._bind
 
@@ -1892,7 +1895,7 @@ def _record_servers(monkeypatch: pytest.MonkeyPatch) -> list[list[socket.socket]
 
 
 def _open(servers: list[list[socket.socket]]) -> list[list[socket.socket]]:
-    """The servers that still hold an open listening socket."""
+    """Return the entries of *servers* that still hold an open listening socket."""
     return [sockets for sockets in servers if not _all_closed(sockets)]
 
 
@@ -1906,7 +1909,7 @@ def _sockets_closed(listener: server_module._Listener) -> bool:
 
 
 def _disagreements(server: ClickServer, servers: list[list[socket.socket]]) -> list[str]:
-    """Where the server's state disagrees with itself or with the sockets it holds."""
+    """Return each place where the server's state disagrees with itself or with its sockets."""
     found = []
     running = server.is_running()
     if running != (server.bound_port is not None):
@@ -1920,7 +1923,7 @@ def _disagreements(server: ClickServer, servers: list[list[socket.socket]]) -> l
 
 
 def _free_tcp_port() -> int:
-    """A port no socket listens on at 127.0.0.1."""
+    """Return a port that no socket listens on at 127.0.0.1."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
@@ -1929,10 +1932,10 @@ def _free_tcp_port() -> int:
 def _bindable(port: int) -> bool:
     """True when a server could listen on the port at 127.0.0.1 again.
 
-    On POSIX the socket sets SO_REUSEADDR, as ClickServer does, so the
-    connections a server closed, which Linux keeps on the port in TIME_WAIT, don't count; a
-    socket listening on the port still does. Windows needs no option for that, and there
-    SO_REUSEADDR would let the socket share a port that another one listens on.
+    On POSIX the socket sets SO_REUSEADDR, as ClickServer does. Then the connections that a
+    server closed, which Linux keeps on the port in TIME_WAIT, don't count. A socket that
+    listens on the port still counts. Windows needs no option for that, and there SO_REUSEADDR
+    would let the socket share a port that another one listens on.
     """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -1948,7 +1951,7 @@ def _bindable(port: int) -> bool:
 async def _client_of(
     listener: server_module._Listener,
 ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-    """A connection to a listener, once the listener has it."""
+    """Connect to a listener and return the connection once the listener has it."""
     reader, writer = await asyncio.open_connection("127.0.0.1", listener.port)
     await _until(lambda: len(listener.connections) == 1)
     return reader, writer
@@ -1988,7 +1991,7 @@ def _connect_and_reset(port: int) -> None:
 def _fail_accepts(
     monkeypatch: pytest.MonkeyPatch, errors: list[OSError], *, taking_a_client: bool
 ) -> list[OSError]:
-    """Make the next accepts raise the errors, in order; give the errors left.
+    """Make the next accepts raise the errors, in order. Return the errors that are left.
 
     With ``taking_a_client``, each failing accept first takes a client and closes it, as when
     the client went away; without, it fails before taking one, as when sockets run out. The
@@ -2101,7 +2104,7 @@ async def _answers(host: str, port: int) -> bool:
 
 
 def _addresses(host: str) -> set[str]:
-    """The addresses a host resolves to for a server."""
+    """Return the addresses that a host resolves to for a server."""
     infos = socket.getaddrinfo(host, 0, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
     return {str(info[4][0]) for info in infos}
 

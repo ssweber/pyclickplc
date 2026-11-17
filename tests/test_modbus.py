@@ -614,7 +614,7 @@ class TestPackFloatNonFinite:
         [
             (0x7FC00000, [0x0000, 0x7FC0]),
             (0xFFC00000, [0x0000, 0xFFC0]),
-            # Some Python versions set a signalling NaN's quiet bit on the way to a float.
+            # Some Python versions set a signalling NaN's quiet bit when it becomes a float.
             (0x7F800001, [0x0001, 0x7F80] if KEEPS_SIGNALLING_NAN else [0x0001, 0x7FC0]),
             (0xFFA12345, [0x2345, 0xFFA1] if KEEPS_SIGNALLING_NAN else [0x2345, 0xFFE1]),
         ],
