@@ -6,9 +6,8 @@
 
 ### Breaking changes
 
-- `write_csv` now writes the nickname CSV in cp1252, the encoding of CLICK's export. 0.10.0 wrote UTF-8, and CLICK imported a non-ASCII character in that file wrongly (`café` became `cafÃ©`).
-  - If you write `format_csv` text yourself, encode it as `pyclickplc.nicknames.CSV_ENCODING` (cp1252).
-  - `write_csv` and `format_csv` now raise `ValueError` naming the address if a nickname, comment or initial value has a character that cp1252 does not have. 0.10.0 wrote the character.
+- `write_csv` now writes the nickname CSV in cp1252. 0.10.0 wrote UTF-8. If you write `format_csv` text yourself, encode it as cp1252.
+- `write_csv` and `format_csv` now raise `ValueError` if a nickname, comment or initial value has a character that cp1252 does not have. The message names the address. 0.10.0 wrote the character.
 
 ### Added
 

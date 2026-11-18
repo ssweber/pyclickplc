@@ -406,6 +406,13 @@ class TestReadCsv:
         with pytest.raises(ValueError, match=r"test\.csv is neither UTF-8 nor cp1252"):
             read_csv(csv_path)
 
+    def test_read_utf16_raises(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text("Address,Nickname\r\nX001,Pump\r\n", encoding="utf-16")
+
+        with pytest.raises(ValueError, match=r"test\.csv is UTF-16 text"):
+            read_csv(csv_path)
+
     def test_read_bom_then_not_utf8_raises(self, tmp_path):
         csv_path = tmp_path / "test.csv"
         csv_path.write_bytes(
@@ -875,8 +882,8 @@ class TestCsvFormat:
 
     def test_every_text_character_round_trips(self, tmp_path):
         csv_path = tmp_path / "txt.csv"
-        # cp1252 has no U+0080 to U+009F.
-        chars = [chr(code) for code in range(1, 256) if not 0x80 <= code <= 0x9F]
+        # Every character in cp1252. Python's cp1252 leaves 0x81, 0x8D, 0x8F, 0x90 and 0x9D undefined.
+        chars = list(bytes(range(1, 256)).decode("cp1252", errors="ignore"))
         records = [
             AddressRecord(
                 memory_type="TXT",

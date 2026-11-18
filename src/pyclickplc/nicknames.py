@@ -287,7 +287,9 @@ def _initial_value(raw: str, data_type: int) -> str:
 
 
 def _decode_nickname_csv(data: bytes, name: str) -> str:
-    """Return the text of the nickname CSV file *name*, whose bytes are *data*."""
+    """Return the text of *data*, the bytes of the nickname CSV file *name*."""
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        raise ValueError(f"{name} is UTF-16 text. Save it as cp1252 or UTF-8.")
     if data.startswith(codecs.BOM_UTF8):
         try:
             return data[len(codecs.BOM_UTF8) :].decode("utf-8")
@@ -313,7 +315,9 @@ def read_csv(
     The CSV has columns: Address, Data Type, Nickname, Initial Value,
     Retentive, Address Comment. A file that starts with a UTF-8 byte order
     mark is read as UTF-8. A file without one is read as UTF-8 if it is valid
-    UTF-8, and as cp1252 if it is not. CLICK exports cp1252. Nickname,
+    UTF-8, and as cp1252 if it is not. CLICK exports cp1252. ``read_csv``
+    keeps a character that cp1252 does not have. CLICK's import replaces it
+    with a near character or ``?``. Nickname,
     Address Comment and a Text initial value are kept as written, spaces
     included. A Text initial value may be quoted or unquoted. CLICK exports it
     without quotes, even when it is a comma or a double quote. ``read_csv``
@@ -521,8 +525,8 @@ def write_csv(
     initial value or Retentive setting is not the default. Records are sorted
     by memory type order then address. As in CLICK's export, the file is
     cp1252 without a byte order mark, lines end in CRLF and an initial value
-    is written without quotes. The function quotes an
-    initial value that holds a comma, double quote or line break. It also
+    is written without quotes. The function quotes an initial value that
+    holds a comma, double quote or line break. It also
     quotes a Text value that starts or ends with a space, tab or other
     character up to 0x20. CLICK exports a Text value that is a space, comma or
     double quote without quotes, but it can import that value only in quotes.
