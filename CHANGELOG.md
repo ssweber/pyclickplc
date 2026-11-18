@@ -6,7 +6,7 @@
 
 ### Fixed
 
-- `read_plc_data` now reads a TXT comma that CLICK wrote without quotes. 0.9.0 raised `ValueError` for every TXT row that held a comma. If the row also holds an empty address, `read_plc_data` may raise `PlcDataReadError`, which names the addresses it can't tell and holds every other value in the file.
+- `read_plc_data` now reads a TXT comma that CLICK wrote without quotes. 0.9.0 raised `ValueError` for every TXT row that held a comma. If the row also holds an empty address, `read_plc_data` may raise `PlcDataReadError` instead.
 
 ## 0.9.0 - 2026-11-17
 
