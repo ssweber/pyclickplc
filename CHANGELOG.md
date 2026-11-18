@@ -2,11 +2,14 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
-## Unreleased
+## 0.10.0 - 2026-11-18
+
+A fix for the PLC name in a CLICK 4 project. If you read or write the PLC name of a CLICK 4 project, read Breaking changes before you upgrade.
 
 ### Breaking changes
 
-- `read_plc_name` and `write_plc_name` now use `[Sec20] Key1=` in a CLICK 4 project whose hardware configuration has not been saved. 0.9.1 used `[PLCName]` in such a project, so CLICK 4.00 showed no PLC name. To fix a project that 0.9.1 named, call `write_plc_name` with the name that `read_plc_name` returns.
+- `read_plc_name` and `write_plc_name` now use `[Sec20] Key1=` in every CLICK 4 project. 0.9.1 used `[PLCName]` in a new CLICK 4 project, before its hardware configuration was saved. If `[Sec20]` holds no name, `read_plc_name` now returns the name in `[PLCName]`.
+  - CLICK 4 shows no name from `[PLCName]`. To move a name that pyclickplc 0.9.1 or older wrote there, call `write_plc_name` with the name that `read_plc_name` returns.
 
 ## 0.9.1 - 2026-11-18
 
