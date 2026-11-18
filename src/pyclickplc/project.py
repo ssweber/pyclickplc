@@ -208,8 +208,8 @@ def _first_matches(lines: list[str]) -> list[str]:
     read the first of two ``[Sec20]`` sections that both hold ``Key1``, and the first of two
     ``Key1`` keys in one section. No one has tested which match CLICK uses for the other
     sections and keys. The code assumes the first, because the Windows INI functions use the
-    first match. A line that configparser refuses is always kept, so that configparser still refuses the
-    file.
+    first match. A line that configparser refuses is always kept, so that configparser still
+    refuses the file.
 
     Every kept line loses its indent, except a continuation, a blank line or a comment.
     configparser strips that indent from a value anyway. Without the indent, a line that
@@ -499,8 +499,8 @@ def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None
 
     The function looks for the key only in the first matching section. Windows'
     GetPrivateProfileString does the same. If two sections match and only the second holds
-    the key, the function returns the first section and no key. No one has tested whether CLICK then
-    shows no name. Lines are read as configparser reads them (``_roles``).
+    the key, the function returns the first section and no key. No one has tested whether
+    CLICK then shows no name. Lines are read as configparser reads them (``_roles``).
     """
     header, option = section.lower(), key.lower()
     start = None
