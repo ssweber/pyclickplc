@@ -203,11 +203,12 @@ def _first_matches(lines: list[str]) -> list[str]:
     """Return the lines without any section or option that repeats an earlier one.
 
     Names match regardless of case. A repeated section is dropped whole, and a repeated
-    option is dropped with the lines that continue it. CLICK 4 uses the first match when it
-    reads the PLC name. This function uses the first match for every section and key. For the
-    other keys, the code assumes that CLICK does the same, because the Windows INI functions
-    do. A line that configparser refuses is always kept, so that configparser still refuses
-    the file.
+    option is dropped with the lines that continue it. This function uses the first match for
+    every section and key. CLICK 4.00 was seen to do the same for the PLC name when both
+    sections hold the key. For the other sections and keys, no one has tested whether CLICK
+    does the same. The code assumes it because the Windows INI functions use the first match.
+    A line that configparser refuses is always kept, so that configparser still refuses the
+    file.
 
     Every kept line loses its indent, except a continuation, a blank line or a comment.
     configparser strips that indent from a value anyway. Without the indent, a line that
@@ -269,9 +270,11 @@ def _restore_names(parser: ConfigParser) -> None:
             continue
         # A file can have both a placeholder section and its named section, such as a
         # [CPUBuild] that another tool added. The placeholder's keys replace the named
-        # section, so this module reads none of the named section's own keys. If a file has
-        # both [Sec20] and [PLCName], CLICK 4 shows the name from [Sec20]. This code assumes
-        # that CLICK 4 ignores the other named sections in the same way.
+        # section, so this module reads none of the named section's own keys. CLICK 4.00 was
+        # seen to show the name from [Sec20] and not from a [PLCName] beside it. No one has
+        # tested whether CLICK 4 ignores the other named sections in the same way, or whether
+        # it reads a named section such as [CPUBuild] alone. This module reads it. For
+        # [PLCName] alone, CLICK 4.00 shows no name, and read_plc_name still returns it.
         parser.remove_section(section)
         parser.add_section(section)
         for key, value in parser.items(placeholder):
@@ -486,10 +489,14 @@ def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None
     """Return the indexes in *lines* of the first section named *section* and its first *key*.
 
     Either index is None if the section or option is missing. Names match regardless of
-    case, and CLICK matches them the same way. The function looks for the key only in the
-    first matching section, as Windows' GetPrivateProfileString does. This code assumes
-    that CLICK does the same. Nobody has checked this in CLICK. Lines are read as configparser
-    reads them (``_roles``).
+    case. CLICK 4.00 was seen to match ``[Sec20] Key1`` regardless of case. No one has
+    tested whether CLICK 3 matches ``[PLCName] PLCName`` that way, or uses the first of
+    repeated sections and keys.
+
+    The function looks for the key only in the first matching section. Windows'
+    GetPrivateProfileString does the same. If only the second section holds the key, the
+    function returns the first section and no key. No one has tested whether CLICK then
+    shows no name. Lines are read as configparser reads them (``_roles``).
     """
     header, option = section.lower(), key.lower()
     start = None
@@ -664,7 +671,7 @@ def write_plc_name(path: str | Path, name: str) -> None:
     # configparser reads a line indented under an option as part of the option's value. The
     # Windows INI functions probably strip the indent and read it as a line of its own. That
     # is an assumption that no one has tested. The two readers may disagree, so refuse the
-    # file. CLICK writes no such line.
+    # file. None of the Project.ini files that CLICK wrote in tests/fixtures has such a line.
     for number, (role, _) in enumerate(_line_roles(lines), start=1):
         if role == "continuation":
             raise ValueError(
