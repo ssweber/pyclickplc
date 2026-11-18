@@ -78,6 +78,7 @@ PAGES: tuple[ReferencePage, ...] = (
             "read_plc_name",
             "write_plc_name",
             "read_plc_data",
+            "PlcDataReadError",
             "write_plc_data",
         ),
     ),

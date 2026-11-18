@@ -104,6 +104,82 @@ def _parse_value(raw: str, data_type: DataType) -> bool | int | float | str:
     return raw  # pragma: no cover
 
 
+class PlcDataReadError(ValueError):
+    """Raised when ``read_plc_data`` can't tell what some TXT addresses in the file hold.
+
+    ``read_plc_data`` reads the whole file before it raises this error.
+
+    Attributes:
+        values: Every other address in the file, as ``read_plc_data`` would return them.
+        addresses: The TXT addresses whose value ``read_plc_data`` can't tell, in file order.
+    """
+
+    def __init__(
+        self, values: dict[str, bool | int | float | str], addresses: tuple[str, ...]
+    ) -> None:
+        self.values = values
+        self.addresses = addresses
+        shown = ", ".join(addresses[:10])
+        if len(addresses) > 10:
+            shown += f" and {len(addresses) - 10} more"
+        super().__init__(
+            f"read_plc_data can't tell what {shown} hold. CLICK writes a TXT comma without "
+            "quotes, so a row with a comma and an empty address can be read in more than one "
+            "way. Check these addresses in CLICK. The error's values attribute holds every "
+            "other address."
+        )
+
+    def __reduce__(self) -> tuple[type[PlcDataReadError], tuple[object, ...]]:
+        return (type(self), (self.values, self.addresses))
+
+
+# Marks a TXT cell whose value read_plc_data can't tell.
+_UNKNOWN = object()
+
+
+def _read_txt_cells(pieces: list[str], count: int) -> list[object] | None:
+    """Return the *count* TXT cells that CLICK wrote as *pieces*, or None if no list fits.
+
+    *pieces* is the row split at every comma. CLICK writes a TXT comma without quotes, so a
+    comma cell splits into two empty pieces. An empty cell is one empty piece, and any other
+    cell is one piece. When the pieces fit more than one list of cells, a cell that differs
+    between the lists is ``_UNKNOWN``.
+    """
+    end = len(pieces)
+
+    def steps(i: int) -> list[tuple[int, str]]:
+        # Each way to read one cell from piece i, as (index of the piece after the cell, cell).
+        if i >= end:
+            return []
+        if pieces[i]:
+            return [(i + 1, pieces[i])]
+        if i + 1 < end and pieces[i + 1] == "":
+            return [(i + 1, ""), (i + 2, ",")]
+        return [(i + 1, "")]
+
+    # done[j] holds each piece index from which cells j..count-1 can use up every piece.
+    done: list[set[int]] = [set() for _ in range(count + 1)]
+    done[count].add(end)
+    for j in range(count - 1, -1, -1):
+        done[j] = {i for i in range(end + 1) if any(n in done[j + 1] for n, _ in steps(i))}
+    if 0 not in done[0]:
+        return None
+
+    cells: list[object] = []
+    starts = {0}
+    for j in range(count):
+        found: set[str] = set()
+        after: set[int] = set()
+        for i in starts:
+            for n, cell in steps(i):
+                if n in done[j + 1]:
+                    found.add(cell)
+                    after.add(n)
+        cells.append(found.pop() if len(found) == 1 else _UNKNOWN)
+        starts = after
+    return cells
+
+
 def read_plc_data(
     path: str | Path,
     *,
@@ -126,15 +202,24 @@ def read_plc_data(
         cell that CLICK writes as ``$`` and a hex code (``$20``) becomes that character
         (``" "``).
 
+        CLICK writes a TXT comma without quotes, so a TXT row that holds a comma has a
+        cell too many. This function rejoins the cells. If the row also holds an empty
+        address, the row may fit more than one reading. Then each address whose value
+        differs between the readings is unknown. An unknown address may hold a comma,
+        nothing, or a character that the comma moved.
+
     Raises:
+        PlcDataReadError: Some TXT addresses are unknown. The error names them and holds
+            the values of the other addresses. It is a ``ValueError``.
         ValueError: A row has more or fewer cells than the header has addresses
-            for it. The message names the row's first address. CLICK writes a TXT comma
-            unquoted, so a row that holds one has a cell too many and can't be read.
+            for it, and no reading of TXT commas explains the difference. The message names
+            the row's first address.
     """
     text = Path(path).read_text()
     lines = text.splitlines()
 
     result: dict[str, bool | int | float | str] = {}
+    unknown: list[str] = []
     bank_name: str | None = None
     col_offsets: list[int] = []
     data_type: DataType | None = None
@@ -176,21 +261,27 @@ def read_plc_data(
             prefix, start_num = parse_address(parts[0])
         except ValueError:
             continue
-        values = parts[1:]
+        pieces = [part.strip() for part in parts[1:]]
+        values: list[object] = list(pieces)
         addr_nums = [
             start_num + offset - 1
             for offset in col_offsets
             if is_valid_address(prefix, start_num + offset - 1)
         ]
+        if data_type == DataType.TXT:
+            cells = _read_txt_cells(pieces, len(addr_nums))
+            if cells is not None:
+                values = cells
         if len(values) != len(addr_nums):
             row = format_address_display(prefix, start_num)
-            message = f"{row} row has {len(values)} cells, not {len(addr_nums)}"
-            if data_type == DataType.TXT and len(values) > len(addr_nums):
-                message += ": CLICK writes a TXT comma unquoted, so the row can't be read"
-            raise ValueError(f"{message}.")
+            raise ValueError(f"{row} row has {len(values)} cells, not {len(addr_nums)}.")
 
         for addr_num, raw in zip(addr_nums, values, strict=True):
-            raw = raw.strip()
+            addr = format_address_display(prefix, addr_num)
+            if raw is _UNKNOWN:
+                unknown.append(addr)
+                continue
+            raw = str(raw)
             if not raw:
                 if data_type == DataType.TXT:
                     value: bool | int | float | str = ""
@@ -202,8 +293,10 @@ def read_plc_data(
             if skip_default and value == _DEFAULTS.get(data_type):
                 continue
 
-            result[format_address_display(prefix, addr_num)] = value
+            result[addr] = value
 
+    if unknown:
+        raise PlcDataReadError(result, tuple(unknown))
     return result
 
 
@@ -261,7 +354,8 @@ def _format_text(value: bool | int | float | str, addr: str) -> str:
         raise ValueError(f"{addr} value {_show(value)} is not a single character with code 0..255.")
     if value == ",":
         raise ValueError(
-            f"{addr} value ',': CLICK writes a TXT comma unquoted, so the row couldn't be read back."
+            f"{addr} value ',': write_plc_data does not write a TXT comma, because nobody has "
+            f"tested whether CLICK's Write Data into PLC reads one. Give {addr} another character."
         )
     code = ord(value)
     if code <= 0x20 or code >= 0x7F:
@@ -317,8 +411,8 @@ def write_plc_data(
             an infinity. Or a TXT value is not one character with code 0..255, or is a
             comma. The message names the address. CLICK's editor can't enter a NaN or
             an infinity, though a program or a Modbus write can still put one in the
-            PLC. CLICK writes a TXT comma unquoted, so read_plc_data could not read the
-            row back. If this function raises, it writes nothing.
+            PLC. Nobody has tested whether CLICK's Write Data into PLC reads a TXT comma.
+            If this function raises, it writes nothing.
     """
     # CLICK's Write Data into PLC clears every TXT address that the file leaves blank, and
     # does not ask first. For C, DS, DF and TD, CLICK asks about each blank cell ("illegal

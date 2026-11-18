@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import pickle
 import struct
 from fractions import Fraction
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from pyclickplc.plcdata import _SECTION_ORDER, read_plc_data, write_plc_data
+from pyclickplc.plcdata import _SECTION_ORDER, PlcDataReadError, read_plc_data, write_plc_data
 
 
 def _write(tmp_path: Path, text: str) -> Path:
@@ -704,7 +705,7 @@ CLICK_FORMS = Path(__file__).parent / "fixtures" / "PlcDataDumpForms.csv"
 # CLICK writes TXT972's comma unquoted, so its row has 11 cells.
 COMMA_ROW = "TXT971,*,,,/,:,;,<,=,>,?,@,"
 # The values that the PLC held in DF251..DF260, TXT961..TXT970 and TXT981..TXT1000. The comma
-# row, TXT971..TXT980, is not here.
+# row, TXT971..TXT980, is not here. TestClickForms.test_reads_every_row lists it.
 FORMS_DF = [1.8e30, 1.9e30, 2e30, 1.5e30, 1e35, -3e38, -0.0, 0.001953125, 0.0, 0.0]
 FORMS_TXT = {
     961: [" ", "!", '"', "#", "$", "%", "&", "'", "(", ")"],
@@ -728,21 +729,14 @@ def _forms_lines_without_comma_row() -> list[str]:
 
 
 class TestClickForms:
-    def test_comma_row_raises(self) -> None:
-        with pytest.raises(
-            ValueError,
-            match=r"^TXT971 row has 11 cells, not 10: CLICK writes a TXT comma unquoted",
-        ):
-            read_plc_data(CLICK_FORMS)
-
-    def test_reads_the_other_rows(self, tmp_path: Path) -> None:
-        p = tmp_path / "forms.csv"
-        p.write_bytes("\r\n".join(_forms_lines_without_comma_row()).encode("ascii"))
-        data = read_plc_data(p)
+    def test_reads_every_row(self) -> None:
+        data = read_plc_data(CLICK_FORMS)
         df = {a: _float32(v) for a, v in _forms_df().items()}
         # CLICK writes 8 decimals of 0.001953125, so it reads back as 0.00195312.
         df["DF258"] = 0.00195312
-        assert data == {**df, **_forms_txt()}
+        marks = ["*", ",", "/", ":", ";", "<", "=", ">", "?", "@"]
+        comma_row = {f"TXT{971 + i}": c for i, c in enumerate(marks)}
+        assert data == {**df, **_forms_txt(), **comma_row}
         assert str(data["DF257"]) == "-0.0"
 
     def test_write_matches_click_cells_of_comma_row(self, tmp_path: Path) -> None:
@@ -768,6 +762,137 @@ class TestClickForms:
         written = out.read_bytes().split(b"\r\n")
         for line in _forms_lines_without_comma_row():
             assert line.encode("ascii") in written, line
+
+
+def _txt_row(start: int, cells: list[str]) -> str:
+    """Return a TXT row as CLICK writes it. A comma cell is written as a bare comma."""
+    return f"TXT{start}," + ",".join(cells) + ","
+
+
+def _txt_file(tmp_path: Path, *rows: str, after: str = "") -> Path:
+    lines = ["<TXT=START>", "Address,1,2,3,4,5,6,7,8,9,10,", *rows, "</TXT=END>", "", after]
+    p = tmp_path / "data.csv"
+    p.write_bytes("\r\n".join(lines).encode("ascii"))
+    return p
+
+
+def _txt(start: int, cells: list[str]) -> dict[str, str]:
+    return {f"TXT{start + i}": c for i, c in enumerate(cells)}
+
+
+class TestTxtCommaRows:
+    """Rows built from the rule that CLICK_FORMS shows. CLICK writes a TXT comma bare."""
+
+    @pytest.mark.parametrize(
+        "cells",
+        [
+            [",", "A", "B", "C", "D", "E", "F", "G", "H", "I"],
+            ["A", "B", "C", "D", "E", "F", "G", "H", "I", ","],
+            ["A", ",", ",", "B", "C", "D", "E", "F", "G", "H"],
+            [","] * 10,
+            ["A", ",", "B", "", "C", ",", "D", "", "E", ","],
+            ["$20", ",", "$20", '"', ",", "$", "", "x", "", "y"],
+        ],
+    )
+    def test_reads_a_comma_row_that_has_one_reading(self, tmp_path: Path, cells: list[str]) -> None:
+        data = read_plc_data(_txt_file(tmp_path, _txt_row(1, cells)))
+        assert data == {a: " " if c == "$20" else c for a, c in _txt(1, cells).items()}
+
+    def test_comma_beside_empty_cells_raises_with_the_rest(self, tmp_path: Path) -> None:
+        # "Hi," and then empty cells. The comma may be in any of TXT13 to TXT20.
+        p = _txt_file(
+            tmp_path,
+            _txt_row(1, ["A", "B", "C", "", "", "", "", "", "", ""]),
+            _txt_row(11, ["H", "i", ",", "", "", "", "", "", "", ""]),
+            after="\r\n".join(
+                [
+                    "<DS=START>",
+                    "Address,1,2,3,4,5,6,7,8,9,10,",
+                    "DS1,7,0,0,0,0,0,0,0,0,0,",
+                    "</DS=END>",
+                ]
+            ),
+        )
+        with pytest.raises(PlcDataReadError) as info:
+            read_plc_data(p)
+        assert isinstance(info.value, ValueError)
+        assert info.value.addresses == tuple(f"TXT{n}" for n in range(13, 21))
+        expected: dict[str, bool | int | float | str] = {
+            **_txt(1, ["A", "B", "C", "", "", "", "", "", "", ""]),
+            "TXT11": "H",
+            "TXT12": "i",
+            **{f"DS{n}": 0 for n in range(1, 11)},
+        }
+        expected["DS1"] = 7
+        assert info.value.values == expected
+        assert str(info.value).startswith(
+            "read_plc_data can't tell what TXT13, TXT14, TXT15, TXT16, TXT17, TXT18, TXT19, "
+            "TXT20 hold."
+        )
+
+    def test_comma_can_move_a_letter_into_the_empty_cells(self, tmp_path: Path) -> None:
+        # "A,B" and then empty cells. The comma is not next to an empty cell. B may be TXT3, or
+        # it may be TXT4 with TXT2 and TXT3 empty and a comma later in the row.
+        cells = ["A", ",", "B", "", "", "", "", "", "", ""]
+        with pytest.raises(PlcDataReadError) as info:
+            read_plc_data(_txt_file(tmp_path, _txt_row(1, cells)))
+        assert info.value.addresses == tuple(f"TXT{n}" for n in range(2, 11))
+        assert info.value.values == {"TXT1": "A"}
+
+    def test_error_survives_pickle(self) -> None:
+        error = PlcDataReadError({"TXT1": "A"}, ("TXT2", "TXT3"))
+        copy = pickle.loads(pickle.dumps(error))
+        assert (copy.values, copy.addresses, str(copy)) == (
+            error.values,
+            error.addresses,
+            str(error),
+        )
+
+    def test_keeps_the_cells_that_every_reading_agrees_on(self, tmp_path: Path) -> None:
+        # TXT2 and TXT3 hold "," and "" in one order or the other. B is TXT4 either way.
+        cells = ["A", ",", "", "B", "C", "D", "E", "F", "G", "H"]
+        with pytest.raises(PlcDataReadError) as info:
+            read_plc_data(_txt_file(tmp_path, _txt_row(1, cells)))
+        assert info.value.addresses == ("TXT2", "TXT3")
+        assert info.value.values == {
+            k: v for k, v in _txt(1, cells).items() if k not in ("TXT2", "TXT3")
+        }
+
+    def test_skip_default_applies_to_values(self, tmp_path: Path) -> None:
+        # A comma is written as two empty pieces, so a lone empty piece is an empty cell.
+        # Only TXT2 and TXT3 are unknown.
+        cells = ["A", ",", "", "B", "", "C", "", "D", "", "E"]
+        with pytest.raises(PlcDataReadError) as info:
+            read_plc_data(_txt_file(tmp_path, _txt_row(1, cells)), skip_default=True)
+        assert info.value.addresses == ("TXT2", "TXT3")
+        assert info.value.values == {
+            "TXT1": "A",
+            "TXT4": "B",
+            "TXT6": "C",
+            "TXT8": "D",
+            "TXT10": "E",
+        }
+
+    def test_message_shows_ten_addresses(self, tmp_path: Path) -> None:
+        cells = ["H", "i", ",", "", "", "", "", "", "", ""]
+        with pytest.raises(PlcDataReadError) as info:
+            read_plc_data(_txt_file(tmp_path, _txt_row(1, cells), _txt_row(11, cells)))
+        assert len(info.value.addresses) == 16
+        assert str(info.value).startswith("read_plc_data can't tell what TXT3, TXT4,")
+        assert "TXT14 and 6 more hold." in str(info.value)
+
+    @pytest.mark.parametrize(
+        ("row", "cells"),
+        [
+            ("TXT1,A,B,C,D,E,F,G,H,I,", 9),
+            ("TXT1,A,B,C,D,E,F,G,H,I,J,K,", 11),
+            ("TXT1,A,,,,,,,,,,,,,,,,,,,,,,", 22),
+        ],
+    )
+    def test_row_that_no_reading_fits_raises(self, tmp_path: Path, row: str, cells: int) -> None:
+        with pytest.raises(ValueError, match=rf"^TXT1 row has {cells} cells, not 10\.$") as info:
+            read_plc_data(_txt_file(tmp_path, row))
+        assert not isinstance(info.value, PlcDataReadError)
 
 
 class TestWriteDfForm:
@@ -930,7 +1055,9 @@ class TestTxtForm:
 
     def test_comma_raises(self, tmp_path: Path) -> None:
         out = tmp_path / "out.csv"
-        with pytest.raises(ValueError, match=r"^TXT3 value ',': CLICK writes a TXT comma unquoted"):
+        with pytest.raises(
+            ValueError, match=r"^TXT3 value ',': write_plc_data does not write a TXT comma"
+        ):
             write_plc_data(out, {"TXT3": ","})
         assert not out.exists()
 

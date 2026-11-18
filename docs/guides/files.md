@@ -118,7 +118,21 @@ CLICK writes the cases below in a way that `read_plc_data` has to handle:
 
 - CLICK shows `Err-Format` for a DF value it can't display. `read_plc_data` returns `float("nan")` for it.
 - CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code. `read_plc_data` returns the character (`$20` is `" "`, `$C8` is `"\xc8"`).
-- CLICK writes a TXT comma unquoted, which gives its row a cell too many. `read_plc_data` raises `ValueError` naming the row's first address.
+- CLICK writes a TXT comma without quotes. Each comma adds a cell to its row. `read_plc_data` joins the two cells again and returns `","`.
+
+If a TXT row holds a comma and also an empty address, `read_plc_data` may not be able to tell which address holds what:
+
+```python
+from pyclickplc import PlcDataReadError, read_plc_data
+
+try:
+    data = read_plc_data("data.csv")
+except PlcDataReadError as e:
+    print("Check these in CLICK:", e.addresses)  # ('TXT976', 'TXT977', ...)
+    data = e.values  # every other address in the file
+```
+
+`read_plc_data` reads the whole file, then raises `PlcDataReadError`. `addresses` names each TXT address whose value `read_plc_data` can't tell. Such an address may hold a comma, nothing, or a character that the comma moved. `values` holds every other address, as `read_plc_data` would have returned it. `PlcDataReadError` is a `ValueError`.
 
 ### Write
 
@@ -136,7 +150,7 @@ Unspecified addresses within included banks get bank defaults. Banks not in `ban
 
 `write_plc_data` writes a DF value as the float32 that the PLC holds, in CLICK's fixed-point form (`66.7` is written `66.69999695`). For some values above about 1e19, CLICK's last digits differ from pyclickplc's. Both read back as the same value.
 
-CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` raises `ValueError` naming the address for such a DF value. A program or a Modbus write can still put one in the PLC. `write_plc_data` also raises `ValueError` for a TXT comma. CLICK's format does not quote a comma in a TXT cell. The comma would give its row a cell too many, and `read_plc_data` could not read the row back.
+CLICK's editor can't enter a NaN or an infinity, so `write_plc_data` raises `ValueError` naming the address for such a DF value. A program or a Modbus write can still put one in the PLC. `write_plc_data` also raises `ValueError` for a TXT comma. Nobody has tested whether CLICK's Write Data into PLC reads one.
 
 ### Modify and write back
 
@@ -146,7 +160,7 @@ data["DS3"] = 42
 write_plc_data("to_plc.csv", data)
 ```
 
-If the dump has an `Err-Format` cell, set that address to a number before writing.
+If the dump has an `Err-Format` cell, set that address to a number before writing. If it has a TXT comma, give that address another character before writing. If `read_plc_data` raised `PlcDataReadError`, `e.values` has no value for the unknown TXT addresses. If you write `e.values` to a file and load it with Write Data into PLC, CLICK clears those addresses.
 
 ## Project.ini
 

@@ -2,6 +2,12 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
+## Unreleased
+
+### Fixed
+
+- `read_plc_data` now reads a TXT comma that CLICK wrote without quotes. 0.9.0 raised `ValueError` for every TXT row that held a comma. If the row also holds an empty address, `read_plc_data` may raise `PlcDataReadError` instead.
+
 ## 0.9.0 - 2026-11-17
 
 `ClickServer` now accepts writes to X, T and CT coils and to the coils between X or Y slots. `ClickClient` now sends `math.nan` as `0x0000:0x7FC0`. Read Breaking changes before you upgrade.
