@@ -23,39 +23,30 @@ messages between them.
 
 ## 2. Waiting on CLICK
 
-Needs: CLICK software (Sam, or ClickNick's sandbox runner later). Keep today's behaviour until CLICK answers.
+Needs: CLICK software. The ClickNick session extends its runner to answer this, and Sam gives the go for the
+run. Keep today's behaviour until CLICK answers.
 
 - What encoding does CLICK use when it exports a nickname CSV with a non-ASCII nickname or comment typed in
   CLICK? On import, CLICK reads a file without a BOM as CP1252. `write_csv` writes UTF-8 without a BOM, so a
   `café` that it writes becomes `cafÃ©` in CLICK. CLICK reads a UTF-8 file with a BOM as UTF-8, then converts
   the text to CP1252 by best fit (`５` becomes `5`). An export from CLICK would answer the question. Until
-  then, `write_csv` keeps writing UTF-8 without a BOM.
-- The PLC name in Project.ini. In the fixtures, CLICK 3 always writes `PLCName=` under `[PLCName]`, and
-  CLICK 4 always writes `Key1=` under `[Sec20]`. For a project with no name, the value is empty. So
-  `write_plc_name` never adds a section to a file that CLICK wrote. In a CLICK 4 file that has
-  `[PLCName] PLCName=` and no `[Sec20] Key1=`, `read_plc_name` returns the name under `[PLCName]`. CLICK
-  4.00 shows no name for such a file. CLICK 4.00 matches `[Sec20]` and `Key1` regardless of case. If either appears twice,
-  it uses the first. The code assumes two more rules that nobody has tested in CLICK. The first is that
-  CLICK 3 reads `[PLCName]` the same way. The second is that if two sections have names that differ only in
-  case, CLICK looks for the key only in the first of them. The code assumes this because Windows' INI
-  functions behave that way. Two questions for CLICK: does CLICK 3 read `[PLCName]` that way, and does
-  CLICK 4 look for a key in the second of two such sections?
-- The hardware sections in Project.ini. CLICK 4 writes these sections under numbered placeholder names,
-  such as `[Sec23]` for CLICK 3's `[CPUBuild]`. `read_modules` and the channel readers match `[Sec21]` to
-  `[Sec23]` and CLICK 3's names regardless of case. If a section or key appears twice, they use the first.
-  In a CLICK 4 file that has both a placeholder section and its named section, such as `[Sec23]` and
-  `[CPUBuild]`, they ignore the named section. This has been checked in CLICK 4.00 only for the PLC
-  name. It shows the name under `[Sec20]` and ignores a `[PLCName]` beside it. Does CLICK 4 read the hardware
-  sections the same way? Does CLICK 4 read a named section that has no placeholder beside it, such as
-  `[CPUBuild]` alone? The readers read it, as `read_plc_name` reads `[PLCName]` alone. The readers follow
-  configparser for a line that is indented under an option. They read the line as part of that option's
-  value, even if it is `  [Sec20]`. Windows' INI functions probably trim the indent and read the line on
-  its own. That is a guess, and nobody has tested it. Because the two readings can differ,
-  `write_plc_name` refuses a file that has such a line. None of the four Project.ini fixtures has an
-  indented line.
+  then, `write_csv` keeps writing UTF-8 without a BOM. The ClickNick session sizes the runner work at about
+  half a day.
 
 ## Unscheduled
 
+- **The Project.ini readers and `write_plc_name` rest on rules that no one has tested in CLICK.** The planner
+  ruled on 2026-11-18 that they get no runs. Do not queue them again. The comments in `project.py` name each
+  rule. The rules cover these cases:
+  - a key only in the second of two sections whose names differ only in case;
+  - a line indented under an option;
+  - the case of the hardware section and key names, and which of two matches CLICK uses, in CLICK 4
+    (`[Sec21]` to `[Sec23]`) and in CLICK 3 (`[SystemConfig]`, `[SystemConfigData]`, `[CPUBuild]`);
+  - in CLICK 4, `[Sec22]` and `[Sec23]` beside their named sections, and a named section such as
+    `[CPUBuild]` alone;
+  - a CLICK 4 file that also has `[SystemConfig]`. The module reads it as a CLICK 3 file, including the PLC
+    name;
+  - in CLICK 3, the case of `[PLCName]` and `PLCName`, and repeated sections and keys.
 - **`ClickServer` answers function code 17 (report server id) with exception 01. A real CLICK answers it
   with data.** A real C2-03CPU in RUN (probed 2026-11-16) answered FC 7, 8 (sub-function 0), 11, 12, 20,
   24 and 43/14 with exception 01, as `ClickServer` does. It answered FC 17 with

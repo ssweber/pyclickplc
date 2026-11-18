@@ -203,11 +203,13 @@ def _first_matches(lines: list[str]) -> list[str]:
     """Return the lines without any section or option that repeats an earlier one.
 
     Names match regardless of case. A repeated section is dropped whole, and a repeated
-    option is dropped with the lines that continue it. CLICK 4 uses the first match when it
-    reads the PLC name. This function uses the first match for every section and key. For the
-    other keys, the code assumes that CLICK does the same, because the Windows INI functions
-    do. A line that configparser refuses is always kept, so that configparser still refuses
-    the file.
+    option is dropped with the lines that continue it. This function uses the first match for
+    every section and key. CLICK 4.00 was seen to use the first match for the PLC name. It
+    read the first of two ``[Sec20]`` sections that both hold ``Key1``, and the first of two
+    ``Key1`` keys in one section. No one has tested which match CLICK uses for the other
+    sections and keys. The code assumes the first, because the Windows INI functions use the
+    first match. A line that configparser refuses is always kept, so that configparser still
+    refuses the file.
 
     Every kept line loses its indent, except a continuation, a blank line or a comment.
     configparser strips that indent from a value anyway. Without the indent, a line that
@@ -262,16 +264,21 @@ def _restore_names(parser: ConfigParser) -> None:
 
     Call ``_spell_sections`` first.
     """
+    # A file that has [SystemConfig] is read as a CLICK 3 file, so this module reads none of
+    # its [Sec20] to [Sec23], including the PLC name. No one has tested what CLICK 4 shows
+    # for such a file.
     if not _is_click_4(parser):
         return
     for placeholder, (section, names) in _PLACEHOLDER_NAMES.items():
         if not parser.has_section(placeholder):
+            # This module reads the named section, such as [CPUBuild], as it is. No one has
+            # tested whether CLICK 4 reads a named section that has no placeholder beside it.
             continue
         # A file can have both a placeholder section and its named section, such as a
-        # [CPUBuild] that another tool added. The placeholder's keys replace the named
-        # section, so this module reads none of the named section's own keys. If a file has
-        # both [Sec20] and [PLCName], CLICK 4 shows the name from [Sec20]. This code assumes
-        # that CLICK 4 ignores the other named sections in the same way.
+        # [CPUBuild] that another tool added. The placeholder's keys replace those of the
+        # named section. CLICK 4.00 shows the name from [Sec20] and ignores a [PLCName]
+        # beside it. No one has tested whether CLICK 4 ignores [SystemConfigData] and
+        # [CPUBuild] in the same way.
         parser.remove_section(section)
         parser.add_section(section)
         for key, value in parser.items(placeholder):
@@ -486,10 +493,14 @@ def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None
     """Return the indexes in *lines* of the first section named *section* and its first *key*.
 
     Either index is None if the section or option is missing. Names match regardless of
-    case, and CLICK matches them the same way. The function looks for the key only in the
-    first matching section, as Windows' GetPrivateProfileString does. This code assumes
-    that CLICK does the same. Nobody has checked this in CLICK. Lines are read as configparser
-    reads them (``_roles``).
+    case. CLICK 4.00 was seen to match ``[Sec20] Key1`` regardless of case and to use the
+    first of two matching sections or keys. No one has tested either rule for CLICK 3's
+    ``[PLCName] PLCName``.
+
+    The function looks for the key only in the first matching section. Windows'
+    GetPrivateProfileString does the same. If two sections match and only the second holds
+    the key, the function returns the first section and no key. No one has tested whether
+    CLICK then shows no name. Lines are read as configparser reads them (``_roles``).
     """
     header, option = section.lower(), key.lower()
     start = None
@@ -661,10 +672,11 @@ def write_plc_name(path: str | Path, name: str) -> None:
     original = path.read_bytes()
     written = _parse_project(original, path, restore=False)
     lines = _lines(original)[1]
-    # configparser reads a line indented under an option as part of the option's value. The
-    # Windows INI functions probably strip the indent and read it as a line of its own. That
-    # is an assumption that no one has tested. The two readers may disagree, so refuse the
-    # file. CLICK writes no such line.
+    # configparser, and so this module's readers, read a line indented under an option as part
+    # of the option's value. No one has tested how CLICK reads such a line. The Windows INI
+    # functions probably strip the indent and read it as a line of its own. Refuse the file,
+    # so that the name is never written where the two readings may differ. No CLICK-written
+    # Project.ini in tests/fixtures has such a line.
     for number, (role, _) in enumerate(_line_roles(lines), start=1):
         if role == "continuation":
             raise ValueError(

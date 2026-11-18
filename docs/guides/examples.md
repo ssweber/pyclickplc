@@ -55,16 +55,16 @@ plc_ip_addresses = [
 The traffic light above uses `asyncio.sleep` for timing — Python drives the state machine. A real CLICK PLC runs timer instructions in ladder logic. [pyrung](https://github.com/ssweber/pyrung) lets you write that logic in Python and simulate it scan-by-scan:
 
 ```python
-from pyrung import Bool, Char, Int, Rung, on_delay, copy, program, Tms
+from pyrung import Char, Timer, copy, on_delay, program, rung
 
 State = Char("State")
-GreenDone, GreenAcc = Bool("GreenDone"), Int("GreenAcc")
+GreenTimer = Timer.clone("GreenTimer")
 
 @program
 def logic():
-    with Rung(State == "g"):
-        on_delay(GreenDone, GreenAcc, preset=3000, unit=Tms)
-    with Rung(GreenDone):
+    with rung(State == "g"):
+        on_delay(GreenTimer, 3000)
+    with rung(GreenTimer.Done):
         copy("y", State)
     # ... yellow → red → green
 ```
