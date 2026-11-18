@@ -2,7 +2,9 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
-## Unreleased
+## 0.10.0 - 2026-11-18
+
+A fix for the PLC name in a new CLICK 4 project. Upgrade if you read or write the PLC name of a CLICK 4 project.
 
 ### Breaking changes
 
