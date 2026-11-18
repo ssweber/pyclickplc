@@ -28,14 +28,39 @@ jobs:
       - name: Set up Python (using uv)
         run: uv python install
 
-      - name: Install all dependencies
-        run: uv sync --locked --all-extras --dev
+      # main accepts only pull requests that pass CI, so the tests have already run on this
+      # commit. Publish only a commit that is on main.
+      - name: Check that the commit is on main
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::$GITHUB_SHA is not on main. Publish only a commit on main."
+            exit 1
+          fi
 
-      - name: Run tests
-        run: uv run pytest
-        
       - name: Build package
         run: uv build
+
+      - name: Check the built wheel
+        env:
+          # Empty on a manual run, which has no release tag.
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          wheel=$(ls dist/*.whl)
+          uv run --isolated --no-project --with "$wheel" --with packaging python -I - "${TAG#v}" <<'PY'
+          import importlib.metadata
+          import sys
+
+          import pyclickplc  # noqa: F401
+          from packaging.version import Version
+
+          version = importlib.metadata.version("pyclickplc")
+          print(f"The wheel imports as pyclickplc {version}.")
+          tag = sys.argv[1]
+          if tag and Version(tag) != Version(version):
+              print(f"::error::The wheel is pyclickplc {version}, but the release tag is v{tag}.")
+              sys.exit(1)
+          PY
 
       - name: Publish to PyPI (using uv)
         uses: pypa/gh-action-pypi-publish@release/v1
