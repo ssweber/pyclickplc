@@ -810,8 +810,9 @@ C2_CASES = [
 ]
 
 
-# Each case's lines were added to the end of a file like NEW_CLICK_4, and CLICK 4.00 showed
-# the name given. CLICK_4_HEAD stands in for a project whose hardware configuration is saved.
+# Each case's lines were added to the end of a file like NEW_CLICK_4. For every case but
+# same-spelling-twice, CLICK 4.00 showed the name given. CLICK_4_HEAD stands in for a project
+# whose hardware configuration is saved.
 CLICK_4_HEADS = [
     pytest.param(NEW_CLICK_4, id="new-project"),
     pytest.param(CLICK_4_HEAD, id="with-Sec21"),
@@ -847,8 +848,8 @@ def test_write_names_a_new_click_4_project_in_sec20(tmp_path):
 
 
 LEGACY_NAME = b"[PLCName]\r\nPLCName=Legacy\r\n"
-# CLICK writes an empty [Sec20] Key1= once a project's hardware configuration is saved
-# (Project_click4_noname.ini).
+# Project_click4_noname.ini, which CLICK 4 wrote for a project whose hardware configuration
+# is saved, has an empty [Sec20] Key1=.
 EMPTY_SEC20 = b"[Sec20]\r\nKey1=\r\n"
 
 
