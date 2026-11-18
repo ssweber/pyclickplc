@@ -125,13 +125,20 @@ def _placeholder_key(key: str, names: Mapping[str, str]) -> str | None:
     return None
 
 
+_PLACEHOLDER_SECTION = re.compile(r"sec\d+")
+
+
 def _is_click_4(parser: ConfigParser) -> bool:
     """Return True if the file uses CLICK 4's placeholder names.
 
-    Section names match regardless of case.
+    That is a file with a section named ``Sec`` and digits, in any case, and no
+    ``[SystemConfig]``. A new CLICK 4.00 project has no ``[Sec21]`` until its hardware
+    is saved, but it has ``[Sec52]`` and others. CLICK 3 files use no such name.
     """
-    names = {name.lower() for name in parser.sections()}
-    return "systemconfig" not in names and "sec21" in names
+    names = [name.lower() for name in parser.sections()]
+    return "systemconfig" not in names and any(
+        _PLACEHOLDER_SECTION.fullmatch(name) for name in names
+    )
 
 
 # Maps the lowercase name of each section that this module reads to its spelling in
@@ -497,24 +504,25 @@ def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None
 
 
 def _plc_name_line(
-    lines: list[bytes], written: ConfigParser
+    lines: list[bytes], written: ConfigParser, *, writing: bool = False
 ) -> tuple[str, str, int | None, int | None]:
-    """Return the section and key that the name is read from, and their line numbers if present.
+    """Return the section and key that hold the name, and their line numbers if present.
 
     *written* is the file parsed as written, to tell a CLICK 4 file from a CLICK 3 one.
+    If *writing* is True, return where ``write_plc_name`` puts the name. In a CLICK 4 file
+    that is always ``[Sec20] Key1``, because CLICK 4.00 shows no name from ``[PLCName]``.
     """
     if not _is_click_4(written):
         return (*_PLC_NAME, *_find_option(lines, *_PLC_NAME))
     placeholder = _placeholder_option(*_PLC_NAME)
     found = _find_option(lines, *placeholder)
-    if found[1] is not None:
-        return (*placeholder, *found)
-    legacy = _find_option(lines, *_PLC_NAME)
-    if legacy[1] is not None:
-        return (*_PLC_NAME, *legacy)
-    # Neither section has the name. Use [PLCName] only if it exists and [Sec20] does not.
-    if legacy[0] is not None and found[0] is None:
-        return (*_PLC_NAME, *legacy)
+    if found[1] is None and not writing:
+        # pyclickplc 0.9.1 and older wrote the name to [PLCName] in a new CLICK 4.00
+        # project, and ClickNick's Name PLC used that code. CLICK 4.00 shows no name for
+        # such a file. Reading the name from [PLCName] keeps the name that the user gave.
+        legacy = _find_option(lines, *_PLC_NAME)
+        if legacy[1] is not None:
+            return (*_PLC_NAME, *legacy)
     return (*placeholder, *found)
 
 
@@ -538,9 +546,14 @@ def read_plc_name(path: str | Path) -> str | None:
 
     The name is ``[PLCName] PLCName=``. CLICK 4 writes it as ``[Sec20] Key1=``.
     Section and key names match regardless of case. If a section or key appears
-    more than once, the function uses the first one. CLICK 4 does the same. If a
-    CLICK 4 file has a name in both sections, the function returns the one in
-    ``[Sec20]``. Returns None if the project has no PLC name.
+    more than once, the function uses the first one. CLICK 4.00 does the same when
+    both sections hold the key. Returns None if the project has no PLC name.
+
+    If a CLICK 4 file has a name in both sections, the function returns the one in
+    ``[Sec20]``, as CLICK 4.00 does. If only ``[PLCName]`` has a name, the function
+    returns it. CLICK 4.00 shows no name for such a file. The function returns the
+    name so that a project named by pyclickplc 0.9.1 or older keeps its name.
+    ``write_plc_name`` then writes the name to ``[Sec20]``, where CLICK shows it.
 
     Raises OSError for unreadable files and ValueError for malformed INI data.
     No CLICK installation is required.
@@ -622,9 +635,10 @@ def write_plc_name(path: str | Path, name: str) -> None:
     """Set the PLC name in a CLICK Project.ini file.
 
     The function changes only the line that holds the name, or adds that line if
-    the project has no name. Every other byte stays as it was. The name goes where
-    ``read_plc_name`` reads it. A CLICK 4 file with no name gets ``[Sec20] Key1=``,
-    and any other file gets ``[PLCName] PLCName=``. The function checks the name with
+    the project has no name. Every other byte stays as it was. In a CLICK 4 file, the
+    name goes in ``[Sec20] Key1=``, where CLICK 4 shows it. A ``[PLCName]`` section in
+    the same file stays as it was. In any other file, the name goes in
+    ``[PLCName] PLCName=``. The function checks the name with
     ``validate_click_name`` and writes it without surrounding whitespace. It writes the
     new file to a temporary file in the same folder, which then replaces Project.ini in
     one step.
@@ -653,7 +667,7 @@ def write_plc_name(path: str | Path, name: str) -> None:
                 " above it, so readers may take it as part of that line's value or as a line"
                 " of its own. Remove the indent."
             )
-    section, key, _, _ = _plc_name_line(lines, written)
+    section, key, _, _ = _plc_name_line(lines, written, writing=True)
     try:
         updated = _set_option(original, section, key, name)
     except ValueError as exc:

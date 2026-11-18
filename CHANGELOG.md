@@ -2,6 +2,12 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
+## Unreleased
+
+### Fixed
+
+- `read_plc_name` and `write_plc_name` now use `[Sec20] Key1=` in a new CLICK 4 project, where CLICK shows the name. 0.9.1 used `[PLCName]` there, and CLICK 4 ignores that section. To fix a project that 0.9.1 named, call `write_plc_name` with the name that `read_plc_name` returns.
+
 ## 0.9.1 - 2026-11-18
 
 A fix for `read_plc_data`. Upgrade if your PLC data files hold a TXT comma.
