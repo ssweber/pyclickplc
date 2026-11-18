@@ -23,6 +23,7 @@ from pyclickplc import (
 )
 from pyclickplc.project import (
     ChannelParameters,
+    Modules,
     _line_roles,
     _lines,
     _parse_project,
@@ -521,10 +522,15 @@ def test_layout_is_immutable(tmp_path):
 # read_plc_name / write_plc_name
 # ==============================================================================
 
-# CLICK 4 writes [PLCName] PLCName= as [Sec20] Key1=. Sec21 marks a CLICK 4 file.
+# CLICK 4 writes [PLCName] PLCName= as [Sec20] Key1=. A section named Sec and digits marks
+# a CLICK 4 file.
 CLICK_3 = b"[SystemConfig]\r\nItem1=199\r\n[PLCName]\r\nPLCName=Line 1\r\n[Other]\r\nValue=1\r\n"
 CLICK_4_HEAD = b"[Sec21]\r\nKey3_1=199\r\n"
 CLICK_4 = b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Line 1\r\n[Sec22]\r\nKey1_2=\r\n"
+# CLICK 4.00 wrote this Project.ini for a new project whose hardware configuration had not
+# been saved. It has no [Sec20] and no [Sec21]. The long hex values in [Sec55] Key1 and
+# [Sec52] Key3_1 are blanked. Every other byte is as CLICK wrote it.
+NEW_CLICK_4 = (Path(__file__).parent / "fixtures" / "Project_click4_new.ini").read_bytes()
 
 
 def _project(tmp_path, data):
@@ -550,8 +556,13 @@ def _write(tmp_path, data, name):
         (b"[PLCName]\r\nPLCName=\r\n", None),
         (b"[SystemConfig]\r\nItem1=199\r\n", None),
         (b"", None),
-        # Without Sec21 the file uses CLICK 3's names, so Sec20 is not the PLC name.
-        (b"[Sec20]\r\nKey1=Line 1\r\n", None),
+        # [Sec20] marks a CLICK 4 file without [Sec21].
+        (b"[Sec20]\r\nKey1=Line 1\r\n", "Line 1"),
+        (b"[Sec52]\r\nKey1=1\r\n[sec20]\r\nkey1=Line 1\r\n", "Line 1"),
+        # [SystemConfig] marks a CLICK 3 file, so [Sec20] is not the PLC name.
+        (b"[SystemConfig]\r\n[Sec20]\r\nKey1=Line 1\r\n", None),
+        # [Section20] is not a placeholder name, so the file uses CLICK 3's names.
+        (b"[Section20]\r\n[PLCName]\r\nPLCName=Line 1\r\n", "Line 1"),
     ],
 )
 def test_read_plc_name(tmp_path, data, name):
@@ -751,14 +762,15 @@ def test_write_keeps_the_name_line_as_written(tmp_path, line, expected):
         # A CLICK 4 file gets the name in [Sec20] Key1.
         (b"[Sec21]\r\nKey3_1=199\r\n", b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Mixer\r\n"),
         (b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n", b"[Sec21]\r\n[Sec20]\r\nKey1=Mixer\r\nKey2=x\r\n"),
-        # A CLICK 4 file that already has [PLCName] gets the name there, because the reader
-        # finds it there.
-        (b"[Sec21]\r\n[PLCName]\r\nPLCName=A\r\n", b"[Sec21]\r\n[PLCName]\r\nPLCName=Mixer\r\n"),
-        # With both sections, the writer puts the name where the reader finds it. That is [Sec20],
-        # unless [PLCName] has a name and [Sec20] does not.
+        # A CLICK 4 file gets the name in [Sec20] even if [PLCName] has one, because CLICK 4.00
+        # shows no name from [PLCName]. The writer leaves [PLCName] as it was.
+        (
+            b"[Sec21]\r\n[PLCName]\r\nPLCName=A\r\n",
+            b"[Sec21]\r\n[PLCName]\r\nPLCName=A\r\n[Sec20]\r\nKey1=Mixer\r\n",
+        ),
         (
             b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n[PLCName]\r\nPLCName=A\r\n",
-            b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n[PLCName]\r\nPLCName=Mixer\r\n",
+            b"[Sec21]\r\n[Sec20]\r\nKey1=Mixer\r\nKey2=x\r\n[PLCName]\r\nPLCName=A\r\n",
         ),
         (
             b"[Sec21]\r\n[Sec20]\r\nKey2=x\r\n[PLCName]\r\n",
@@ -798,17 +810,91 @@ C2_CASES = [
 ]
 
 
-@pytest.mark.parametrize("data,name", C2_CASES)
-def test_read_plc_name_matches_click_4_case_rules(tmp_path, data, name):
-    assert read_plc_name(_project(tmp_path, CLICK_4_HEAD + data)) == name
+# Each case's lines were added to the end of a file like NEW_CLICK_4. For every case but
+# same-spelling-twice, CLICK 4.00 showed the name given. CLICK_4_HEAD stands in for a project
+# whose hardware configuration is saved.
+CLICK_4_HEADS = [
+    pytest.param(NEW_CLICK_4, id="new-project"),
+    pytest.param(CLICK_4_HEAD, id="with-Sec21"),
+]
 
 
+@pytest.mark.parametrize("head", CLICK_4_HEADS)
 @pytest.mark.parametrize("data,name", C2_CASES)
-def test_write_plc_name_changes_the_name_click_4_reads(tmp_path, data, name):
-    original = CLICK_4_HEAD + data
+def test_read_plc_name_matches_click_4_case_rules(tmp_path, head, data, name):
+    assert read_plc_name(_project(tmp_path, head + data)) == name
+
+
+@pytest.mark.parametrize("head", CLICK_4_HEADS)
+@pytest.mark.parametrize("data,name", C2_CASES)
+def test_write_plc_name_changes_the_name_click_4_reads(tmp_path, head, data, name):
+    original = head + data
     expected = original.replace(b"=" + name.encode(), b"=Mixer", 1)
     assert expected != original
     assert _write(tmp_path, original, "Mixer") == expected
+
+
+def test_new_click_4_project_has_no_name_or_hardware():
+    path = Path(__file__).parent / "fixtures" / "Project_click4_new.ini"
+    assert read_plc_name(path) is None
+    assert read_modules(path) == Modules()
+    assert read_io_layout(path) == ()
+    assert read_channel_parameters(path) == ChannelParameters()
+
+
+def test_write_names_a_new_click_4_project_in_sec20(tmp_path):
+    # When [Sec20] Key1= was added to the end of this file, CLICK 4.00 showed the name.
+    assert _write(tmp_path, NEW_CLICK_4, "Mixer") == NEW_CLICK_4 + b"[Sec20]\r\nKey1=Mixer\r\n"
+
+
+LEGACY_NAME = b"[PLCName]\r\nPLCName=Legacy\r\n"
+# Project_click4_noname.ini, which CLICK 4 wrote for a project whose hardware configuration
+# is saved, has an empty [Sec20] Key1=.
+EMPTY_SEC20 = b"[Sec20]\r\nKey1=\r\n"
+
+
+@pytest.mark.parametrize("head", CLICK_4_HEADS)
+@pytest.mark.parametrize("sec20", [b"", EMPTY_SEC20, b"[Sec20]\r\nKey1=   \r\n"])
+def test_read_plc_name_keeps_a_plcname_name_in_a_click_4_file(tmp_path, head, sec20):
+    # CLICK 4.00 shows no name for these files. pyclickplc 0.9.1 and older wrote the name
+    # to [PLCName], so read_plc_name returns it and the project keeps its name.
+    assert read_plc_name(_project(tmp_path, head + sec20 + LEGACY_NAME)) == "Legacy"
+
+
+def test_write_moves_a_plcname_name_to_sec20(tmp_path):
+    # The name goes where CLICK 4.00 shows it. [PLCName] stays as it was.
+    original = NEW_CLICK_4 + LEGACY_NAME
+    assert _write(tmp_path, original, "Legacy") == original + b"[Sec20]\r\nKey1=Legacy\r\n"
+
+
+@pytest.mark.parametrize("head", CLICK_4_HEADS)
+def test_write_fills_an_empty_sec20_beside_a_plcname_name(tmp_path, head):
+    original = head + EMPTY_SEC20 + LEGACY_NAME
+    assert _write(tmp_path, original, "Legacy") == original.replace(
+        EMPTY_SEC20, b"[Sec20]\r\nKey1=Legacy\r\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "data,name",
+    [
+        (CLICK_4, "Line 1"),
+        (CLICK_3, "Line 1"),
+        (NEW_CLICK_4 + b"[Sec20]\r\nKey1=Mixer\r\n", "Mixer"),
+        (NEW_CLICK_4 + b"[Sec20]\r\nKey1=Mixer\r\n", "  Mixer "),
+    ],
+)
+def test_write_leaves_the_file_alone_when_it_already_holds_the_name(
+    tmp_path, monkeypatch, data, name
+):
+    def replace(source, destination):
+        raise AssertionError("write_plc_name replaced a file that already held the name")
+
+    monkeypatch.setattr("pyclickplc.project.os.replace", replace)
+    path = _project(tmp_path, data)
+    write_plc_name(path, name)
+    assert path.read_bytes() == data
+    assert list(tmp_path.iterdir()) == [path]
 
 
 def test_write_keeps_the_files_spelling_when_adding_a_key(tmp_path):

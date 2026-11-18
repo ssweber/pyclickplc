@@ -125,13 +125,21 @@ def _placeholder_key(key: str, names: Mapping[str, str]) -> str | None:
     return None
 
 
+_PLACEHOLDER_SECTION = re.compile(r"sec[0-9]+")
+
+
 def _is_click_4(parser: ConfigParser) -> bool:
     """Return True if the file uses CLICK 4's placeholder names.
 
-    Section names match regardless of case.
+    That is a file with a section named ``Sec`` and digits, in any case, and no
+    ``[SystemConfig]``. CLICK 4.00 writes no ``[Sec21]`` for a new project before
+    its hardware configuration is saved, but it writes ``[Sec52]`` and others. A file
+    that uses CLICK 3's names has no such section.
     """
-    names = {name.lower() for name in parser.sections()}
-    return "systemconfig" not in names and "sec21" in names
+    names = [name.lower() for name in parser.sections()]
+    return "systemconfig" not in names and any(
+        _PLACEHOLDER_SECTION.fullmatch(name) for name in names
+    )
 
 
 # Maps the lowercase name of each section that this module reads to its spelling in
@@ -499,27 +507,18 @@ def _find_option(lines: list[bytes], section: str, key: str) -> tuple[int | None
 def _plc_name_line(
     lines: list[bytes], written: ConfigParser
 ) -> tuple[str, str, int | None, int | None]:
-    """Return the section and key that the name is read from, and their line numbers if present.
+    """Return the section and key where CLICK reads the name, and their line numbers if present.
 
     *written* is the file parsed as written, to tell a CLICK 4 file from a CLICK 3 one.
     """
     if not _is_click_4(written):
         return (*_PLC_NAME, *_find_option(lines, *_PLC_NAME))
     placeholder = _placeholder_option(*_PLC_NAME)
-    found = _find_option(lines, *placeholder)
-    if found[1] is not None:
-        return (*placeholder, *found)
-    legacy = _find_option(lines, *_PLC_NAME)
-    if legacy[1] is not None:
-        return (*_PLC_NAME, *legacy)
-    # Neither section has the name. Use [PLCName] only if it exists and [Sec20] does not.
-    if legacy[0] is not None and found[0] is None:
-        return (*_PLC_NAME, *legacy)
-    return (*placeholder, *found)
+    return (*placeholder, *_find_option(lines, *placeholder))
 
 
-def _plc_name(lines: list[bytes], written: ConfigParser) -> str | None:
-    _, key, _, index = _plc_name_line(lines, written)
+def _option_value(lines: list[bytes], index: int | None, key: str) -> str | None:
+    """Return the stripped value of the option on line *index*, or None if it is empty."""
     if index is None:
         return None
     # Parse the option's line with the lines that continue its value.
@@ -533,14 +532,32 @@ def _plc_name(lines: list[bytes], written: ConfigParser) -> str | None:
     return parser.get("s", key, fallback="").strip() or None
 
 
+def _plc_name(lines: list[bytes], written: ConfigParser) -> str | None:
+    _, key, _, index = _plc_name_line(lines, written)
+    name = _option_value(lines, index, key)
+    if name is None and _is_click_4(written):
+        # A [PLCName] name is still read, so that a name that an earlier pyclickplc wrote
+        # there is kept.
+        _, legacy = _find_option(lines, *_PLC_NAME)
+        name = _option_value(lines, legacy, _PLC_NAME[1])
+    return name
+
+
 def read_plc_name(path: str | Path) -> str | None:
     """Read the PLC name from a CLICK Project.ini file.
 
     The name is ``[PLCName] PLCName=``. CLICK 4 writes it as ``[Sec20] Key1=``.
     Section and key names match regardless of case. If a section or key appears
-    more than once, the function uses the first one. CLICK 4 does the same. If a
-    CLICK 4 file has a name in both sections, the function returns the one in
-    ``[Sec20]``. Returns None if the project has no PLC name.
+    more than once, the function uses the first one. CLICK 4.00 also uses the first
+    of two ``[Sec20]`` sections and the first of two ``Key1`` keys. Returns None if
+    the project has no PLC name.
+
+    If a CLICK 4 file has a name in both ``[Sec20]`` and ``[PLCName]``, the function
+    returns the one in ``[Sec20]``. CLICK 4.00 does the same. If only ``[PLCName]``
+    has a name, the function returns it, so that a project named by pyclickplc 0.9.1
+    or older keeps its name. CLICK 4.00 shows no name for such a file. If you pass
+    that name to ``write_plc_name``, it writes the name to ``[Sec20]``, where CLICK
+    4.00 shows it.
 
     Raises OSError for unreadable files and ValueError for malformed INI data.
     No CLICK installation is required.
@@ -621,13 +638,15 @@ def _replace(path: Path, data: bytes) -> None:
 def write_plc_name(path: str | Path, name: str) -> None:
     """Set the PLC name in a CLICK Project.ini file.
 
-    The function changes only the line that holds the name, or adds that line if
-    the project has no name. Every other byte stays as it was. The name goes where
-    ``read_plc_name`` reads it. A CLICK 4 file with no name gets ``[Sec20] Key1=``,
-    and any other file gets ``[PLCName] PLCName=``. The function checks the name with
-    ``validate_click_name`` and writes it without surrounding whitespace. It writes the
-    new file to a temporary file in the same folder, which then replaces Project.ini in
-    one step.
+    In a CLICK 4 file, the name goes in ``[Sec20] Key1=``, where CLICK 4.00 shows
+    it. A ``[PLCName]`` section in the same file stays as it was. In any other file,
+    the name goes in ``[PLCName] PLCName=``. The function changes only that line, or
+    adds the line if the file does not have it. Every other byte stays as it was.
+
+    The function checks the name with ``validate_click_name`` and writes it without
+    surrounding whitespace. It writes the new file to a temporary file in the same
+    folder, which then replaces Project.ini in one step. If the file already holds
+    the name there, the function leaves the file alone.
 
     Raises ValueError for an invalid name, for malformed INI data, and for a line
     indented under an option. Readers may take that line as part of the option's value
@@ -668,6 +687,8 @@ def write_plc_name(path: str | Path, name: str) -> None:
         or _plc_name(updated_lines, after) != name
     ):
         raise ValueError(f"Cannot set the PLC name in {path}")
+    if updated == original:
+        return
     # Replace the file a symlink points to, not the link.
     _replace(path.resolve(), updated)
 
