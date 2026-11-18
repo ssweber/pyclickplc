@@ -13,6 +13,7 @@ from pyclickplc.nicknames import (
     DATA_TYPE_CODE_TO_STR,
     DATA_TYPE_STR_TO_CODE,
     AddressRecordMap,
+    first_non_cp1252_char,
     format_csv,
     read_csv,
     read_mdb_csv,
@@ -501,6 +502,13 @@ class TestWriteCsv:
         write_csv(csv_path, records)
 
         assert format_csv(records).encode(CSV_ENCODING) == csv_path.read_bytes()
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [("", None), ("Café €", None), ("Ohm_Ω 中", "Ω"), ("\x80", "\x80")],
+    )
+    def test_first_non_cp1252_char(self, text, expected):
+        assert first_non_cp1252_char(text) == expected
 
     def test_write_cp1252(self, tmp_path):
         csv_path = tmp_path / "test.csv"

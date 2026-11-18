@@ -409,6 +409,21 @@ def read_csv(
     return result
 
 
+def first_non_cp1252_char(text: str) -> str | None:
+    """Return the first character in *text* that cp1252 does not have, or None.
+
+    A nickname CSV is cp1252, so it cannot hold that character. ``format_csv``
+    and ``write_csv`` raise ``ValueError`` for a nickname, comment or initial
+    value that has one. An editor can call this function to flag the cell
+    before it saves.
+    """
+    try:
+        text.encode(CSV_ENCODING)
+    except UnicodeEncodeError as exc:
+        return text[exc.start]
+    return None
+
+
 def _format_csv(
     records: Mapping[int, AddressRecord] | Iterable[AddressRecord],
 ) -> tuple[str, int]:
@@ -433,10 +448,8 @@ def _format_csv(
 
     def check_encodable(record: AddressRecord, column: str, value: object) -> None:
         text = "" if value is None else str(value)
-        try:
-            text.encode(CSV_ENCODING)
-        except UnicodeEncodeError as exc:
-            char = text[exc.start]
+        char = first_non_cp1252_char(text)
+        if char is not None:
             raise ValueError(
                 f"{record.display_address} {column} {text!r} has {char!r}. A nickname CSV "
                 f"is cp1252, and cp1252 has no {char!r}. Replace the character."

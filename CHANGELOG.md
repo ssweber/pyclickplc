@@ -10,6 +10,10 @@
   - If you write `format_csv` text yourself, encode it as `pyclickplc.nicknames.CSV_ENCODING` (cp1252).
   - `write_csv` and `format_csv` now raise `ValueError` naming the address if a nickname, comment or initial value has a character that cp1252 does not have. 0.10.0 wrote the character.
 
+### Added
+
+- `first_non_cp1252_char` returns the first character in a string that a nickname CSV cannot hold, or None. Call it to check a nickname or comment before you write the file.
+
 ### Fixed
 
 - `read_csv` now reads a nickname CSV that CLICK exported with a non-ASCII nickname or comment. 0.10.0 raised `ValueError` for that file because it is cp1252. `read_csv` still reads UTF-8.
