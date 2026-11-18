@@ -111,7 +111,7 @@ class PlcDataReadError(ValueError):
 
     Attributes:
         values: Every other address in the file, as ``read_plc_data`` would return them.
-        addresses: The TXT addresses that each hold either a comma or nothing, in file order.
+        addresses: The TXT addresses whose value ``read_plc_data`` can't tell, in file order.
     """
 
     def __init__(
@@ -123,10 +123,14 @@ class PlcDataReadError(ValueError):
         if len(addresses) > 10:
             shown += f" and {len(addresses) - 10} more"
         super().__init__(
-            f"Can't tell which of {shown} hold a comma and which hold nothing. CLICK writes a "
-            "TXT comma without quotes. Check these addresses in CLICK. The error's values "
-            "attribute holds the other addresses."
+            f"read_plc_data can't tell what {shown} hold. CLICK writes a TXT comma without "
+            "quotes, so a row with a comma and an empty address can be read in more than one "
+            "way. Check these addresses in CLICK. The error's values attribute holds every "
+            "other address."
         )
+
+    def __reduce__(self) -> tuple[type[PlcDataReadError], tuple[object, ...]]:
+        return (type(self), (self.values, self.addresses))
 
 
 # Marks a TXT cell whose value read_plc_data can't tell.
@@ -134,7 +138,7 @@ _UNKNOWN = object()
 
 
 def _read_txt_cells(pieces: list[str], count: int) -> list[object] | None:
-    """Return the *count* TXT cells that CLICK wrote as *pieces*, or None if none fit.
+    """Return the *count* TXT cells that CLICK wrote as *pieces*, or None if no list fits.
 
     *pieces* is the row split at every comma. CLICK writes a TXT comma without quotes, so a
     comma cell splits into two empty pieces. An empty cell is one empty piece, and any other
@@ -144,7 +148,7 @@ def _read_txt_cells(pieces: list[str], count: int) -> list[object] | None:
     end = len(pieces)
 
     def steps(i: int) -> list[tuple[int, str]]:
-        # Each way to read one cell that starts at piece i: the next piece and the cell.
+        # Each way to read one cell from piece i, as (index of the piece after the cell, cell).
         if i >= end:
             return []
         if pieces[i]:
@@ -199,9 +203,10 @@ def read_plc_data(
         (``" "``).
 
         CLICK writes a TXT comma without quotes, so a TXT row that holds a comma has a
-        cell too many. This function rejoins the cells. If a comma is next to an empty
-        cell, the row can be read in more than one way. Then each address whose value
-        differs between the readings is unknown.
+        cell too many. This function rejoins the cells. If the row also holds an empty
+        address, the row may fit more than one reading. Then each address whose value
+        differs between the readings is unknown. An unknown address may hold a comma,
+        nothing, or a character that the comma moved.
 
     Raises:
         PlcDataReadError: Some TXT addresses are unknown. The error names them and holds
@@ -349,8 +354,8 @@ def _format_text(value: bool | int | float | str, addr: str) -> str:
         raise ValueError(f"{addr} value {_show(value)} is not a single character with code 0..255.")
     if value == ",":
         raise ValueError(
-            f"{addr} value ',': nobody has tested whether CLICK's Write Data into PLC reads a "
-            "TXT comma. Leave out the comma."
+            f"{addr} value ',': write_plc_data does not write a TXT comma, because nobody has "
+            f"tested whether CLICK's Write Data into PLC reads one. Give {addr} another character."
         )
     code = ord(value)
     if code <= 0x20 or code >= 0x7F:

@@ -118,9 +118,9 @@ CLICK writes the cases below in a way that `read_plc_data` has to handle:
 
 - CLICK shows `Err-Format` for a DF value it can't display. `read_plc_data` returns `float("nan")` for it.
 - CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code. `read_plc_data` returns the character (`$20` is `" "`, `$C8` is `"\xc8"`).
-- CLICK writes a TXT comma without quotes, which gives its row a cell too many. `read_plc_data` rejoins the cells and returns `","` for the comma.
+- CLICK writes a TXT comma without quotes. Each comma adds a cell to its row. `read_plc_data` joins the two cells again and returns `","`.
 
-If a TXT comma is next to an empty TXT address, the row can be read in more than one way:
+If a TXT row holds a comma and also an empty address, the row may fit more than one reading:
 
 ```python
 from pyclickplc import PlcDataReadError, read_plc_data
@@ -132,7 +132,7 @@ except PlcDataReadError as e:
     data = e.values  # every other address in the file
 ```
 
-`read_plc_data` reads the whole file, then raises `PlcDataReadError`. `addresses` names each TXT address that may hold a comma or nothing. `values` holds every other address, as `read_plc_data` would have returned it. `PlcDataReadError` is a `ValueError`.
+`read_plc_data` reads the whole file, then raises `PlcDataReadError`. `addresses` names each TXT address whose value `read_plc_data` can't tell. Such an address may hold a comma, nothing, or a character that the comma moved. `values` holds every other address, as `read_plc_data` would have returned it. `PlcDataReadError` is a `ValueError`.
 
 ### Write
 
@@ -160,7 +160,7 @@ data["DS3"] = 42
 write_plc_data("to_plc.csv", data)
 ```
 
-If the dump has an `Err-Format` cell, set that address to a number before writing. If it has a TXT comma, change that address before writing.
+If the dump has an `Err-Format` cell, set that address to a number before writing. If it has a TXT comma, give that address another character before writing. If `read_plc_data` raised `PlcDataReadError`, `e.values` has no value for the unknown TXT addresses. Writing `e.values` back clears them in the PLC.
 
 ## Project.ini
 

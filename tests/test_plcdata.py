@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import pickle
 import struct
 from fractions import Fraction
 from pathlib import Path
@@ -793,9 +794,7 @@ class TestTxtCommaRows:
             ["$20", ",", "$20", '"', ",", "$", "", "x", "", "y"],
         ],
     )
-    def test_reads_a_comma_that_has_no_empty_cell_beside_it(
-        self, tmp_path: Path, cells: list[str]
-    ) -> None:
+    def test_reads_a_comma_row_that_has_one_reading(self, tmp_path: Path, cells: list[str]) -> None:
         data = read_plc_data(_txt_file(tmp_path, _txt_row(1, cells)))
         assert data == {a: " " if c == "$20" else c for a, c in _txt(1, cells).items()}
 
@@ -827,8 +826,26 @@ class TestTxtCommaRows:
         expected["DS1"] = 7
         assert info.value.values == expected
         assert str(info.value).startswith(
-            "Can't tell which of TXT13, TXT14, TXT15, TXT16, TXT17, TXT18, TXT19, TXT20 hold a "
-            "comma and which hold nothing."
+            "read_plc_data can't tell what TXT13, TXT14, TXT15, TXT16, TXT17, TXT18, TXT19, "
+            "TXT20 hold."
+        )
+
+    def test_comma_can_move_a_letter_into_the_empty_cells(self, tmp_path: Path) -> None:
+        # "A,B" and then empty cells. The comma is not next to an empty cell. B may be TXT3, or
+        # it may be TXT4 with TXT2 and TXT3 empty and a comma later in the row.
+        cells = ["A", ",", "B", "", "", "", "", "", "", ""]
+        with pytest.raises(PlcDataReadError) as info:
+            read_plc_data(_txt_file(tmp_path, _txt_row(1, cells)))
+        assert info.value.addresses == tuple(f"TXT{n}" for n in range(2, 11))
+        assert info.value.values == {"TXT1": "A"}
+
+    def test_error_survives_pickle(self) -> None:
+        error = PlcDataReadError({"TXT1": "A"}, ("TXT2", "TXT3"))
+        copy = pickle.loads(pickle.dumps(error))
+        assert (copy.values, copy.addresses, str(copy)) == (
+            error.values,
+            error.addresses,
+            str(error),
         )
 
     def test_keeps_the_cells_that_every_reading_agrees_on(self, tmp_path: Path) -> None:
@@ -842,7 +859,8 @@ class TestTxtCommaRows:
         }
 
     def test_skip_default_applies_to_values(self, tmp_path: Path) -> None:
-        # A single empty cell can't hold a comma, so only TXT2 and TXT3 are unknown.
+        # A comma is written as two empty pieces, so a lone empty piece is an empty cell.
+        # Only TXT2 and TXT3 are unknown.
         cells = ["A", ",", "", "B", "", "C", "", "D", "", "E"]
         with pytest.raises(PlcDataReadError) as info:
             read_plc_data(_txt_file(tmp_path, _txt_row(1, cells)), skip_default=True)
@@ -860,8 +878,8 @@ class TestTxtCommaRows:
         with pytest.raises(PlcDataReadError) as info:
             read_plc_data(_txt_file(tmp_path, _txt_row(1, cells), _txt_row(11, cells)))
         assert len(info.value.addresses) == 16
-        assert str(info.value).startswith("Can't tell which of TXT3, TXT4,")
-        assert "TXT14 and 6 more hold a comma" in str(info.value)
+        assert str(info.value).startswith("read_plc_data can't tell what TXT3, TXT4,")
+        assert "TXT14 and 6 more hold." in str(info.value)
 
     @pytest.mark.parametrize(
         ("row", "cells"),
@@ -1037,7 +1055,9 @@ class TestTxtForm:
 
     def test_comma_raises(self, tmp_path: Path) -> None:
         out = tmp_path / "out.csv"
-        with pytest.raises(ValueError, match=r"^TXT3 value ',': nobody has tested whether CLICK"):
+        with pytest.raises(
+            ValueError, match=r"^TXT3 value ',': write_plc_data does not write a TXT comma"
+        ):
             write_plc_data(out, {"TXT3": ","})
         assert not out.exists()
 
