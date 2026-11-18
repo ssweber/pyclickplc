@@ -527,10 +527,9 @@ def test_layout_is_immutable(tmp_path):
 CLICK_3 = b"[SystemConfig]\r\nItem1=199\r\n[PLCName]\r\nPLCName=Line 1\r\n[Other]\r\nValue=1\r\n"
 CLICK_4_HEAD = b"[Sec21]\r\nKey3_1=199\r\n"
 CLICK_4 = b"[Sec21]\r\nKey3_1=199\r\n[Sec20]\r\nKey1=Line 1\r\n[Sec22]\r\nKey1_2=\r\n"
-# The Project.ini of a new CLICK 4.00 project, saved before its hardware was saved. It has no
-# [Sec20] and no [Sec21]. ClickNick's runner saved it (job c2, run live-p11, at "first").
-# The long hex values in [Sec55] Key1 and [Sec52] Key3_1 are blanked. Every other byte is as
-# CLICK wrote it.
+# CLICK 4.00 wrote this Project.ini for a new project whose hardware configuration had not
+# been saved. It has no [Sec20] and no [Sec21]. The long hex values in [Sec55] Key1 and
+# [Sec52] Key3_1 are blanked. Every other byte is as CLICK wrote it.
 NEW_CLICK_4 = (Path(__file__).parent / "fixtures" / "Project_click4_new.ini").read_bytes()
 
 
@@ -811,8 +810,8 @@ C2_CASES = [
 ]
 
 
-# The runner added each case's lines to the end of a new project's Project.ini (NEW_CLICK_4).
-# CLICK_4_HEAD stands in for a project whose hardware is saved.
+# Each case's lines were added to the end of a file like NEW_CLICK_4, and CLICK 4.00 showed
+# the name given. CLICK_4_HEAD stands in for a project whose hardware configuration is saved.
 CLICK_4_HEADS = [
     pytest.param(NEW_CLICK_4, id="new-project"),
     pytest.param(CLICK_4_HEAD, id="with-Sec21"),
@@ -843,23 +842,58 @@ def test_new_click_4_project_has_no_name_or_hardware():
 
 
 def test_write_names_a_new_click_4_project_in_sec20(tmp_path):
-    # Run p3 added [Sec20] Key1= to this file, and CLICK 4.00 showed the name.
+    # When [Sec20] Key1= was added to the end of this file, CLICK 4.00 showed the name.
     assert _write(tmp_path, NEW_CLICK_4, "Mixer") == NEW_CLICK_4 + b"[Sec20]\r\nKey1=Mixer\r\n"
 
 
 LEGACY_NAME = b"[PLCName]\r\nPLCName=Legacy\r\n"
+# CLICK writes an empty [Sec20] Key1= once a project's hardware configuration is saved
+# (Project_click4_noname.ini).
+EMPTY_SEC20 = b"[Sec20]\r\nKey1=\r\n"
 
 
-def test_read_plc_name_keeps_a_plcname_name_in_a_click_4_file(tmp_path):
-    # CLICK 4.00 showed no name for this file (run p11). pyclickplc 0.9.1 and older wrote
-    # the name this way, so read_plc_name returns it and the project keeps its name.
-    assert read_plc_name(_project(tmp_path, NEW_CLICK_4 + LEGACY_NAME)) == "Legacy"
+@pytest.mark.parametrize("head", CLICK_4_HEADS)
+@pytest.mark.parametrize("sec20", [b"", EMPTY_SEC20, b"[Sec20]\r\nKey1=   \r\n"])
+def test_read_plc_name_keeps_a_plcname_name_in_a_click_4_file(tmp_path, head, sec20):
+    # CLICK 4.00 shows no name for these files. pyclickplc 0.9.1 and older wrote the name
+    # to [PLCName], so read_plc_name returns it and the project keeps its name.
+    assert read_plc_name(_project(tmp_path, head + sec20 + LEGACY_NAME)) == "Legacy"
 
 
 def test_write_moves_a_plcname_name_to_sec20(tmp_path):
     # The name goes where CLICK 4.00 shows it. [PLCName] stays as it was.
     original = NEW_CLICK_4 + LEGACY_NAME
     assert _write(tmp_path, original, "Legacy") == original + b"[Sec20]\r\nKey1=Legacy\r\n"
+
+
+@pytest.mark.parametrize("head", CLICK_4_HEADS)
+def test_write_fills_an_empty_sec20_beside_a_plcname_name(tmp_path, head):
+    original = head + EMPTY_SEC20 + LEGACY_NAME
+    assert _write(tmp_path, original, "Legacy") == original.replace(
+        EMPTY_SEC20, b"[Sec20]\r\nKey1=Legacy\r\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "data,name",
+    [
+        (CLICK_4, "Line 1"),
+        (CLICK_3, "Line 1"),
+        (NEW_CLICK_4 + b"[Sec20]\r\nKey1=Mixer\r\n", "Mixer"),
+        (NEW_CLICK_4 + b"[Sec20]\r\nKey1=Mixer\r\n", "  Mixer "),
+    ],
+)
+def test_write_leaves_the_file_alone_when_it_already_holds_the_name(
+    tmp_path, monkeypatch, data, name
+):
+    def replace(source, destination):
+        raise AssertionError("write_plc_name replaced a file that already held the name")
+
+    monkeypatch.setattr("pyclickplc.project.os.replace", replace)
+    path = _project(tmp_path, data)
+    write_plc_name(path, name)
+    assert path.read_bytes() == data
+    assert list(tmp_path.iterdir()) == [path]
 
 
 def test_write_keeps_the_files_spelling_when_adding_a_key(tmp_path):
