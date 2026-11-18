@@ -28,8 +28,8 @@ jobs:
       - name: Set up Python (using uv)
         run: uv python install
 
-      # A pull request into main must pass CI before it merges, so publish only a commit on
-      # main and do not run the tests again.
+      # main accepts only pull requests that pass CI, so the tests have already run on this
+      # commit. Publish only a commit that is on main.
       - name: Check that the commit is on main
         run: |
           git fetch --quiet origin main
@@ -47,13 +47,20 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           wheel=$(ls dist/*.whl)
-          check='import importlib.metadata, pyclickplc; print(importlib.metadata.version("pyclickplc"))'
-          version=$(uv run --isolated --no-project --with "$wheel" python -c "$check")
-          echo "The wheel imports as pyclickplc $version."
-          if [ -n "$TAG" ] && [ "$version" != "${TAG#v}" ]; then
-            echo "::error::The wheel is pyclickplc $version, but the release tag is $TAG."
-            exit 1
-          fi
+          uv run --isolated --no-project --with "$wheel" --with packaging python -I - "${TAG#v}" <<'PY'
+          import importlib.metadata
+          import sys
+
+          import pyclickplc  # noqa: F401
+          from packaging.version import Version
+
+          version = importlib.metadata.version("pyclickplc")
+          print(f"The wheel imports as pyclickplc {version}.")
+          tag = sys.argv[1]
+          if tag and Version(tag) != Version(version):
+              print(f"::error::The wheel is pyclickplc {version}, but the release tag is v{tag}.")
+              sys.exit(1)
+          PY
 
       - name: Publish to PyPI (using uv)
         uses: pypa/gh-action-pypi-publish@release/v1
