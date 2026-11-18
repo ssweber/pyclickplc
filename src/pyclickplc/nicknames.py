@@ -6,6 +6,7 @@ imports, using AddressRecord as the data model.
 
 from __future__ import annotations
 
+import codecs
 import csv
 import io
 import re
@@ -32,6 +33,9 @@ from .banks import (
 
 # CSV column names (matching CLICK software export format)
 CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive", "Address Comment"]
+
+# The encoding of the nickname CSV that CLICK exports and that write_csv writes.
+CSV_ENCODING = "cp1252"
 
 # CLICK exports a Text initial value without quotes, even when the value is a comma or a
 # double quote. A row like that does not parse as CSV. A Text value is one character, and it
@@ -282,13 +286,34 @@ def _initial_value(raw: str, data_type: int) -> str:
     return raw if data_type == DataType.TXT else raw.strip()
 
 
+def _decode_nickname_csv(data: bytes, name: str) -> str:
+    """Return the text of the nickname CSV file *name*, whose bytes are *data*."""
+    if data.startswith(codecs.BOM_UTF8):
+        try:
+            return data[len(codecs.BOM_UTF8) :].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                f"{name} starts with a UTF-8 byte order mark but is not UTF-8 text: {exc}"
+            ) from exc
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return data.decode(CSV_ENCODING)
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{name} is neither UTF-8 nor cp1252 text: {exc}") from exc
+
+
 def read_csv(
     path: str | Path, *, required: Iterable[str] | str = REQUIRED_COLUMNS
 ) -> AddressRecordMap:
     """Read a nickname CSV file into AddressRecords.
 
     The CSV has columns: Address, Data Type, Nickname, Initial Value,
-    Retentive, Address Comment. A UTF-8 byte order mark is accepted. Nickname,
+    Retentive, Address Comment. A file that starts with a UTF-8 byte order
+    mark is read as UTF-8. A file without one is read as UTF-8 if it is valid
+    UTF-8, and as cp1252 if it is not. CLICK exports cp1252. Nickname,
     Address Comment and a Text initial value are kept as written, spaces
     included. A Text initial value may be quoted or unquoted. CLICK exports it
     without quotes, even when it is a comma or a double quote. ``read_csv``
@@ -306,8 +331,8 @@ def read_csv(
             cell past the header's columns, a row's Address is not a CLICK
             address, its Data Type is not one CLICK writes (BIT, INT, INT2,
             FLOAT, HEX, TEXT, in any case) or not the type of its bank, or the
-            file is not UTF-8 or not CSV. The message names the file and, for
-            a row, its line.
+            file is neither UTF-8 nor cp1252, or not CSV. The message names
+            the file and, for a row, its line.
 
     Args:
         path: Path to the CSV file.
@@ -322,11 +347,7 @@ def read_csv(
     if isinstance(required, str):
         required = (required,)
 
-    try:
-        with open(path, newline="", encoding="utf-8-sig") as csvfile:
-            text = _requote_click_raw_txt(csvfile.read())
-    except UnicodeDecodeError as exc:
-        raise ValueError(f"{name} is not UTF-8 text: {exc}") from exc
+    text = _requote_click_raw_txt(_decode_nickname_csv(Path(path).read_bytes(), name))
 
     reader = csv.DictReader(io.StringIO(text, newline=""))
     try:
@@ -410,8 +431,22 @@ def _format_csv(
         text = "" if value is None else str(value)
         return '"' + text.replace('"', '""') + '"'
 
+    def check_encodable(record: AddressRecord, column: str, value: object) -> None:
+        text = "" if value is None else str(value)
+        try:
+            text.encode(CSV_ENCODING)
+        except UnicodeEncodeError as exc:
+            char = text[exc.start]
+            raise ValueError(
+                f"{record.display_address} {column} {text!r} has {char!r}. A nickname CSV "
+                f"is cp1252, and cp1252 has no {char!r}. Replace the character."
+            ) from None
+
     lines = [",".join(CSV_COLUMNS)]
     for record in rows_to_write:
+        check_encodable(record, "Nickname", record.nickname)
+        check_encodable(record, "Address Comment", record.comment)
+        check_encodable(record, "Initial Value", record.initial_value)
         # An empty initial value is written as 0 for a numeric type and as an empty cell for
         # Text. CLICK's export does the same.
         if record.initial_value:
@@ -453,8 +488,12 @@ def _format_csv(
 def format_csv(records: Mapping[int, AddressRecord] | Iterable[AddressRecord]) -> str:
     """Return the nickname CSV text that ``write_csv`` writes for *records*.
 
-    If you write the file yourself, encode the text as UTF-8 without a byte
-    order mark and write it unchanged. Its lines already end in CRLF.
+    If you write the file yourself, encode the text as ``CSV_ENCODING``
+    (cp1252) and write it unchanged. Its lines already end in CRLF.
+
+    Raises:
+        ValueError: If a nickname, comment or initial value has a character
+            that cp1252 does not have. The message names the address.
     """
     return _format_csv(records)[0]
 
@@ -467,8 +506,9 @@ def write_csv(
 
     A record is written only if it has a nickname or a comment, or if its
     initial value or Retentive setting is not the default. Records are sorted
-    by memory type order then address. As in CLICK's export, lines end in CRLF
-    and an initial value is written without quotes. The function quotes an
+    by memory type order then address. As in CLICK's export, the file is
+    cp1252 without a byte order mark, lines end in CRLF and an initial value
+    is written without quotes. The function quotes an
     initial value that holds a comma, double quote or line break. It also
     quotes a Text value that starts or ends with a space, tab or other
     character up to 0x20. CLICK exports a Text value that is a space, comma or
@@ -479,12 +519,16 @@ def write_csv(
         records: Address records to write. Accepts a mapping keyed by addr_key
             or any iterable of AddressRecord values.
 
+    Raises:
+        ValueError: If a nickname, comment or initial value has a character
+            that cp1252 does not have. The message names the address, and the
+            function writes no file.
+
     Returns:
         Number of rows written.
     """
     text, count = _format_csv(records)
-    with open(path, "w", newline="", encoding="utf-8") as csvfile:
-        csvfile.write(text)
+    Path(path).write_bytes(text.encode(CSV_ENCODING))
     return count
 
 

@@ -44,6 +44,8 @@ print(f"Wrote {count} rows")
 
 `write_csv` accepts any iterable of `AddressRecord` values (or a mapping keyed by address). Only records with content (nickname, comment, or non-default settings) are written.
 
+`write_csv` writes the file in cp1252, the encoding of CLICK's export. If a nickname or comment has a character that cp1252 does not have, such as `中`, `write_csv` raises `ValueError` and writes no file. `read_csv` reads both cp1252 and UTF-8 files.
+
 ### Build records
 
 `make_address_record` creates an `AddressRecord` from a display address with sensible defaults:
