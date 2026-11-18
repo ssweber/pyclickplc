@@ -30,20 +30,23 @@ run. Keep today's behaviour until CLICK answers.
   CLICK? On import, CLICK reads a file without a BOM as CP1252. `write_csv` writes UTF-8 without a BOM, so a
   `café` that it writes becomes `cafÃ©` in CLICK. CLICK reads a UTF-8 file with a BOM as UTF-8, then converts
   the text to CP1252 by best fit (`５` becomes `5`). An export from CLICK would answer the question. Until
-  then, `write_csv` keeps writing UTF-8 without a BOM. The ClickNick session adds a nickname export to its
-  runner for this. It sizes the work at about half a day, after its dialog work.
-
-The Project.ini readers rest on rules that no one has tested in CLICK. The planner ruled on 2026-11-18 that
-they get no runs. Do not queue them again. The comments in `project.py` name each rule. The rules cover
-these cases:
-- a key only in the second of two sections whose names differ only in case;
-- a line indented under an option;
-- in CLICK 4, `[Sec21]` to `[Sec23]` beside their named sections, and a named section such as `[CPUBuild]`
-  alone;
-- in CLICK 3, the case of `[PLCName]` and `PLCName`, and repeated sections and keys.
+  then, `write_csv` keeps writing UTF-8 without a BOM. The ClickNick session sizes the runner work at about
+  half a day.
 
 ## Unscheduled
 
+- **The Project.ini readers and `write_plc_name` rest on rules that no one has tested in CLICK.** The planner
+  ruled on 2026-11-18 that they get no runs. Do not queue them again. The comments in `project.py` name each
+  rule. The rules cover these cases:
+  - a key only in the second of two sections whose names differ only in case;
+  - a line indented under an option;
+  - the case of the hardware section and key names, and which of two matches CLICK uses, in CLICK 4
+    (`[Sec21]` to `[Sec23]`) and in CLICK 3 (`[SystemConfig]`, `[SystemConfigData]`, `[CPUBuild]`);
+  - in CLICK 4, `[Sec22]` and `[Sec23]` beside their named sections, and a named section such as
+    `[CPUBuild]` alone;
+  - a CLICK 4 file that also has `[SystemConfig]`. The module reads it as a CLICK 3 file, including the PLC
+    name;
+  - in CLICK 3, the case of `[PLCName]` and `PLCName`, and repeated sections and keys.
 - **`ClickServer` answers function code 17 (report server id) with exception 01. A real CLICK answers it
   with data.** A real C2-03CPU in RUN (probed 2026-11-16) answered FC 7, 8 (sub-function 0), 11, 12, 20,
   24 and 43/14 with exception 01, as `ClickServer` does. It answered FC 17 with
