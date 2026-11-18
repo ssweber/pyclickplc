@@ -2,7 +2,9 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
-## Unreleased
+## 0.9.1 - 2026-11-18
+
+A bug fix for `read_plc_data`. 0.9.0 could not read a PLC data file that held a TXT comma.
 
 ### Fixed
 
