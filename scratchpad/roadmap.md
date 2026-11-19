@@ -21,6 +21,16 @@ messages between them.
   ClickNick's wording, not a CLICK fact. pyclickplc's `ModuleIO` already gives the location and position.
   Revisit if CLICK itself shows these names.
 
+## 2. Waiting on ClickNick's runner
+
+Needs: CLICK software. The ClickNick session runs the check.
+
+- **`validate_nickname` and `validate_comment` accept a character that cp1252 does not have, but `write_csv`
+  raises `ValueError` for it.** `validate_initial_value` also rejects a Text value above 127 that `write_csv`
+  writes and `read_csv` reads. ClickNick also writes nicknames into SC_.mdb directly, and Access keeps the
+  Unicode there. The ClickNick session will check on its runner what CLICK shows for such a character. Once
+  that is known, decide whether the validators call `first_non_cp1252_char`.
+
 ## Unscheduled
 
 - **The Project.ini readers and `write_plc_name` rest on rules that no one has tested in CLICK.** The planner

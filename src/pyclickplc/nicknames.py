@@ -318,11 +318,12 @@ def read_csv(
     UTF-8, and as cp1252 if it is not. CLICK exports cp1252. A cp1252 file
     whose non-ASCII bytes are also valid UTF-8 is therefore read as UTF-8. If
     the only non-ASCII text in the file is ``Ã©``, ``read_csv`` returns ``é``.
-    ``read_csv``
-    keeps a character that cp1252 does not have. CLICK's import replaces it
-    with a near character or ``?``. Nickname,
-    Address Comment and a Text initial value are kept as written, spaces
-    included. A Text initial value may be quoted or unquoted. CLICK exports it
+    From a UTF-8 file, ``read_csv`` returns a character that cp1252 does not
+    have unchanged. CLICK's import replaces that character with a near
+    character or ``?``.
+
+    Nickname, Address Comment and a Text initial value are kept as written,
+    spaces included. A Text initial value may be quoted or unquoted. CLICK exports it
     without quotes, even when it is a comma or a double quote. ``read_csv``
     reads such a value correctly. Retentive is on for ``Yes``,
     ``True`` or ``1`` in any case, and off for anything else. Blank rows are

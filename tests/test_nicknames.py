@@ -397,9 +397,9 @@ class TestReadCsv:
         assert (record.nickname, record.comment) == ("Café", "€ 5")
 
     def test_read_cp1252_that_is_also_utf8_reads_as_utf8(self, tmp_path):
-        """Sam chose UTF-8 first, so files from 0.10.0 and older still read correctly.
+        """``read_csv`` tries UTF-8 first, so a UTF-8 file from 0.10.0 or older reads correctly.
 
-        The cost is this case. Its text does not read back as written.
+        A cp1252 file whose bytes are also valid UTF-8 does not read back as written.
         """
         csv_path = tmp_path / "test.csv"
         write_csv(csv_path, [AddressRecord(memory_type="C", address=1, nickname="Temp_Â°C")])
@@ -893,7 +893,8 @@ class TestCsvFormat:
 
     def test_every_text_character_round_trips(self, tmp_path):
         csv_path = tmp_path / "txt.csv"
-        # Every character in cp1252. Python's cp1252 leaves 0x81, 0x8D, 0x8F, 0x90 and 0x9D undefined.
+        # The list holds every character in cp1252. Python's cp1252 leaves 0x81, 0x8D, 0x8F,
+        # 0x90 and 0x9D undefined.
         chars = list(bytes(range(1, 256)).decode("cp1252", errors="ignore"))
         records = [
             AddressRecord(
