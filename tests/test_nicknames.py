@@ -396,6 +396,17 @@ class TestReadCsv:
         record = read_csv(csv_path).addr["X001"]
         assert (record.nickname, record.comment) == ("Café", "€ 5")
 
+    def test_read_cp1252_that_is_also_utf8_reads_as_utf8(self, tmp_path):
+        """Sam chose UTF-8 first, so files from 0.10.0 and older still read correctly.
+
+        The cost is this case. Its text does not read back as written.
+        """
+        csv_path = tmp_path / "test.csv"
+        write_csv(csv_path, [AddressRecord(memory_type="DS", address=1, nickname="Temp_Â°C")])
+
+        assert csv_path.read_bytes().splitlines()[1] == b'DS1,INT,"Temp_\xc2\xb0C",0,No,""'
+        assert read_csv(csv_path).addr["DS1"].nickname == "Temp_°C"
+
     def test_read_neither_utf8_nor_cp1252_raises(self, tmp_path):
         csv_path = tmp_path / "test.csv"
         csv_path.write_bytes(

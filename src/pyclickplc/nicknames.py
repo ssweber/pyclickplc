@@ -315,7 +315,10 @@ def read_csv(
     The CSV has columns: Address, Data Type, Nickname, Initial Value,
     Retentive, Address Comment. A file that starts with a UTF-8 byte order
     mark is read as UTF-8. A file without one is read as UTF-8 if it is valid
-    UTF-8, and as cp1252 if it is not. CLICK exports cp1252. ``read_csv``
+    UTF-8, and as cp1252 if it is not. CLICK exports cp1252. A cp1252 file
+    whose non-ASCII bytes are also valid UTF-8 is therefore read as UTF-8. If
+    the only non-ASCII text in the file is ``Ã©``, ``read_csv`` returns ``é``.
+    ``read_csv``
     keeps a character that cp1252 does not have. CLICK's import replaces it
     with a near character or ``?``. Nickname,
     Address Comment and a Text initial value are kept as written, spaces
