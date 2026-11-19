@@ -402,10 +402,10 @@ class TestReadCsv:
         The cost is this case. Its text does not read back as written.
         """
         csv_path = tmp_path / "test.csv"
-        write_csv(csv_path, [AddressRecord(memory_type="DS", address=1, nickname="Temp_Â°C")])
+        write_csv(csv_path, [AddressRecord(memory_type="C", address=1, nickname="Temp_Â°C")])
 
-        assert csv_path.read_bytes().splitlines()[1] == b'DS1,INT,"Temp_\xc2\xb0C",0,No,""'
-        assert read_csv(csv_path).addr["DS1"].nickname == "Temp_°C"
+        assert csv_path.read_bytes().splitlines()[1] == b'C1,BIT,"Temp_\xc2\xb0C",0,No,""'
+        assert read_csv(csv_path).addr["C1"].nickname == "Temp_°C"
 
     def test_read_neither_utf8_nor_cp1252_raises(self, tmp_path):
         csv_path = tmp_path / "test.csv"
