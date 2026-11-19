@@ -2,6 +2,21 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
+## Unreleased
+
+### Breaking changes
+
+- `write_csv` now writes the nickname CSV in cp1252. 0.10.0 wrote UTF-8. If you write `format_csv` text yourself, encode it as cp1252.
+- `write_csv` and `format_csv` now raise `ValueError` if a nickname, comment or initial value has a character that cp1252 does not have. The message names the address. 0.10.0 wrote the character.
+
+### Added
+
+- `first_non_cp1252_char` returns the first character in a string that a nickname CSV cannot hold, or None. Call it to check a nickname or comment before you write the file.
+
+### Fixed
+
+- `read_csv` now reads a nickname CSV that CLICK exported with a non-ASCII nickname or comment. 0.10.0 raised `ValueError` for that file because it is cp1252. `read_csv` still reads UTF-8.
+
 ## 0.10.0 - 2026-11-18
 
 A fix for the PLC name in a CLICK 4 project. If you read or write the PLC name of a CLICK 4 project, read Breaking changes before you upgrade.

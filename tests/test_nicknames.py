@@ -9,9 +9,11 @@ from pyclickplc.addresses import AddressRecord, get_addr_key
 from pyclickplc.banks import DataType
 from pyclickplc.nicknames import (
     CSV_COLUMNS,
+    CSV_ENCODING,
     DATA_TYPE_CODE_TO_STR,
     DATA_TYPE_STR_TO_CODE,
     AddressRecordMap,
+    first_non_cp1252_char,
     format_csv,
     read_csv,
     read_mdb_csv,
@@ -373,14 +375,63 @@ class TestReadCsv:
 
         assert type(read_csv(csv_path).addr["DS1"].data_type) is DataType
 
-    def test_read_not_utf8_raises(self, tmp_path):
+    def test_read_cp1252(self, tmp_path):
         csv_path = tmp_path / "test.csv"
         csv_path.write_bytes(
             b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+            b'X001,BIT,"Caf\xe9",0,No,"\x80 5"\r\n'
+        )
+
+        record = read_csv(csv_path).addr["X001"]
+        assert (record.nickname, record.comment) == ("Café", "€ 5")
+
+    def test_read_utf8_without_bom(self, tmp_path):
+        """pyclickplc 0.10.0 and older wrote UTF-8 without a byte order mark."""
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_bytes(
+            b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+            + 'X001,BIT,"Café",0,No,"€ 5"\r\n'.encode()
+        )
+
+        record = read_csv(csv_path).addr["X001"]
+        assert (record.nickname, record.comment) == ("Café", "€ 5")
+
+    def test_read_cp1252_that_is_also_utf8_reads_as_utf8(self, tmp_path):
+        """``read_csv`` tries UTF-8 first, so a UTF-8 file from 0.10.0 or older reads correctly.
+
+        A cp1252 file whose bytes are also valid UTF-8 does not read back as written.
+        """
+        csv_path = tmp_path / "test.csv"
+        write_csv(csv_path, [AddressRecord(memory_type="C", address=1, nickname="Temp_Â°C")])
+
+        assert csv_path.read_bytes().splitlines()[1] == b'C1,BIT,"Temp_\xc2\xb0C",0,No,""'
+        assert read_csv(csv_path).addr["C1"].nickname == "Temp_°C"
+
+    def test_read_neither_utf8_nor_cp1252_raises(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_bytes(
+            b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+            b'X001,BIT,"Caf\x81",0,No,""\r\n'
+        )
+
+        with pytest.raises(ValueError, match=r"test\.csv is neither UTF-8 nor cp1252"):
+            read_csv(csv_path)
+
+    def test_read_utf16_raises(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text("Address,Nickname\r\nX001,Pump\r\n", encoding="utf-16")
+
+        with pytest.raises(ValueError, match=r"test\.csv is UTF-16 text"):
+            read_csv(csv_path)
+
+    def test_read_bom_then_not_utf8_raises(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_bytes(
+            b"\xef\xbb\xbfAddress,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
             b'X001,BIT,"Caf\xe9",0,No,""\r\n'
         )
 
-        with pytest.raises(ValueError, match=r"test\.csv is not UTF-8"):
+        with pytest.raises(ValueError, match=r"test\.csv starts with a UTF-8 byte order mark"):
             read_csv(csv_path)
 
     def test_tag_lookup_rejects_case_collisions_after_mutation(self):
@@ -468,7 +519,38 @@ class TestWriteCsv:
 
         write_csv(csv_path, records)
 
-        assert format_csv(records).encode("utf-8") == csv_path.read_bytes()
+        assert format_csv(records).encode(CSV_ENCODING) == csv_path.read_bytes()
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [("", None), ("Café €", None), ("Ohm_Ω 中", "Ω"), ("\x80", "\x80")],
+    )
+    def test_first_non_cp1252_char(self, text, expected):
+        assert first_non_cp1252_char(text) == expected
+
+    def test_write_cp1252(self, tmp_path):
+        csv_path = tmp_path / "test.csv"
+        record = AddressRecord(memory_type="C", address=1, nickname="Café", comment="€")
+
+        write_csv(csv_path, [record])
+
+        assert csv_path.read_bytes().splitlines()[1] == b'C1,BIT,"Caf\xe9",0,No,"\x80"'
+
+    @pytest.mark.parametrize(
+        ("record", "column"),
+        [
+            (AddressRecord(memory_type="DS", address=2, nickname="Han_中"), "Nickname"),
+            (AddressRecord(memory_type="DS", address=2, comment="Han_中"), "Address Comment"),
+        ],
+    )
+    def test_write_character_outside_cp1252_raises(self, tmp_path, record, column):
+        csv_path = tmp_path / "test.csv"
+
+        with pytest.raises(ValueError, match=f"DS2 {column} 'Han_中' has '中'"):
+            write_csv(csv_path, [record])
+        assert not csv_path.exists()
+        with pytest.raises(ValueError, match=f"DS2 {column}"):
+            format_csv([record])
 
     def test_write_none_nickname_and_comment_as_empty(self, tmp_path):
         csv_path = tmp_path / "test.csv"
@@ -811,7 +893,9 @@ class TestCsvFormat:
 
     def test_every_text_character_round_trips(self, tmp_path):
         csv_path = tmp_path / "txt.csv"
-        chars = [chr(code) for code in range(1, 256)]
+        # The list holds every character in cp1252. Python's cp1252 leaves 0x81, 0x8D, 0x8F,
+        # 0x90 and 0x9D undefined.
+        chars = list(bytes(range(1, 256)).decode("cp1252", errors="ignore"))
         records = [
             AddressRecord(
                 memory_type="TXT",
@@ -824,7 +908,9 @@ class TestCsvFormat:
         ]
         write_csv(csv_path, records)
         loaded = read_csv(csv_path)
-        assert [loaded[get_addr_key("TXT", i)].initial_value for i in range(1, 256)] == chars
+        assert [
+            loaded[get_addr_key("TXT", i)].initial_value for i in range(1, len(chars) + 1)
+        ] == chars
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -875,3 +961,17 @@ class TestClickExports:
         )
         assert expected != fixture.read_bytes()
         assert out.read_bytes() == expected
+
+    @pytest.mark.parametrize("fixture", ["NicknameExportCp1252.csv", "NicknameExportBestFit.csv"])
+    def test_cp1252_export_rewrites_to_the_same_bytes(self, tmp_path, fixture):
+        """CLICK exports these files as cp1252. They hold the system SC and SD nicknames."""
+        out = tmp_path / "out.csv"
+        write_csv(out, read_csv(FIXTURES / fixture))
+        assert out.read_bytes() == (FIXTURES / fixture).read_bytes()
+
+    def test_reads_cp1252_export(self):
+        records = read_csv(FIXTURES / "NicknameExportCp1252.csv")
+        assert [(records.addr[a].nickname, records.addr[a].comment) for a in ("C1", "DS1")] == [
+            ("Motor_é", "naïve résumé"),
+            ("Price_€", "café counter"),
+        ]

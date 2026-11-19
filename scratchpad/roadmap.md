@@ -21,17 +21,15 @@ messages between them.
   ClickNick's wording, not a CLICK fact. pyclickplc's `ModuleIO` already gives the location and position.
   Revisit if CLICK itself shows these names.
 
-## 2. Waiting on CLICK
+## 2. Waiting on ClickNick's runner
 
-Needs: CLICK software. The ClickNick session extends its runner to answer this, and Sam gives the go for the
-run. Keep today's behaviour until CLICK answers.
+Needs: CLICK software. The ClickNick session runs the check.
 
-- What encoding does CLICK use when it exports a nickname CSV with a non-ASCII nickname or comment typed in
-  CLICK? On import, CLICK reads a file without a BOM as CP1252. `write_csv` writes UTF-8 without a BOM, so a
-  `café` that it writes becomes `cafÃ©` in CLICK. CLICK reads a UTF-8 file with a BOM as UTF-8, then converts
-  the text to CP1252 by best fit (`５` becomes `5`). An export from CLICK would answer the question. Until
-  then, `write_csv` keeps writing UTF-8 without a BOM. The ClickNick session sizes the runner work at about
-  half a day.
+- **`validate_nickname` and `validate_comment` accept a character that cp1252 does not have, but `write_csv`
+  raises `ValueError` for it.** `validate_initial_value` also rejects a Text value above 127 that `write_csv`
+  writes and `read_csv` reads. ClickNick also writes nicknames into SC_.mdb directly, and Access keeps the
+  Unicode there. The ClickNick session will check on its runner what CLICK shows for such a character. Once
+  that is known, decide whether the validators call `first_non_cp1252_char`.
 
 ## Unscheduled
 
