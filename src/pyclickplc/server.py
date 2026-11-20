@@ -142,7 +142,11 @@ def _is_unnamed_word(bank: str, index: int) -> bool:
 
 
 # The function codes that a CLICK answers from its memory. The context refuses any other code
-# with exception 01.
+# with exception 01. A C2-03CPU in RUN was observed to refuse FC 7, FC 8 sub-function 0,
+# FC 11, 12, 20, 24 and FC 43 MEI type 14 the same way. It answered FC 17 (report server id)
+# with `11 09 00 ff 00 08 00 c6 03 c0 00`. FF is the run indicator. 00 c6 is 198, the module
+# ID of the C2-03CPU in _module_catalog. No one knows what the other bytes mean. The
+# maintainer chose to keep exception 01 for FC 17.
 _CLICK_FUNCTION_CODES = frozenset({1, 2, 3, 4, 5, 6, 15, 16})
 
 # Modbus exception codes.
