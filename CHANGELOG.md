@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+A fix for nickname CSV files that hold a character outside ASCII. `read_csv` now reads such a file from CLICK, and `write_csv` now writes cp1252, the encoding that CLICK uses. If you write nickname CSV files, read Breaking changes before you upgrade.
+
 ### Breaking changes
 
 - `write_csv` now writes the nickname CSV in cp1252. 0.10.0 wrote UTF-8. If you write `format_csv` text yourself, encode it as cp1252.
