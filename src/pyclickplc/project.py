@@ -237,7 +237,8 @@ def _spell_sections(parser: ConfigParser) -> None:
     """Rename each section that this module reads to its spelling in ``_SECTIONS``.
 
     The file may spell the section names in any case. No one has tested whether CLICK 3 or
-    CLICK 4 reads a hardware section or key whose name differs in case.
+    CLICK 4 reads a hardware section or key whose name is in a different case from the name
+    that CLICK writes.
     """
     for section in parser.sections():
         name = _SECTIONS.get(section.lower(), section)
