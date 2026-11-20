@@ -167,6 +167,9 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
     "XD": False,  # Retentive cannot be changed
     "YD": False,  # Retentive cannot be changed
     "TD": False,  # Follows T. See PAIRED_RETENTIVE_TYPES.
+    # CLICK does not agree with itself about CTD. CLICK 4.00 was observed to show Retentive Yes
+    # for CTD1 to CTD3 in the Address Picker. In CLICK 3.43 and 4.00, a CTD row that the picker
+    # creates is stored in SC_.mdb with Retentive False. This default matches what the picker shows.
     "CTD": True,  # Follows CT. See PAIRED_RETENTIVE_TYPES.
     "SD": False,  # Retentive cannot be changed
     "TXT": True,
