@@ -4,7 +4,7 @@
 
 ## Unreleased
 
-### Breaking changes
+### Fixed
 
 - `canonicalize_system_nickname` now leaves a blank nickname at SD132 to SD135 as it is. 0.11.0 returned CLICK's name for a blank at these four addresses. To fill a blank there, use `canonical_system_nickname`.
 
