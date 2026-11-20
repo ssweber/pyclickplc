@@ -19,7 +19,7 @@ from pyclickplc.validation import validate_nickname
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def test_known_stale_and_blank_values_have_documented_repairs():
+def test_known_stale_values_are_repaired():
     assert (
         canonicalize_system_nickname("SD", 132, "_Port1_AL_Denied_Count")
         == "_Port1_AL_Denied_No1_Cnt"
@@ -28,8 +28,6 @@ def test_known_stale_and_blank_values_have_documented_repairs():
         canonicalize_system_nickname("SD", 133, "_WLAN_AL_Denied_Count")
         == "_WLAN_AL_Denied_No1_Cnt"
     )
-    assert canonicalize_system_nickname("SD", 134, "") == "_Port1_AL_Denied_Count"
-    assert canonicalize_system_nickname("SD", 135, "") == "_WLAN_AL_Denied_Count"
 
 
 def test_unknown_vendor_value_is_preserved():
@@ -43,13 +41,11 @@ def test_informational_entries_do_not_fill_blank_values_automatically():
     assert canonicalize_system_nickname("SD", 1, "") == ""
 
 
-def test_only_incident_addresses_repair_blank_values():
-    blank_repairs = {
-        key
-        for key, guidance in AUTOMATIONDIRECT_SYSTEM_NICKNAMES.items()
-        if "" in guidance.repair_from
-    }
-    assert blank_repairs == {("SD", 132), ("SD", 133), ("SD", 134), ("SD", 135)}
+def test_no_address_repairs_a_blank_nickname():
+    for key, guidance in AUTOMATIONDIRECT_SYSTEM_NICKNAMES.items():
+        assert "" not in guidance.repair_from, key
+    for address in (132, 133, 134, 135):
+        assert canonicalize_system_nickname("SD", address, "") == ""
 
 
 def test_canonical_lookup_and_check_are_address_based():

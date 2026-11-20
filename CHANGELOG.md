@@ -2,6 +2,12 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
+## Unreleased
+
+### Fixed
+
+- `canonicalize_system_nickname` now leaves a blank nickname at SD132 to SD135 as it is. 0.11.0 returned CLICK's name for a blank at these four addresses. To fill a blank there, use `canonical_system_nickname`.
+
 ## 0.11.0 - 2026-11-20
 
 A fix for nickname CSV files that hold a character outside ASCII. If you write nickname CSV files, read Breaking changes before you upgrade.
