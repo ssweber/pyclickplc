@@ -2,7 +2,7 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
-## Unreleased
+## 0.11.0 - 2026-11-20
 
 A fix for nickname CSV files that hold a character outside ASCII. If you write nickname CSV files, read Breaking changes before you upgrade.
 
