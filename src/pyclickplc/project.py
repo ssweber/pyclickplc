@@ -236,7 +236,8 @@ def _first_matches(lines: list[str]) -> list[str]:
 def _spell_sections(parser: ConfigParser) -> None:
     """Rename each section that this module reads to its spelling in ``_SECTIONS``.
 
-    The file may spell the section names in any case.
+    The file may spell the section names in any case. No one has tested whether CLICK 3 or
+    CLICK 4 reads a hardware section or key whose name differs in case.
     """
     for section in parser.sections():
         name = _SECTIONS.get(section.lower(), section)
