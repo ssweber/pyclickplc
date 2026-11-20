@@ -6,7 +6,7 @@
 
 ### Fixed
 
-- `read_modules`, `read_io_layout` and `read_channel_parameters` now read a project that has a C2-FILL cover in a CLICK PLUS option slot. They list the slot as a C2-FILL module with no I/O. 0.11.1 raised `ValueError` for module ID 8192.
+- `read_modules`, `read_io_layout` and `read_channel_parameters` now read a project that has a C2-FILL cover in a CLICK PLUS option slot. `read_modules` and `read_io_layout` list the slot as a C2-FILL module with no I/O. 0.11.1 raised `ValueError: Unsupported module ID 8192`.
 
 ## 0.11.1 - 2026-11-20
 
