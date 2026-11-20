@@ -41,15 +41,17 @@ Needs: CLICK software. The ClickNick session runs the check.
 
 ## 3. Read the known modules when one module ID is unknown
 
-Needs: nothing. It changes what the readers return, so the session tells the ClickNick session before it lands.
+Needs: nothing. It changes what the readers return and when they raise, so the session tells the ClickNick
+session before it lands.
 
 - If Project.ini has a module ID that the catalog does not have, `read_modules`, `read_io_layout` and
   `read_channel_parameters` raise `ValueError`. The caller then gets none of the modules that pyclickplc knows.
-  On 2026-11-20 ClickNick asked for the readers to skip an unknown module and report it. ClickNick could then
-  show the hardware that was read and name the module that was not.
+  On 2026-11-20 the ClickNick session asked for the readers to skip an unknown module and report it. ClickNick
+  could then show the hardware that was read and name the module that was not.
 - The catalog has every model and ID in the module tables of CLICK 2.60 to 4.00. An unknown ID should come only
   from a CLICK version after 4.00 or from a damaged file. The design is open: where the readers report the
-  unknown ID, and whether `read_channel_parameters` still raises.
+  unknown ID, and whether `read_channel_parameters` still raises. The session that builds this item decides both
+  and asks the ClickNick session before it lands.
 
 ## Unscheduled
 
