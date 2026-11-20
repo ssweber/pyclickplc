@@ -15,7 +15,7 @@ passed that commit, and nothing in the PR waits on Sam (his judgment, a CLICK ch
 ## 1. After 0.11.0
 
 Needs: nothing in this repo. The ClickNick and pyrung sessions do the steps below. 0.11.0 was published
-on 2026-11-20. Delete this item when ClickNick requires 0.11.0 and pyrung's lock file has 0.11.0.
+on 2026-11-20. Delete this item when ClickNick requires 0.11.0 or later and pyrung's lock file has 0.11.0 or later.
 
 - The ClickNick session moves ClickNick to the release. ClickNick encodes the `format_csv` text as UTF-8
   itself. It should encode the text as cp1252. `format_csv` raises `ValueError` for a character that cp1252
@@ -23,8 +23,11 @@ on 2026-11-20. Delete this item when ClickNick requires 0.11.0 and pyrung's lock
   ClickNick's test `test_an_encoding_failure_leaves_the_file_as_it_was` expects `UnicodeEncodeError` and
   must expect `ValueError`.
 - pyrung writes nicknames with `write_csv`. It requires `pyclickplc>=0.9.1` with no upper bound. A user who
-  installs pyrung now gets pyclickplc 0.11.0, so their nickname CSV is written in cp1252 and `write_csv`
+  installs pyrung now gets pyclickplc 0.11.0 or later, so their nickname CSV is written in cp1252 and `write_csv`
   can raise the new `ValueError`. pyrung's lock file stays at 0.9.1 until the pyrung session updates it.
+- 0.11.1 no longer fills a blank nickname at SD132 to SD135. pyrung's `tests/click/test_tag_map.py` and
+  ClickNick's `tests/test_live_system_nicknames.py` expect four repairs, including fills at SD134 and SD135.
+  Each session updates its test when it moves to 0.11.1.
 
 ## 2. Waiting on ClickNick's runner
 
