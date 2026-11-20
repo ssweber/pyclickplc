@@ -11,8 +11,7 @@ firmware update. This catalog records the current CLICK name for each address.
 it as an old name for that address. It leaves every other value as it is. So
 if AutomationDirect renames an address after this catalog was made, the newer
 name is never replaced. ``canonicalize_system_nickname`` also leaves a blank as
-it is, except at the few addresses where the catalog lists a blank as an old
-value.
+it is.
 """
 
 from __future__ import annotations
@@ -397,10 +396,8 @@ _AUTOMATIONDIRECT_SYSTEM_NICKNAME_VALUES: dict[tuple[str, int], str] = {
 }
 
 _KNOWN_STALE_NICKNAMES: dict[tuple[str, int], frozenset[str]] = {
-    ("SD", 132): frozenset({"", "_Port1_AL_Denied_Count"}),
-    ("SD", 133): frozenset({"", "_WLAN_AL_Denied_Count"}),
-    ("SD", 134): frozenset({""}),
-    ("SD", 135): frozenset({""}),
+    ("SD", 132): frozenset({"_Port1_AL_Denied_Count"}),
+    ("SD", 133): frozenset({"_WLAN_AL_Denied_Count"}),
 }
 _NO_AUTOMATIC_REPAIR = frozenset()
 
