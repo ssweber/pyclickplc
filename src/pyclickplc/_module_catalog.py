@@ -12,10 +12,11 @@ them. Their counts are an assumption. They are copied from the similar models
 C0-08TD1 and C0-02DR-D.
 
 CLICK 4.00 adds one model to the module table: C2-FILL, ID 8192. C2-FILL is the
-cover for an empty CLICK PLUS option slot. Its entry in SC_ModuleInformation.ini
-has a description and no Data1 or Data2 keys, so its counts are zero. Every
-other model and ID in the 4.00 table is the same as in 3.92. This was checked
-on 2026-11-20.
+cover for an empty CLICK PLUS option slot. Sam observed that CLICK 4.00 puts
+C2-FILL in every option slot where the user has not picked a module. Its entry
+in SC_ModuleInformation.ini has a description and no Data1 or Data2 keys, so
+its counts are zero. Every other model and ID in the 4.00 table is the same as
+in 3.92. This was checked on 2026-11-20.
 
 Reading a project does not require CLICK to be installed. This module contains
 no vendor descriptions and none of CLICK's executable code.
