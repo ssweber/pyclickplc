@@ -184,7 +184,7 @@ for position, module in modules.expansions.items():
     print(position, module.model, module.discrete_inputs)  # 1 C0-08NE3 8
 ```
 
-`slots` is keyed by CLICK PLUS CPU slot, 0 and 1. `expansions` is keyed by position, 1 through 8. Empty positions are left out. CLICK 4.00 saves an option slot that has no module as C2-FILL, the slot cover. `slots` lists that slot as C2-FILL, a module with no I/O. Each `Module` has the point counts `discrete_inputs`, `discrete_outputs`, `analog_inputs` and `analog_outputs`.
+`slots` is keyed by CLICK PLUS CPU slot, 0 and 1. `expansions` is keyed by position, 1 through 8. Empty positions are left out. In a project that CLICK 4.00 saved, an option slot with no module is not empty, because it holds C2-FILL, the slot cover. `slots` lists C2-FILL as a module with no I/O. Each `Module` has the point counts `discrete_inputs`, `discrete_outputs`, `analog_inputs` and `analog_outputs`.
 
 ### Channel parameters
 

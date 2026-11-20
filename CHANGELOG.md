@@ -4,11 +4,11 @@
 
 ## 0.11.2 - 2026-11-20
 
-A fix for reading the hardware of a project that has a CLICK PLUS CPU. Upgrade if you read a project that CLICK 4.00 saved.
+A fix for reading the hardware of a CLICK PLUS project. Upgrade if you read the hardware of a project that CLICK 4.00 saved.
 
 ### Fixed
 
-- `read_modules`, `read_io_layout` and `read_channel_parameters` now read a CLICK 4.00 project with a CLICK PLUS option slot that has no module. `read_modules` and `read_io_layout` list that slot as C2-FILL, a module with no I/O. 0.11.1 raised `ValueError: Unsupported module ID 8192`.
+- `read_modules`, `read_io_layout` and `read_channel_parameters` now read a CLICK 4.00 project with a CLICK PLUS option slot that has no module. `read_modules` and `read_io_layout` list the slot as a C2-FILL slot cover with no I/O. 0.11.1 raised `ValueError: Unsupported module ID 8192`.
 
 ## 0.11.1 - 2026-11-20
 
