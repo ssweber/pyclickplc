@@ -1,4 +1,4 @@
-"""Hardware facts from the CLICK 3.92 module catalog.
+"""Hardware facts from the CLICK 3.92 and 4.00 module catalogs.
 
 The model IDs come from the module table in CLICK's SystemConfig.dll. For
 expansion modules they also come from SC_ModuleInformation.ini. The discrete
@@ -10,6 +10,12 @@ The DLL has model names for IDs 41 (C0-08TD1-1) and 244 (C0-02DA-D). The INI
 file has no entry for them, and no published product page or manual lists
 them. Their counts are an assumption. They are copied from the similar models
 C0-08TD1 and C0-02DR-D.
+
+CLICK 4.00 adds one model to the module table: C2-FILL, ID 8192. C2-FILL is the
+cover for an empty CLICK PLUS option slot. Its entry in SC_ModuleInformation.ini
+has a description and no Data1 or Data2 keys, so its counts are zero. Every
+other model and ID in the 4.00 table is the same as in 3.92. This was checked
+on 2026-11-20.
 
 Reading a project does not require CLICK to be installed. This module contains
 no vendor descriptions and none of CLICK's executable code.
@@ -117,6 +123,7 @@ _MODULE_CATALOG = {
     174: Module(174, "C0-16ADH-2", 0, 0, 16, 0),
     175: Module(175, "C0-16DAH-1", 0, 0, 0, 16),
     176: Module(176, "C0-16DAH-2", 0, 0, 0, 16),
+    8192: Module(8192, "C2-FILL", 0, 0, 0, 0),
     8193: Module(8193, "C2-14D1", 8, 6, 0, 0),
     8194: Module(8194, "C2-14D2", 8, 6, 0, 0),
     8195: Module(8195, "C2-14DR", 8, 6, 0, 0),

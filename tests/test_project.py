@@ -319,6 +319,15 @@ def test_layout_empty_slot_zero_keeps_slot_one_addresses(tmp_path):
     assert slot1.outputs == _points("Y", (21, 26))
 
 
+def test_layout_option_slot_cover_has_no_addresses(tmp_path):
+    (_, cover, slot1) = _layout(tmp_path, "[SystemConfig]\nItem1=199\nItem10=8192\nItem11=8195\n")
+    assert (cover.location, cover.position, cover.module.model) == ("slot", 0, "C2-FILL")
+    assert cover.inputs == cover.outputs == ()
+    assert cover.analog_inputs == cover.analog_outputs == ()
+    assert slot1.inputs == _points("X", (21, 28))
+    assert slot1.outputs == _points("Y", (21, 26))
+
+
 def test_layout_analog_module_without_assignments(tmp_path):
     (expansion,) = _layout(tmp_path, "[SystemConfig]\nItem2=173\n")
     assert expansion.analog_inputs == (None,) * 16

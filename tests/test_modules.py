@@ -54,6 +54,14 @@ def test_empty_slot_zero_does_not_renumber_slot_one(tmp_path):
     assert dict(modules.slots) == {1: Module(8193, "C2-14D1", 8, 6, 0, 0)}
 
 
+def test_option_slot_cover_is_a_module_with_no_io(tmp_path):
+    path = _project(tmp_path, "[SystemConfig]\nItem1=199\nItem10=8192\nItem11=8193\n")
+    modules = read_modules(path)
+    assert modules.slots[0] == Module(8192, "C2-FILL", 0, 0, 0, 0)
+    assert modules.slots[1] == Module(8193, "C2-14D1", 8, 6, 0, 0)
+    assert read_channel_parameters(path) == ChannelParameters()
+
+
 @pytest.mark.parametrize("cpu_id", [196, 197, 198])
 def test_single_slot_cpu_ignores_stale_slot_one(tmp_path, cpu_id):
     path = _project(
