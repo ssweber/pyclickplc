@@ -12,19 +12,19 @@ its branch and opens the PR. It squash-merges the PR when CI is green on the hea
 passed that commit, and nothing in the PR waits on Sam (his judgment, a CLICK check, a real PLC). The release
 (tag and publish) stays Sam's.
 
-## 1. Next release
+## 1. Release 0.11.0
 
-Needs: Sam's judgment (the version and the tag). The CHANGELOG's Unreleased section holds the nickname CSV
-changes from #67. This session proposed 0.11.0, because the release breaks callers. `write_csv` writes
-cp1252 instead of UTF-8. `write_csv` and `format_csv` raise `ValueError` for a character that cp1252 does
-not have. 0.10.0 accepted that character. When Sam picks the version, this session renames and dates
-the section in a release PR, and Sam tags.
+Needs: Sam's tag. Sam chose 0.11.0 on 2026-11-20. This PR dated the CHANGELOG section. Sam tags 0.11.0
+after it merges. After Sam tags 0.11.0, the next session deletes this paragraph and renames the item to
+"After 0.11.0". The two steps below stay until ClickNick and pyrung require 0.11.0.
 
 After the tag:
 
 - The ClickNick session moves ClickNick to the release. ClickNick encodes the `format_csv` text as UTF-8
   itself. It should encode the text as cp1252. `format_csv` raises `ValueError` for a character that cp1252
   does not have. ClickNick's save must report that error.
+  ClickNick's test `test_an_encoding_failure_leaves_the_file_as_it_was` expects `UnicodeEncodeError` and
+  must expect `ValueError`.
 - pyrung writes nicknames with `write_csv`. It requires `pyclickplc>=0.9.1` with no upper bound. So a user
   who installs pyrung after the release gets cp1252 and the new `ValueError` at once. pyrung's lock file
   stays at 0.9.1 until the pyrung session updates it.
