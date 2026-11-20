@@ -2,7 +2,9 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
-## Unreleased
+## 0.11.1 - 2026-11-20
+
+A fix for `canonicalize_system_nickname`. Upgrade if you use it to find system nicknames that need a repair.
 
 ### Fixed
 
