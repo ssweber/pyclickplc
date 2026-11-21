@@ -173,7 +173,14 @@ def validate_comment(comment: str) -> tuple[bool, str]:
     """Validate comment length and edge whitespace.
 
     A comment with a leading or trailing space, tab or other character up to 0x20 is
-    invalid, because CLICK strips those characters. A tab inside the comment is kept.
+    invalid. CLICK's nickname CSV import drops a space or tab from either end of a comment.
+    So if you write such a comment with ``write_csv`` and import the file, CLICK stores a
+    different comment. For the other codes up to 0x20, this function assumes that the
+    import drops them too. The import keeps a tab inside the comment.
+
+    CLICK 4.00's Address Picker was observed to store a tab at either end of a comment when
+    another program set the editor's text with that tab. A tab typed into the editor never
+    reached it. So a CLICK project may hold a comment that this function rejects.
 
     Does NOT check that a block name is unique. That check needs the comments of the
     other addresses. Use ``is_block_name_available`` in ``blocks.py`` for it.
