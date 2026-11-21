@@ -46,7 +46,7 @@ print(f"Wrote {count} rows")
 
 `write_csv` writes the file in cp1252, the encoding of CLICK's export. If a nickname, comment or initial value has a character that cp1252 does not have, such as `中`, `write_csv` raises `ValueError` and writes no file. To check a value before you write, call `first_non_cp1252_char`. It returns the first such character, or None. `read_csv` reads both cp1252 and UTF-8 files.
 
-cp1252 here is Windows code page 1252. It has the five control characters U+0081, U+008D, U+008F, U+0090 and U+009D. Python's `cp1252` codec does not have them. If you encode `format_csv` text yourself, encode it as `CSV_ENCODING`, not as `"cp1252"`. `CSV_ENCODING` names a codec that pyclickplc registers when you import `pyclickplc.nicknames`.
+If you encode `format_csv` text yourself, encode it as `CSV_ENCODING` from `pyclickplc.nicknames`. Python's `cp1252` codec cannot encode U+0081, U+008D, U+008F, U+0090 and U+009D, and a CLICK nickname CSV can hold them. `CSV_ENCODING` names a codec that pyclickplc registers when you import it.
 
 ### Build records
 

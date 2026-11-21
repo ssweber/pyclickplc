@@ -994,12 +994,20 @@ class TestClickExports:
         assert expected != fixture.read_bytes()
         assert out.read_bytes() == expected
 
-    @pytest.mark.parametrize("fixture", ["NicknameExportCp1252.csv", "NicknameExportBestFit.csv"])
+    @pytest.mark.parametrize(
+        "fixture",
+        ["NicknameExportCp1252.csv", "NicknameExportBestFit.csv", "NicknameExportC1Control.csv"],
+    )
     def test_cp1252_export_rewrites_to_the_same_bytes(self, tmp_path, fixture):
         """CLICK exports these files as cp1252. They hold the system SC and SD nicknames."""
         out = tmp_path / "out.csv"
         write_csv(out, read_csv(FIXTURES / fixture))
         assert out.read_bytes() == (FIXTURES / fixture).read_bytes()
+
+    def test_reads_click_export_with_byte_0x81(self):
+        """CLICK 4.00 stored the nickname N U+0081 at DS5 and exported it as the bytes 4E 81."""
+        records = read_csv(FIXTURES / "NicknameExportC1Control.csv")
+        assert records.addr["DS5"].nickname == "N\x81"
 
     def test_reads_cp1252_export(self):
         records = read_csv(FIXTURES / "NicknameExportCp1252.csv")

@@ -40,8 +40,9 @@ CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive",
 # The encoding of the nickname CSV that CLICK exports and that write_csv writes. It is
 # Windows code page 1252. Python's cp1252 codec has no character for the five bytes 0x81,
 # 0x8D, 0x8F, 0x90 and 0x9D. Windows maps each of them to the control character with the same
-# number, and CLICK was observed to store U+0081 and export it as the byte 0x81. This codec is
-# Python's cp1252 with those five bytes added. Importing this module registers it.
+# number. CLICK was observed to store U+0081 in a nickname and to export it as the byte 0x81.
+# CSV_ENCODING names a codec that is Python's cp1252 with those five bytes added. Importing
+# this module registers the codec.
 CSV_ENCODING = "pyclickplc_cp1252"
 
 _CP1252_DECODING_TABLE = "".join(
@@ -368,11 +369,12 @@ def read_csv(
     The CSV has columns: Address, Data Type, Nickname, Initial Value,
     Retentive, Address Comment. A file that starts with a UTF-8 byte order
     mark is read as UTF-8. A file without one is read as UTF-8 if it is valid
-    UTF-8, and as cp1252 if it is not. CLICK exports cp1252. ``read_csv``
-    reads the bytes 0x81, 0x8D, 0x8F, 0x90 and 0x9D as the control characters
-    U+0081, U+008D, U+008F, U+0090 and U+009D, as Windows does. A cp1252 file
+    UTF-8, and as cp1252 if it is not. CLICK exports cp1252. A cp1252 file
     whose non-ASCII bytes are also valid UTF-8 is therefore read as UTF-8. If
     the only non-ASCII text in the file is ``Ã©``, ``read_csv`` returns ``é``.
+    In a cp1252 file, ``read_csv`` reads the bytes 0x81, 0x8D, 0x8F, 0x90 and
+    0x9D as U+0081, U+008D, U+008F, U+0090 and U+009D. Windows code page 1252
+    maps them the same way.
     From a UTF-8 file, ``read_csv`` returns a character that cp1252 does not
     have unchanged. CLICK's import replaces that character with a near
     character or ``?``.
@@ -476,9 +478,9 @@ def read_csv(
 def first_non_cp1252_char(text: str) -> str | None:
     """Return the first character in *text* that cp1252 does not have, or None.
 
-    A nickname CSV is cp1252, so it cannot hold that character. cp1252 here is
-    Windows code page 1252, which has U+0081, U+008D, U+008F, U+0090 and
-    U+009D. Python's ``cp1252`` codec does not have them. ``format_csv``
+    A nickname CSV is cp1252, so it cannot hold that character. Here cp1252
+    means Windows code page 1252. Unlike Python's ``cp1252`` codec, it has
+    U+0081, U+008D, U+008F, U+0090 and U+009D. ``format_csv``
     and ``write_csv`` raise ``ValueError`` for a nickname, comment or initial
     value that has one. An editor can call this function to flag the cell
     before it saves.
@@ -567,8 +569,9 @@ def _format_csv(
 def format_csv(records: Mapping[int, AddressRecord] | Iterable[AddressRecord]) -> str:
     """Return the nickname CSV text that ``write_csv`` writes for *records*.
 
-    If you write the file yourself, encode the text as ``CSV_ENCODING``
-    (cp1252) and write it unchanged. Its lines already end in CRLF.
+    If you write the file yourself, encode the text as ``CSV_ENCODING`` and
+    write it unchanged. Python's ``cp1252`` codec cannot encode five characters
+    that the text can hold. The lines already end in CRLF.
 
     Raises:
         ValueError: If a nickname, comment or initial value has a character
