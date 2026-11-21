@@ -18,8 +18,8 @@ Needs: nothing in this repo. The ClickNick and pyrung sessions do the steps belo
 on 2026-11-20. Delete this item when ClickNick requires 0.11.0 or later and pyrung's lock file has 0.11.0 or later.
 
 - The ClickNick session moves ClickNick to the release. ClickNick encodes the `format_csv` text as UTF-8
-  itself. It should encode the text as cp1252. `format_csv` raises `ValueError` for a character that cp1252
-  does not have. ClickNick's save must report that error.
+  itself. It should encode the text as `CSV_ENCODING`. `format_csv` raises `ValueError` for a character
+  that cp1252 does not have. ClickNick's save must report that error.
   ClickNick's test `test_an_encoding_failure_leaves_the_file_as_it_was` expects `UnicodeEncodeError` and
   must expect `ValueError`.
 - pyrung writes nicknames with `write_csv`. It requires `pyclickplc>=0.9.1` with no upper bound. A user who
@@ -29,15 +29,18 @@ on 2026-11-20. Delete this item when ClickNick requires 0.11.0 or later and pyru
   ClickNick's `tests/test_live_system_nicknames.py` expect four repairs, including fills at SD134 and SD135.
   Each session updates its test when it moves to 0.11.1.
 
-## 2. Waiting on ClickNick's runner
+## 2. Decide whether the validators call `first_non_cp1252_char`
 
-Needs: CLICK software. The ClickNick session runs the check.
+Needs: nothing for nicknames. The runner has not tried comments.
 
 - **`validate_nickname` and `validate_comment` accept a character that cp1252 does not have, but `write_csv`
   raises `ValueError` for it.** `validate_initial_value` also rejects a Text value above 127 that `write_csv`
   writes and `read_csv` reads. ClickNick also writes nicknames into SC_.mdb directly, and Access keeps the
-  Unicode there. The ClickNick session will check on its runner what CLICK shows for such a character. Once
-  that is known, decide whether the validators call `first_non_cp1252_char`.
+  Unicode there.
+- The ClickNick session's runner tried such characters in a nickname (job runner-batch2, J2, in
+  `clicknick-wt/buildbot/jobs/runner-batch2/RESULTS.md`). CLICK 4.00's Address Picker changed ł to l and Ω to O
+  without a message. It refused a nickname with Ж or an emoji. It stored U+0081, which `first_non_cp1252_char`
+  accepts. ClickNick already refuses every character that `first_non_cp1252_char` returns.
 
 ## 3. Read the known modules when one module ID is unknown
 

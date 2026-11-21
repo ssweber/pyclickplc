@@ -407,15 +407,16 @@ class TestReadCsv:
         assert csv_path.read_bytes().splitlines()[1] == b'C1,BIT,"Temp_\xc2\xb0C",0,No,""'
         assert read_csv(csv_path).addr["C1"].nickname == "Temp_°C"
 
-    def test_read_neither_utf8_nor_cp1252_raises(self, tmp_path):
+    @pytest.mark.parametrize("byte", [0x81, 0x8D, 0x8F, 0x90, 0x9D])
+    def test_read_byte_that_python_cp1252_lacks(self, tmp_path, byte):
+        """CLICK exported the nickname N U+0081 as the bytes 4E 81."""
         csv_path = tmp_path / "test.csv"
         csv_path.write_bytes(
             b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
-            b'X001,BIT,"Caf\x81",0,No,""\r\n'
+            b'DS5,INT,"N' + bytes([byte]) + b'",0,Yes,""\r\n'
         )
 
-        with pytest.raises(ValueError, match=r"test\.csv is neither UTF-8 nor cp1252"):
-            read_csv(csv_path)
+        assert read_csv(csv_path).addr["DS5"].nickname == "N" + chr(byte)
 
     def test_read_utf16_raises(self, tmp_path):
         csv_path = tmp_path / "test.csv"
@@ -527,6 +528,38 @@ class TestWriteCsv:
     )
     def test_first_non_cp1252_char(self, text, expected):
         assert first_non_cp1252_char(text) == expected
+
+    @pytest.mark.parametrize("char", ["\x81", "\x8d", "\x8f", "\x90", "\x9d"])
+    def test_write_character_that_python_cp1252_lacks(self, tmp_path, char):
+        csv_path = tmp_path / "test.csv"
+        record = AddressRecord(memory_type="C", address=1, nickname="N" + char, comment=char)
+        raw = char.encode("latin-1")
+
+        write_csv(csv_path, [record])
+
+        assert first_non_cp1252_char(char) is None
+        assert (
+            csv_path.read_bytes().splitlines()[1] == b'C1,BIT,"N' + raw + b'",0,No,"' + raw + b'"'
+        )
+        loaded = read_csv(csv_path).addr["C1"]
+        assert (loaded.nickname, loaded.comment) == ("N" + char, char)
+
+    def test_csv_encoding_matches_python_cp1252_for_every_other_byte(self):
+        for byte in range(256):
+            try:
+                expected = bytes([byte]).decode("cp1252")
+            except UnicodeDecodeError:
+                expected = chr(byte)
+            assert bytes([byte]).decode(CSV_ENCODING) == expected
+            assert expected.encode(CSV_ENCODING) == bytes([byte])
+
+    def test_csv_encoding_works_for_a_text_file(self, tmp_path):
+        path = tmp_path / "test.csv"
+        with open(path, "w", encoding=CSV_ENCODING, newline="") as file:
+            file.write("N\x81 €")
+        assert path.read_bytes() == b"N\x81 \x80"
+        with open(path, encoding=CSV_ENCODING, newline="") as file:
+            assert file.read() == "N\x81 €"
 
     def test_write_cp1252(self, tmp_path):
         csv_path = tmp_path / "test.csv"
@@ -893,9 +926,8 @@ class TestCsvFormat:
 
     def test_every_text_character_round_trips(self, tmp_path):
         csv_path = tmp_path / "txt.csv"
-        # The list holds every character in cp1252. Python's cp1252 leaves 0x81, 0x8D, 0x8F,
-        # 0x90 and 0x9D undefined.
-        chars = list(bytes(range(1, 256)).decode("cp1252", errors="ignore"))
+        # The list holds every character in cp1252, one for each byte but 0.
+        chars = list(bytes(range(1, 256)).decode(CSV_ENCODING))
         records = [
             AddressRecord(
                 memory_type="TXT",

@@ -2,6 +2,12 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
+## Unreleased
+
+### Fixed
+
+- `read_csv`, `write_csv`, `format_csv` and `first_non_cp1252_char` now accept the five characters U+0081, U+008D, U+008F, U+0090 and U+009D, which a CLICK nickname CSV can hold as the bytes 0x81, 0x8D, 0x8F, 0x90 and 0x9D. 0.11.2 raised `ValueError` for each of them. If you encode `format_csv` text yourself, encode it as `CSV_ENCODING`, not as `"cp1252"`.
+
 ## 0.11.2 - 2026-11-20
 
 A fix for reading the hardware of a CLICK PLUS project. Upgrade if you read the hardware of a project that CLICK 4.00 saved.
