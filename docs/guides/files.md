@@ -220,7 +220,7 @@ for io in read_io_layout("Project.ini"):
 # expansion 1 C0-08NE3 ('X101', ..., 'X108') ()
 ```
 
-You get one `ModuleIO` for each installed module in the catalog, in physical order. A module whose ID is unknown gets no `ModuleIO`. `inputs` and `outputs` are its X and Y addresses. `analog_inputs` and `analog_outputs` are its channels' DF addresses, with `None` for a channel that has none.
+You get one `ModuleIO` for each installed module in the catalog, in physical order. `inputs` and `outputs` are its X and Y addresses. `analog_inputs` and `analog_outputs` are its channels' DF addresses, with `None` for a channel that has none.
 
 ### PLC name
 
