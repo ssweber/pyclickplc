@@ -217,7 +217,7 @@ AGREEMENT_SAMPLE = [chr(code) for code in range(0x21, 0x180)] + [
     "Ω",
     "Ж",
     "中",
-    "​",
+    "\u200b",
     "\U0001f600",
 ]
 
@@ -301,7 +301,12 @@ class TestCp1252:
         assert "Œ" not in rejected
         assert "\x81" not in rejected
 
-    def test_importing_validation_registers_the_codec(self):
+    def test_fresh_interpreter_with_validation_encodes_0x81(self):
+        """Check that a fresh interpreter can look up the codec after it imports validation.
+
+        The import of the package runs first and imports nicknames too. So this test does not
+        show which module registers the codec.
+        """
         script = (
             "import codecs\n"
             "import pyclickplc.validation\n"
