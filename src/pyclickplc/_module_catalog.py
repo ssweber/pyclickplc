@@ -18,6 +18,9 @@ counts are zero. CLICK 4.00 was observed to put C2-FILL in every option slot
 where the user has not picked a module. Every other model and ID in the 4.00
 table is the same as in 3.92. This was checked on 2026-11-20.
 
+The module tables of CLICK 2.60, 3.43, 3.71, 3.92 and 4.00 have no model or ID
+that this catalog lacks. This was also checked on 2026-11-20.
+
 Reading a project does not require CLICK to be installed. This module contains
 no vendor descriptions and none of CLICK's executable code.
 """

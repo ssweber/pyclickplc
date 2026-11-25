@@ -193,7 +193,7 @@ for unknown in modules.unknown:
     print(unknown.location, unknown.position, unknown.module_id)  # expansion 2 9999
 ```
 
-`unknown` lists each module whose ID is not in pyclickplc's catalog, in physical order. The catalog has every module that CLICK 2.60 to 4.00 list, so an unknown ID comes from a newer CLICK or a damaged file. `read_modules`, `read_io_layout` and `read_channel_parameters` leave an unknown module out of what they return. The other modules keep their positions. If the CPU's ID is unknown, `cpu` is None and `slots` is empty, because the CPU model sets how many slots there are.
+`unknown` lists each module whose ID is not in pyclickplc's catalog, in physical order. The catalog has every module in the module tables of CLICK 2.60, 3.43, 3.71, 3.92 and 4.00. An ID that is not in the catalog comes from another CLICK version or from a damaged file. `read_modules`, `read_io_layout` and `read_channel_parameters` leave an unknown module out of what they return. The other modules keep their positions. If the CPU's ID is unknown, `cpu` is None and `slots` is empty, because the CPU model sets how many slots there are.
 
 ### Channel parameters
 
@@ -220,7 +220,7 @@ for io in read_io_layout("Project.ini"):
 # expansion 1 C0-08NE3 ('X101', ..., 'X108') ()
 ```
 
-You get one `ModuleIO` per installed module, in physical order. `inputs` and `outputs` are its X and Y addresses. `analog_inputs` and `analog_outputs` are its channels' DF addresses, with `None` for a channel that has none.
+You get one `ModuleIO` for each installed module in the catalog, in physical order. A module whose ID is unknown gets no `ModuleIO`. `inputs` and `outputs` are its X and Y addresses. `analog_inputs` and `analog_outputs` are its channels' DF addresses, with `None` for a channel that has none.
 
 ### PLC name
 

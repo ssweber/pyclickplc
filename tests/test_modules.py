@@ -164,6 +164,32 @@ def test_cpu_fallback_and_authoritative_selection(tmp_path):
     assert read_channel_parameters(path) == ChannelParameters()
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[sec21]\nKey3_1=7\nKey3_2=11",
+        # With no CPU in [SystemConfig] or [Sec21], the reader takes the CPU from
+        # [CPUBuild] ID or [Sec23] Key1.
+        "[SystemConfig]\nItem2=11\n[CPUBuild]\nID=7",
+        "[Sec21]\nKey3_2=11\n[Sec23]\nKey1=7",
+    ],
+    ids=["lowercase-sec21", "cpubuild", "sec23"],
+)
+def test_an_unknown_cpu_id_is_listed_wherever_it_is_read(tmp_path, text):
+    path = _project(tmp_path, text)
+    assert read_modules(path) == Modules(
+        expansions={1: Module(11, "C0-08NE3", 8, 0, 0, 0)},
+        unknown=(UnknownModule("cpu", 0, 7),),
+    )
+    assert read_channel_parameters(path) == ChannelParameters()
+
+
+def test_item1_of_zero_lists_no_unknown_cpu_from_cpubuild(tmp_path):
+    path = _project(tmp_path, "[SystemConfig]\nItem1=0\n[CPUBuild]\nID=7")
+    assert read_modules(path) == Modules()
+    assert read_channel_parameters(path) == ChannelParameters()
+
+
 @pytest.mark.parametrize("item", [1, 2, 9, 10, 11])
 def test_a_module_id_that_is_not_an_integer_fails_in_both_readers(tmp_path, item):
     prefix = "[SystemConfig]\n" + ("Item1=199\n" if item != 1 else "")
