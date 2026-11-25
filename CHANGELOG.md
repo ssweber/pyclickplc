@@ -4,7 +4,7 @@
 
 ## 0.11.3 - 2026-11-25
 
-A fix for nickname CSV files. Upgrade if your nickname CSV holds one of the bytes 0x81, 0x8D, 0x8F, 0x90 or 0x9D, or if you write a nickname or comment that holds one of the matching characters.
+A fix for nickname CSV files. Upgrade if `read_csv`, `write_csv` or `format_csv` raises `ValueError` for the byte 0x81, 0x8D, 0x8F, 0x90 or 0x9D, or for the matching character.
 
 ### Changed
 
