@@ -28,8 +28,13 @@ from pyclickplc.modbus import plc_to_modbus
 from pyclickplc.server import ClickServer, MemoryDataProvider
 from tests._nan import KEEPS_SIGNALLING_NAN
 
-# Port for integration tests (avoid 502 which needs root)
-TEST_PORT = 15020
+
+def _port(server: ClickServer) -> int:
+    """Return the port the system gave a started server."""
+    port = server.bound_port
+    assert port is not None
+    return port
+
 
 # The event loops that asyncio offers on this platform. The Selector loop exists everywhere,
 # and the Proactor loop only on Windows.
@@ -44,10 +49,10 @@ if hasattr(asyncio, "ProactorEventLoop"):
 async def plc_fixture():
     """Provide a connected ClickClient and MemoryDataProvider."""
     provider = MemoryDataProvider()
-    async with ClickServer(provider, port=TEST_PORT):
+    async with ClickServer(provider, port=0) as server:
         # Small delay for server to be ready
         await asyncio.sleep(0.1)
-        async with ClickClient("localhost", TEST_PORT) as plc:
+        async with ClickClient("localhost", _port(server)) as plc:
             yield plc, provider
 
 
@@ -276,10 +281,10 @@ class TestConnectionLifecycle:
     @pytest.mark.asyncio
     async def test_disconnect_all_drops_clickclient_session(self):
         provider = MemoryDataProvider()
-        server = ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 1)
+        server = ClickServer(provider, host="127.0.0.1", port=0)
         await server.start()
         try:
-            async with ClickClient("127.0.0.1", TEST_PORT + 1) as plc:
+            async with ClickClient("127.0.0.1", _port(server)) as plc:
                 await asyncio.sleep(0.05)
                 assert len(server.list_clients()) == 1
 
@@ -303,9 +308,9 @@ class _FailingReadProvider(MemoryDataProvider):
 class TestFailedRead:
     @pytest.mark.asyncio
     async def test_failed_server_read_raises_oserror_on_client(self):
-        async with ClickServer(_FailingReadProvider(), port=TEST_PORT + 2):
+        async with ClickServer(_FailingReadProvider(), port=0) as server:
             await asyncio.sleep(0.1)
-            async with ClickClient("localhost", TEST_PORT + 2) as plc:
+            async with ClickClient("localhost", _port(server)) as plc:
                 with pytest.raises(OSError):
                     await plc.df.read(1)
                 with pytest.raises(OSError):
@@ -421,19 +426,19 @@ class TestRawRequestLimits:
     )
     async def test_out_of_range_read_gets_exception_03(self, pdu):
         provider = MemoryDataProvider()
-        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+        async with ClickServer(provider, host="127.0.0.1", port=0) as server:
             await asyncio.sleep(0.1)
-            reply = await self._raw(TEST_PORT + 3, pdu)
+            reply = await self._raw(_port(server), pdu)
         assert reply == bytes([pdu[0] | 0x80, 3])
 
     @pytest.mark.asyncio
     async def test_fc05_value_other_than_00_or_ff00_gets_exception_03(self):
         provider = MemoryDataProvider()
-        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 4):
+        async with ClickServer(provider, host="127.0.0.1", port=0) as server:
             await asyncio.sleep(0.1)
-            bad = await self._raw(TEST_PORT + 4, struct.pack(">BHH", 5, C1, 0x1234))
+            bad = await self._raw(_port(server), struct.pack(">BHH", 5, C1, 0x1234))
             stored_after_bad = provider.get("C1")
-            good = await self._raw(TEST_PORT + 4, struct.pack(">BHH", 5, C1, 0xFF00))
+            good = await self._raw(_port(server), struct.pack(">BHH", 5, C1, 0xFF00))
         assert bad == bytes([0x85, 3])
         assert stored_after_bad is False
         assert provider.get("C1") is True
@@ -480,19 +485,19 @@ class TestRawRequestLimits:
     )
     async def test_bad_count_or_byte_count_gets_exception_03_and_stores_nothing(self, pdu):
         provider = MemoryDataProvider()
-        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+        async with ClickServer(provider, host="127.0.0.1", port=0) as server:
             await asyncio.sleep(0.1)
-            reply = await self._raw(TEST_PORT + 3, pdu)
+            reply = await self._raw(_port(server), pdu)
         assert reply == bytes([pdu[0] | 0x80, 3])
         assert provider._data == {}
 
     @pytest.mark.asyncio
     async def test_coil_and_register_write_edges_are_stored(self):
         provider = MemoryDataProvider()
-        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+        async with ClickServer(provider, host="127.0.0.1", port=0) as server:
             await asyncio.sleep(0.1)
             replies = await self._exchange(
-                TEST_PORT + 3,
+                _port(server),
                 [
                     _write_coils(1, start=C2000),
                     _write_coils(1968),
@@ -517,10 +522,10 @@ class TestRawRequestLimits:
     @pytest.mark.parametrize("code", [1, 2, 3, 4, 5, 6, 15, 16])
     async def test_request_too_short_gets_exception_03_and_the_connection_still_answers(self, code):
         provider = MemoryDataProvider()
-        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+        async with ClickServer(provider, host="127.0.0.1", port=0) as server:
             await asyncio.sleep(0.1)
             short, read = await self._exchange(
-                TEST_PORT + 3, [struct.pack(">BH", code, 0), struct.pack(">BHH", 3, DS1, 1)]
+                _port(server), [struct.pack(">BH", code, 0), struct.pack(">BHH", 3, DS1, 1)]
             )
         assert short == bytes([code | 0x80, 3])
         assert read == bytes([3, 2, 0, 0])
@@ -555,10 +560,10 @@ class TestRawRequestLimits:
         self, pdu
     ):
         provider = MemoryDataProvider()
-        async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT + 3):
+        async with ClickServer(provider, host="127.0.0.1", port=0) as server:
             await asyncio.sleep(0.1)
             refused, read = await self._exchange(
-                TEST_PORT + 3, [pdu, struct.pack(">BHH", 3, DS1, 1)]
+                _port(server), [pdu, struct.pack(">BHH", 3, DS1, 1)]
             )
         assert refused == bytes([pdu[0] | 0x80, 1])
         assert read == bytes([3, 2, 0, 0])
@@ -574,13 +579,14 @@ class TestRawAnswers:
 
     async def test_what_the_server_keeps_survives_a_server_restart(self):
         provider = MemoryDataProvider()
-        server = ClickServer(provider, port=TEST_PORT)
+        port = _free_tcp_port()
+        server = ClickServer(provider, port=port)
         yd_base, _ = plc_to_modbus("YD", 0)
         df1, _ = plc_to_modbus("DF", 1)
         for step in ("write", "read"):
             async with server:
                 await asyncio.sleep(0.1)
-                async with ClickClient("localhost", TEST_PORT) as plc:
+                async with ClickClient("localhost", _port(server)) as plc:
                     if step == "write":
                         response = await plc._client.write_register(yd_base + 3, 0x8000)
                         assert not response.isError()
@@ -623,13 +629,13 @@ class TestTwoServers:
         first.set("DS1", 1)
         second.set("DS1", 2)
         async with (
-            ClickServer(first, port=TEST_PORT + 5),
-            ClickServer(second, port=TEST_PORT + 6),
+            ClickServer(first, port=0) as server_one,
+            ClickServer(second, port=0) as server_two,
         ):
             await asyncio.sleep(0.1)
             async with (
-                ClickClient("localhost", TEST_PORT + 5) as one,
-                ClickClient("localhost", TEST_PORT + 6) as two,
+                ClickClient("localhost", _port(server_one)) as one,
+                ClickClient("localhost", _port(server_two)) as two,
             ):
                 assert await one.ds.read(1) == {"DS1": 1}
                 assert await two.ds.read(1) == {"DS1": 2}
@@ -640,9 +646,9 @@ class TestServerLifecycle:
         caplog.set_level(logging.DEBUG)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            async with ClickServer(MemoryDataProvider(), host="127.0.0.1", port=TEST_PORT + 7):
+            async with ClickServer(MemoryDataProvider(), host="127.0.0.1", port=0) as server:
                 await asyncio.sleep(0.05)
-                async with ClickClient("127.0.0.1", TEST_PORT + 7) as plc:
+                async with ClickClient("127.0.0.1", _port(server)) as plc:
                     assert await plc.ds.read(1) == {"DS1": 0}
         warnings_logged = [
             record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
@@ -713,7 +719,6 @@ async def _until(condition, timeout: float = 2.0) -> None:
         await asyncio.sleep(0.01)
 
 
-FRAMING_PORT = TEST_PORT + 8
 # asyncio pauses a protocol once its transport holds more than 64 KiB to send, and reads at
 # most 256 KiB at a time.
 ANSWERS_HELD = 64 * 1024
@@ -803,14 +808,14 @@ async def _held_connection(server: ClickServer):
 @pytest.fixture
 async def framing_server():
     provider = MemoryDataProvider()
-    server = ClickServer(provider, host="127.0.0.1", port=FRAMING_PORT)
+    server = ClickServer(provider, host="127.0.0.1", port=0)
     async with server:
         yield server, provider
 
 
 @pytest.fixture
 async def connection(framing_server):
-    reader, writer = await asyncio.open_connection("127.0.0.1", FRAMING_PORT)
+    reader, writer = await asyncio.open_connection("127.0.0.1", _port(framing_server[0]))
     yield reader, writer
     writer.close()
 
@@ -883,14 +888,14 @@ class TestFraming:
     )
     async def test_length_outside_2_to_262_closes_the_connection(self, frame):
         provider = MemoryDataProvider()
-        async with ClickServer(provider, host="127.0.0.1", port=FRAMING_PORT) as server:
-            reader, writer = await asyncio.open_connection("127.0.0.1", FRAMING_PORT)
+        async with ClickServer(provider, host="127.0.0.1", port=0) as server:
+            reader, writer = await asyncio.open_connection("127.0.0.1", _port(server))
             writer.write(frame + _frame(2, READ_DS1))
             assert await _closed(reader)
             writer.close()
             await _until(lambda: server.list_clients() == [])
             # The server answers the next client.
-            reader, writer = await asyncio.open_connection("127.0.0.1", FRAMING_PORT)
+            reader, writer = await asyncio.open_connection("127.0.0.1", _port(server))
             writer.write(_frame(3, READ_DS1))
             assert await _replies(reader, 1) == [(3, 1, DS1_IS_0)]
             writer.close()
@@ -922,7 +927,7 @@ class TestFraming:
 
     async def test_client_closing_mid_frame_leaves_nothing_behind(self, framing_server):
         server, provider = framing_server
-        reader, writer = await asyncio.open_connection("127.0.0.1", FRAMING_PORT)
+        reader, writer = await asyncio.open_connection("127.0.0.1", _port(server))
         writer.write(_frame(1, struct.pack(">BHH", 6, DS1, 5))[:10])
         await writer.drain()
         await _until(lambda: len(server.list_clients()) == 1)
@@ -931,7 +936,7 @@ class TestFraming:
         assert server._server is not None
         assert server._server.connections == {}
         assert provider._data == {}
-        reader, writer = await asyncio.open_connection("127.0.0.1", FRAMING_PORT)
+        reader, writer = await asyncio.open_connection("127.0.0.1", _port(server))
         writer.write(_frame(2, READ_DS1))
         assert await _replies(reader, 1) == [(2, 1, DS1_IS_0)]
         writer.close()
@@ -943,8 +948,8 @@ class TestFraming:
                     raise RuntimeError("provider down")
                 return super().read(address)
 
-        async with ClickServer(_FailsOnDs2(), host="127.0.0.1", port=FRAMING_PORT):
-            reader, writer = await asyncio.open_connection("127.0.0.1", FRAMING_PORT)
+        async with ClickServer(_FailsOnDs2(), host="127.0.0.1", port=0) as server:
+            reader, writer = await asyncio.open_connection("127.0.0.1", _port(server))
             writer.write(_frame(1, struct.pack(">BHH", 3, DS1 + 1, 1)) + _frame(2, READ_DS1))
             assert await _replies(reader, 2) == [(1, 1, bytes([0x83, 4])), (2, 1, DS1_IS_0)]
             writer.close()
