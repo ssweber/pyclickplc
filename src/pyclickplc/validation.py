@@ -15,16 +15,43 @@ from .banks import (
     DataType,
 )
 
+__all__ = [
+    "NICKNAME_MAX_LENGTH",
+    "COMMENT_MAX_LENGTH",
+    "CLICK_NAME_MAX_LENGTH",
+    "CLICK_NAME_PATTERN",
+    "SYSTEM_NICKNAME_TYPES",
+    "INT_MIN",
+    "INT_MAX",
+    "INT2_MIN",
+    "INT2_MAX",
+    "FLOAT_MIN",
+    "FLOAT_MAX",
+    "validate_nickname",
+    "validate_comment",
+    "validate_click_name",
+    "validate_initial_value",
+    "assert_runtime_value",
+]
+
 # ==============================================================================
 # Constants
 # ==============================================================================
 
 NICKNAME_MAX_LENGTH = 24
-COMMENT_MAX_LENGTH = 128
+"""The most characters that a nickname may have."""
 
-# A PLC or DataView name may contain letters, digits, spaces, underscores and hyphens.
+COMMENT_MAX_LENGTH = 128
+"""The most characters that an address comment may have."""
+
 CLICK_NAME_MAX_LENGTH = 24
+"""The most characters that a PLC or DataView name may have."""
+
 CLICK_NAME_PATTERN = re.compile(r"[A-Za-z0-9_\- ]+")
+"""The pattern that a whole PLC or DataView name must match.
+
+A name may contain the ASCII letters A to Z and a to z, digits, spaces, underscores and hyphens.
+"""
 
 # The memory types whose nicknames may start with _. A name that starts with _ is one that
 # the PLC system generated. SC and SD addresses have names that the system presets. X
@@ -70,13 +97,29 @@ RESERVED_NICKNAMES: frozenset[str] = frozenset(
     }
 )
 
-# Value ranges for validation
 INT_MIN = -32768
+"""The lowest value that an INT address (DS, SD or TD) holds."""
+
 INT_MAX = 32767
+"""The highest value that an INT address (DS, SD or TD) holds."""
+
 INT2_MIN = -2147483648
+"""The lowest value that an INT2 address (DD or CTD) holds."""
+
 INT2_MAX = 2147483647
+"""The highest value that an INT2 address (DD or CTD) holds."""
+
 FLOAT_MIN = -3.4028235e38
+"""The lowest value that the validators accept for a FLOAT address (DF).
+
+It is the negative of float32's largest finite value, rounded to eight digits.
+"""
+
 FLOAT_MAX = 3.4028235e38
+"""The highest value that the validators accept for a FLOAT address (DF).
+
+It is float32's largest finite value, rounded to eight digits.
+"""
 
 _EDGE_WHITESPACE_ERROR = "Cannot start or end with a space"
 

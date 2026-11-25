@@ -28,6 +28,7 @@ nav:
       - Addressing API: reference/api/addressing.md
       - Validation API: reference/api/validation.md
       - Advanced API: reference/api/advanced.md
+      - Modules API: reference/api/modules.md
   - Changelog: https://github.com/ssweber/pyclickplc/blob/main/CHANGELOG.md
 
 extra_css:

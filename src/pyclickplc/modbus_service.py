@@ -27,6 +27,8 @@ from .modbus import (
 )
 from .validation import assert_runtime_value
 
+__all__ = ["ConnectionState", "WriteResult", "ReconnectConfig", "ModbusService"]
+
 PlcValue = bool | int | float | str
 
 T = TypeVar("T")

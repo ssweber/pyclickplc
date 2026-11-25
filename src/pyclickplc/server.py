@@ -35,11 +35,20 @@ from .modbus import (
 )
 from .validation import assert_runtime_value
 
+__all__ = [
+    "PlcValue",
+    "DataProvider",
+    "MemoryDataProvider",
+    "ServerClientInfo",
+    "ClickServer",
+]
+
 # ==============================================================================
 # DataProvider Protocol
 # ==============================================================================
 
 PlcValue = bool | int | float | str
+"""A value that a `DataProvider` reads or writes."""
 
 
 @runtime_checkable

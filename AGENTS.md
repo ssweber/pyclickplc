@@ -49,6 +49,7 @@ Other modules and their internal imports:
 
 - File output must match CLICK byte for byte (encoding, BOM, line ends, quoting). Test against a CLICK-written fixture.
 - `DataType` is the single source of truth for PLC types; Modbus properties derive from it.
+- A name in a module's `__all__` is public, and renaming or removing it is a breaking change. Code in ClickNick's and pyrung's `src/` imports only public names from pyclickplc.
 - Dataclasses are `frozen=True`, except the editing models `BlockRange`, `BlockTag`, `DataViewRecord` and `DataViewFile`.
 - Only `ClickClient` uses `pymodbus`, at `>=3.12,<4` (see `pyproject.toml`). `server.py` and `server_tui.py` import no pymodbus. `ClickServer` reads and answers Modbus TCP frames itself on asyncio, and `tests/test_server.py` checks the imports. CI also runs the suite on pymodbus 3.12.0, the lowest version that `pyproject.toml` allows.
 - Tests in `tests/` mirror source modules. pytest also collects from `src/` (`python_files = ["*.py"]`), and async tests need no decorator (`asyncio_mode = "auto"`).
