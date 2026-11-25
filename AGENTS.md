@@ -24,9 +24,10 @@ Other modules and their internal imports:
 | Module | Purpose | Imports |
 |---|---|---|
 | `addresses.py` | `parse_address`, `format_address_display`, XD/YD helpers | banks |
-| `validation.py` | nickname, comment, initial-value, runtime-value and PLC/DataView name checks | banks |
+| `_cp1252.py` | the nickname CSV codec (`CSV_ENCODING`, registered on import) and `first_non_cp1252_char` | — |
+| `validation.py` | nickname, comment, initial-value, runtime-value and PLC/DataView name checks | `_cp1252`, banks |
 | `blocks.py` | BlockTag parsing in comments | — |
-| `nicknames.py` | nickname CSV (`read_csv`, `write_csv`) | addresses, banks |
+| `nicknames.py` | nickname CSV (`read_csv`, `write_csv`) | `_cp1252`, addresses, banks |
 | `dataview.py` | DataView `.cdv` (UTF-16 LE CSV) | addresses, banks, validation |
 | `plcdata.py` | "Read Data from PLC" CSV dumps | addresses, banks |
 | `project.py` | modules, channels, I/O layout and PLC name from Project.ini; `write_plc_name` | addresses, `_module_catalog`, validation |

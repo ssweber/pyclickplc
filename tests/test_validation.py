@@ -1,10 +1,14 @@
 """Tests for pyclickplc.validation module."""
 
 import math
+import subprocess
+import sys
 
 import pytest
 
+from pyclickplc.addresses import AddressRecord
 from pyclickplc.banks import DataType
+from pyclickplc.nicknames import format_csv
 from pyclickplc.validation import (
     FORBIDDEN_CHARS,
     SYSTEM_NICKNAME_TYPES,
@@ -193,6 +197,126 @@ class TestValidateComment:
         # block tag.
         assert validate_comment("[Block:MyBlock]") == (True, "")
         assert validate_comment("[Block:Dup]") == (True, "")
+
+
+# ==============================================================================
+# Characters that cp1252 does not have
+# ==============================================================================
+
+NOT_IN_CP1252 = ["ł", "Ω", "Ж", "\U0001f600"]
+# Python's cp1252 codec has no character for these five, and a nickname CSV can hold them.
+CP1252_CONTROL_CHARS = ["\x81", "\x8d", "\x8f", "\x90", "\x9d"]
+
+# Every code from ! to U+017F, and a few characters further up. Some of them are in cp1252
+# and some are not.
+AGREEMENT_SAMPLE = [chr(code) for code in range(0x21, 0x180)] + [
+    "€",
+    "–",
+    "™",
+    "ł",
+    "Ω",
+    "Ж",
+    "中",
+    "\u200b",
+    "\U0001f600",
+]
+
+
+class TestCp1252:
+    @pytest.mark.parametrize("char", NOT_IN_CP1252)
+    @pytest.mark.parametrize("system_bank", [None, "SC", "SD"])
+    def test_nickname_rejects_char_not_in_cp1252(self, char, system_bank):
+        assert validate_nickname(f"Pump{char}1", system_bank=system_bank) == (
+            False,
+            f"Not in cp1252: {char!r}",
+        )
+
+    @pytest.mark.parametrize("char", NOT_IN_CP1252)
+    def test_x_system_name_rejects_char_not_in_cp1252(self, char):
+        assert validate_nickname(f"_IO1_{char}", system_bank="X") == (
+            False,
+            f"Not in cp1252: {char!r}",
+        )
+
+    @pytest.mark.parametrize("char", NOT_IN_CP1252)
+    def test_comment_rejects_char_not_in_cp1252(self, char):
+        assert validate_comment(f"Pump {char} 1") == (False, f"Not in cp1252: {char!r}")
+
+    def test_message_names_the_first_such_char(self):
+        assert validate_nickname("aŁbЖ") == (False, "Not in cp1252: 'Ł'")
+        assert validate_comment("aŁbЖ") == (False, "Not in cp1252: 'Ł'")
+
+    @pytest.mark.parametrize("char", ["€", *CP1252_CONTROL_CHARS])
+    @pytest.mark.parametrize("system_bank", [None, "SC"])
+    def test_nickname_accepts_cp1252_char(self, char, system_bank):
+        assert validate_nickname(f"Pump{char}1", system_bank=system_bank) == (True, "")
+
+    @pytest.mark.parametrize("char", ["€", *CP1252_CONTROL_CHARS])
+    def test_comment_accepts_cp1252_char(self, char):
+        assert validate_comment(f"Pump {char} 1") == (True, "")
+
+    def test_length_error_comes_first(self):
+        assert validate_nickname("ł" * 25) == (False, "Too long (25/24)")
+        assert validate_comment("ł" * 129) == (False, "Too long (129/128)")
+
+    def test_edge_whitespace_error_comes_first(self):
+        assert validate_nickname("ł ") == (False, "Cannot start or end with a space")
+        assert validate_comment(" ł") == (False, "Cannot start or end with a space")
+
+    def test_nickname_agrees_with_format_csv(self):
+        disagreements = []
+        for char in AGREEMENT_SAMPLE:
+            if char in FORBIDDEN_CHARS:
+                continue
+            nickname = f"N{char}N"
+            record = AddressRecord(memory_type="C", address=1, nickname=nickname)
+            try:
+                format_csv([record])
+                written = True
+            except ValueError:
+                written = False
+            if validate_nickname(nickname)[0] != written:
+                disagreements.append(char)
+        assert disagreements == []
+
+    def test_comment_agrees_with_format_csv(self):
+        disagreements = []
+        for char in AGREEMENT_SAMPLE:
+            comment = f"C{char}C"
+            record = AddressRecord(memory_type="C", address=1, comment=comment)
+            try:
+                format_csv([record])
+                written = True
+            except ValueError:
+                written = False
+            if validate_comment(comment)[0] != written:
+                disagreements.append(char)
+        assert disagreements == []
+
+    def test_agreement_sample_has_both_kinds(self):
+        rejected = [char for char in AGREEMENT_SAMPLE if validate_comment(char)[0] is False]
+        assert "\x80" in rejected
+        assert "Ā" in rejected
+        assert "ł" in rejected
+        assert "Œ" not in rejected
+        assert "\x81" not in rejected
+
+    def test_fresh_interpreter_with_validation_encodes_0x81(self):
+        """Check that a fresh interpreter can look up the codec after it imports validation.
+
+        The import of the package runs first and imports nicknames too. So this test does not
+        show which module registers the codec.
+        """
+        script = (
+            "import codecs\n"
+            "import pyclickplc.validation\n"
+            "codecs.lookup('pyclickplc_cp1252')\n"
+            "assert pyclickplc.validation.validate_comment('\\x81') == (True, '')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", script], capture_output=True, text=True, check=False
+        )
+        assert result.returncode == 0, result.stderr
 
 
 # ==============================================================================
