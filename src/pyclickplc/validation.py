@@ -10,6 +10,7 @@ import math
 import re
 import struct
 
+from ._cp1252 import first_non_cp1252_char
 from .banks import (
     DataType,
 )
@@ -103,6 +104,14 @@ def _has_edge_whitespace(text: str) -> bool:
     return bool(text) and (text[0] <= " " or text[-1] <= " ")
 
 
+def _cp1252_error(text: str) -> str:
+    """Return the error for the first character in *text* that cp1252 does not have, or ""."""
+    char = first_non_cp1252_char(text)
+    if char is None:
+        return ""
+    return f"Not in cp1252: {char!r}"
+
+
 # ==============================================================================
 # Validation Functions
 # ==============================================================================
@@ -113,6 +122,11 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
 
     A nickname with a leading or trailing space, tab or other character up to 0x20 is
     invalid. CLICK strips those characters, so "Pump " and "Pump" would be one nickname.
+
+    A nickname with a character that ``first_non_cp1252_char`` returns is invalid in every
+    bank. ``write_csv`` raises ``ValueError`` for it. CLICK 4.00's Address Picker was observed
+    to change ł to l and to refuse a nickname with Ж.
+
     Does NOT check uniqueness -- that is application-specific.
 
     Args:
@@ -135,6 +149,10 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
 
     if _has_edge_whitespace(nickname):
         return False, _EDGE_WHITESPACE_ERROR
+
+    cp1252_error = _cp1252_error(nickname)
+    if cp1252_error:
+        return False, cp1252_error
 
     def _forbidden_char_error() -> str:
         invalid_chars = set(nickname) & FORBIDDEN_CHARS
@@ -170,7 +188,7 @@ def validate_nickname(nickname: str, *, system_bank: str | None = None) -> tuple
 
 
 def validate_comment(comment: str) -> tuple[bool, str]:
-    """Validate comment length and edge whitespace.
+    """Validate comment length, edge whitespace and characters.
 
     A comment with a leading or trailing space, tab or other character up to 0x20 is
     invalid. CLICK's nickname CSV import drops a space or tab from either end of a comment.
@@ -181,6 +199,9 @@ def validate_comment(comment: str) -> tuple[bool, str]:
     CLICK 4.00's Address Picker was observed to store a tab at either end of a comment when
     another program set the editor's text with that tab. A tab typed into the editor never
     reached it. So a CLICK project may hold a comment that this function rejects.
+
+    A comment with a character that ``first_non_cp1252_char`` returns is invalid. A nickname
+    CSV cannot hold that character, and ``write_csv`` raises ``ValueError`` for it.
 
     Does NOT check that a block name is unique. That check needs the comments of the
     other addresses. Use ``is_block_name_available`` in ``blocks.py`` for it.
@@ -199,6 +220,10 @@ def validate_comment(comment: str) -> tuple[bool, str]:
 
     if _has_edge_whitespace(comment):
         return False, _EDGE_WHITESPACE_ERROR
+
+    cp1252_error = _cp1252_error(comment)
+    if cp1252_error:
+        return False, cp1252_error
 
     return True, ""
 

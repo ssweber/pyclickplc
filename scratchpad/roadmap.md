@@ -12,19 +12,6 @@ its branch and opens the PR. It squash-merges the PR when CI is green on the hea
 passed that commit, and nothing in the PR waits on Sam (his judgment, a CLICK check, a real PLC). The release
 (tag and publish) stays Sam's.
 
-## 1. Decide whether the validators call `first_non_cp1252_char`
-
-Needs: a decision by the pyclickplc session. ClickNick's runner has tried nicknames in CLICK but not comments.
-
-- **`validate_nickname` and `validate_comment` accept a character that cp1252 does not have, but `write_csv`
-  raises `ValueError` for it.** `validate_initial_value` also rejects a Text value above 127 that `write_csv`
-  writes and `read_csv` reads. ClickNick also writes nicknames into SC_.mdb directly, and Access keeps the
-  Unicode there.
-- The ClickNick session's runner tried such characters in a nickname (job runner-batch2, J2, in
-  `clicknick-wt/buildbot/jobs/runner-batch2/RESULTS.md`). CLICK 4.00's Address Picker changed ł to l and Ω to O
-  without a message. It refused a nickname with Ж or an emoji. It stored U+0081. `first_non_cp1252_char`
-  returns None for U+0081. ClickNick already refuses every character that `first_non_cp1252_char` returns.
-
 ## Unscheduled
 
 - **The Project.ini readers and `write_plc_name` rest on rules that no one has tested in CLICK.** The planner
@@ -36,3 +23,5 @@ Needs: a decision by the pyclickplc session. ClickNick's runner has tried nickna
   ResourceWarning. The server keeps listening. The cause is in asyncio. `IocpProactor.accept` closes that
   socket only when the accept is cancelled, and public API gives no way to reach the task that would close
   it. Needs: no change here. Someone should report it to CPython.
+- **No one has checked in CLICK whether its nickname import accepts a Text initial value above 127.**
+  `validate_initial_value` rejects such a value, and `write_csv` writes it. Needs: CLICK software.
