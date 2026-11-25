@@ -2,7 +2,9 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
-## Unreleased
+## 0.12.0 - 2026-11-25
+
+This release has three breaking changes. Read Breaking changes first if you validate nicknames, comments or Text initial values, or if you read a Project.ini that has a module that pyclickplc does not know. If you import from a module such as `pyclickplc.banks`, the Modules API page now lists the names that you can rely on.
 
 ### Breaking changes
 
