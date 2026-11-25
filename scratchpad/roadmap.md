@@ -23,5 +23,7 @@ passed that commit, and nothing in the PR waits on Sam (his judgment, a CLICK ch
   ResourceWarning. The server keeps listening. The cause is in asyncio. `IocpProactor.accept` closes that
   socket only when the accept is cancelled, and public API gives no way to reach the task that would close
   it. Needs: no change here. Someone should report it to CPython.
-- **No one has checked in CLICK whether its nickname import accepts a Text initial value above 127.**
-  `validate_initial_value` rejects such a value, and `write_csv` writes it. Needs: CLICK software.
+- **The Text rules disagree about some characters.** An initial value is a cp1252 character, so the euro sign
+  is valid and U+0080 is not. A runtime, DataView or PLC data value is a character with a code from 0 to 255, so
+  U+0080 is valid and the euro sign (U+20AC) is not. A PLC was seen to store the Text byte 0xC8 unchanged. No one knows
+  what a PLC holds after CLICK writes a project whose Text initial value is the euro sign. Needs: a real PLC.
