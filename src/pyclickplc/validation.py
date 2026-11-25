@@ -260,6 +260,10 @@ def validate_initial_value(
     character up to 0x20. CLICK's import refuses such a value if it is quoted, and strips the
     character if the value is unquoted. A Text value may be a space or a tab.
 
+    A Text value may be any one character that cp1252 has, such as ``é`` or ``€``.
+    ``validate_nickname`` and ``validate_comment`` use the same rule.
+    ``first_non_cp1252_char`` returns the first character of a value that cp1252 does not have.
+
     Python's ``int()`` and ``float()`` accept some INT, INT2, FLOAT and HEX forms that
     CLICK's import refuses. This function rejects them. They are a non-ASCII character (an
     Arabic-Indic or fullwidth digit, a no-break space), an underscore (``1_000``) and a
@@ -348,8 +352,9 @@ def _validate_typed_value(initial_value: str, data_type: int) -> tuple[bool, str
     elif data_type == DataType.TXT:
         if len(initial_value) != 1:
             return False, "Must be single char"
-        if ord(initial_value) > 127:
-            return False, "Must be ASCII"
+        cp1252_error = _cp1252_error(initial_value)
+        if cp1252_error:
+            return False, cp1252_error
         return True, ""
 
     # Unknown data type
