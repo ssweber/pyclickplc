@@ -2,6 +2,12 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
+## Unreleased
+
+### Breaking changes
+
+- `read_modules`, `read_io_layout` and `read_channel_parameters` now leave out a module whose ID is not in pyclickplc's catalog and return the modules that they know. 0.11.3 raised `ValueError: Unsupported module ID` for such a module. To find the modules that were left out, read `Modules.unknown`, a tuple of `UnknownModule`.
+
 ## 0.11.3 - 2026-11-25
 
 A fix for nickname CSV files. Upgrade if `read_csv`, `write_csv` or `format_csv` raises `ValueError` for the byte 0x81, 0x8D, 0x8F, 0x90 or 0x9D, or for the matching character.

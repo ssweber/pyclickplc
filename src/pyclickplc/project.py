@@ -27,21 +27,40 @@ from .validation import validate_click_name
 
 
 @dataclass(frozen=True)
+class UnknownModule:
+    """A module whose ID is not in pyclickplc's module catalog.
+
+    ``location`` and ``position`` number the module as in ``ModuleIO``: position 0 for
+    the CPU, 0 or 1 for a CLICK PLUS slot, and 1 to 8 for an expansion. ``module_id`` is
+    the ID that Project.ini lists.
+    """
+
+    location: Literal["cpu", "slot", "expansion"]
+    position: int
+    module_id: int
+
+
+@dataclass(frozen=True)
 class Modules:
     """Installed CPU, CPU slots 0/1, and expansion positions 1..8.
 
     Empty positions are omitted from the read-only mappings. CPU is None if
     the project does not identify one. Power supplies are not included.
+    ``unknown`` lists each module whose ID is not in pyclickplc's catalog, in
+    physical order: CPU, slots, then expansions. Such a module is not in ``cpu``,
+    ``slots`` or ``expansions``.
     """
 
     cpu: Module | None = None
     slots: Mapping[int, Module] = field(default_factory=dict)
     expansions: Mapping[int, Module] = field(default_factory=dict)
+    unknown: tuple[UnknownModule, ...] = ()
 
     def __post_init__(self) -> None:
         # Copy before wrapping so a caller cannot mutate a result indirectly.
         object.__setattr__(self, "slots", MappingProxyType(dict(self.slots)))
         object.__setattr__(self, "expansions", MappingProxyType(dict(self.expansions)))
+        object.__setattr__(self, "unknown", tuple(self.unknown))
 
 
 @dataclass(frozen=True)
@@ -81,13 +100,23 @@ def _df_address(value: str, location: str) -> str:
     return format_address_display(bank, index)
 
 
-def _module(module_id: int, location: str) -> Module | None:
+_Location = Literal["cpu", "slot", "expansion"]
+
+
+def _module(
+    module_id: int, location: _Location, position: int, unknown: list[UnknownModule]
+) -> Module | None:
+    """Return the catalog's module for *module_id*, or None for an empty position or an unknown ID.
+
+    An ID of 0 means the position is empty. An ID that the catalog does not have is
+    appended to *unknown*.
+    """
     if not module_id:
         return None
-    try:
-        return _MODULE_CATALOG[module_id]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported module ID {module_id} at {location}") from exc
+    module = _MODULE_CATALOG.get(module_id)
+    if module is None:
+        unknown.append(UnknownModule(location, position, module_id))
+    return module
 
 
 # CLICK 4 writes some Project.ini sections and keys under placeholder names, such as
@@ -320,22 +349,26 @@ def _read_modules(parser: ConfigParser) -> Modules:
         cpu_id = parser.getint("SystemConfig", "Item1")
     else:
         cpu_id = parser.getint("CPUBuild", "ID", fallback=0)
-    cpu = _module(cpu_id, "SystemConfig.Item1")
-    expansions = {}
-    for position in range(1, 9):
-        key = f"Item{position + 1}"
-        module = _module(parser.getint("SystemConfig", key, fallback=0), f"SystemConfig.{key}")
-        if module is not None:
-            expansions[position] = module
-    # The original PLUS CPUs have one option slot. The -2 models have two.
-    slot_count = 1 if cpu_id in range(196, 199) else 2 if cpu_id in range(199, 202) else 0
+    unknown: list[UnknownModule] = []
+    cpu = _module(cpu_id, "cpu", 0, unknown)
+    # The original PLUS CPUs have one option slot. The -2 models have two. The CPU model
+    # sets the number of slots. If the CPU's ID is unknown, this function reads no slots.
+    slot_count = 0
+    if cpu is not None:
+        slot_count = 1 if cpu_id in range(196, 199) else 2 if cpu_id in range(199, 202) else 0
     slots = {}
     for position in range(slot_count):
-        key = f"Item{position + 10}"
-        module = _module(parser.getint("SystemConfig", key, fallback=0), f"SystemConfig.{key}")
+        module_id = parser.getint("SystemConfig", f"Item{position + 10}", fallback=0)
+        module = _module(module_id, "slot", position, unknown)
         if module is not None:
             slots[position] = module
-    return Modules(cpu=cpu, slots=slots, expansions=expansions)
+    expansions = {}
+    for position in range(1, 9):
+        module_id = parser.getint("SystemConfig", f"Item{position + 1}", fallback=0)
+        module = _module(module_id, "expansion", position, unknown)
+        if module is not None:
+            expansions[position] = module
+    return Modules(cpu=cpu, slots=slots, expansions=expansions, unknown=tuple(unknown))
 
 
 def read_modules(path: str | Path) -> Modules:
@@ -347,14 +380,18 @@ def read_modules(path: str | Path) -> Modules:
     This function does not read channel parameters, so a malformed channel record does
     not stop it.
 
-    Raises OSError for unreadable files and ValueError for malformed INI data,
-    invalid module IDs, or unknown installed hardware. If the file names no CPU,
-    ``cpu`` is None. If it lists no installed modules, the mappings are empty.
+    If a module's ID is not in pyclickplc's catalog, the function leaves the module
+    out of ``cpu``, ``slots`` and ``expansions`` and lists it in ``unknown``. If the
+    CPU's ID is unknown, ``cpu`` is None and the function reads no option slots,
+    because the CPU model sets how many slots there are.
+
+    Raises OSError for unreadable files and ValueError for malformed INI data or a
+    module ID that is not an integer. If the file names no CPU, ``cpu`` is None. If
+    it lists no installed modules, the mappings are empty.
     """
     return _read_modules(_read_project(path))
 
 
-_Location = Literal["cpu", "slot", "expansion"]
 _Channels = tuple[tuple[str | None, ...], tuple[str | None, ...]]
 
 
@@ -430,9 +467,13 @@ def read_channel_parameters(path: str | Path) -> ChannelParameters:
     Scaling and electrical ranges are not read. Empty assignments are ignored, and
     so are settings left behind by modules that were removed or are not analog.
 
+    The function skips a module whose ID is not in pyclickplc's catalog and does not
+    read that module's channel data. ``read_modules(path).unknown`` lists the skipped
+    modules.
+
     Returns empty sets if there are no assigned analog channels. Raises OSError
-    for unreadable files and ValueError for malformed channel data or unknown
-    installed hardware. No CLICK installation is required.
+    for unreadable files and ValueError for malformed INI data, a module ID that is
+    not an integer, or malformed channel data. No CLICK installation is required.
     """
     parser = _read_project(path)
     inputs: set[str] = set()
@@ -453,8 +494,11 @@ def read_io_layout(path: str | Path) -> tuple[ModuleIO, ...]:
     ``read_channel_parameters`` reads, one entry per channel. Power supplies
     are not included.
 
-    Raises OSError for unreadable files and ValueError for malformed INI data,
-    malformed channel data, or unknown installed hardware. No CLICK
+    The function leaves out a module whose ID is not in pyclickplc's catalog.
+    ``read_modules(path).unknown`` lists the modules that it left out.
+
+    Raises OSError for unreadable files and ValueError for malformed INI data, a
+    module ID that is not an integer, or malformed channel data. No CLICK
     installation is required.
     """
     parser = _read_project(path)
@@ -712,6 +756,7 @@ __all__ = [
     "Modules",
     "ChannelParameters",
     "ModuleIO",
+    "UnknownModule",
     "read_modules",
     "read_channel_parameters",
     "read_io_layout",

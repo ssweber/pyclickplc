@@ -47,6 +47,7 @@ from .project import (
     Module,
     ModuleIO,
     Modules,
+    UnknownModule,
     read_channel_parameters,
     read_io_layout,
     read_modules,
@@ -76,6 +77,7 @@ from .validation import (
 __all__ = [
     "Module",
     "Modules",
+    "UnknownModule",
     "read_modules",
     "ChannelParameters",
     "read_channel_parameters",

@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from pyclickplc import Module, Modules, read_modules
+from pyclickplc import Module, Modules, UnknownModule, read_modules
 from pyclickplc.project import ChannelParameters, read_channel_parameters
 
 
@@ -131,6 +131,13 @@ def test_result_is_deeply_immutable(tmp_path):
     copied = Modules(slots=original)
     original.clear()
     assert copied.slots == modules.slots
+    # A list passed as unknown is copied to a tuple.
+    unknown = [UnknownModule("expansion", 1, 9999)]
+    copied = Modules(unknown=unknown)  # ty: ignore[invalid-argument-type]
+    unknown.clear()
+    assert copied.unknown == (UnknownModule("expansion", 1, 9999),)
+    with pytest.raises(FrozenInstanceError):
+        copied.unknown[0].module_id = 1  # ty: ignore[invalid-assignment]
 
 
 def test_read_modules_does_not_require_valid_channel_parameters(tmp_path):
@@ -158,13 +165,28 @@ def test_cpu_fallback_and_authoritative_selection(tmp_path):
 
 
 @pytest.mark.parametrize("item", [1, 2, 9, 10, 11])
-@pytest.mark.parametrize("bad_id", ["invalid", "-1", "9999"])
-def test_bad_installed_module_ids_fail_in_both_readers(tmp_path, item, bad_id):
+def test_a_module_id_that_is_not_an_integer_fails_in_both_readers(tmp_path, item):
+    prefix = "[SystemConfig]\n" + ("Item1=199\n" if item != 1 else "")
+    path = _project(tmp_path, prefix + f"Item{item}=invalid")
+    for read in (read_modules, read_channel_parameters):
+        with pytest.raises(ValueError, match="invalid literal"):
+            read(path)
+
+
+@pytest.mark.parametrize(
+    "item,location,position",
+    [(1, "cpu", 0), (2, "expansion", 1), (9, "expansion", 8), (10, "slot", 0), (11, "slot", 1)],
+)
+@pytest.mark.parametrize("bad_id", [-1, 9999])
+def test_an_unknown_module_id_is_listed_and_skipped(tmp_path, item, location, position, bad_id):
     prefix = "[SystemConfig]\n" + ("Item1=199\n" if item != 1 else "")
     path = _project(tmp_path, prefix + f"Item{item}={bad_id}")
-    for read in (read_modules, read_channel_parameters):
-        with pytest.raises(ValueError):
-            read(path)
+    modules = read_modules(path)
+    assert modules.unknown == (UnknownModule(location, position, bad_id),)
+    assert (modules.cpu is None) == (location == "cpu")
+    assert not modules.slots
+    assert not modules.expansions
+    assert read_channel_parameters(path) == ChannelParameters()
 
 
 def test_file_errors(tmp_path):
