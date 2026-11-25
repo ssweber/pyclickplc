@@ -168,7 +168,7 @@ If the dump has an `Err-Format` cell, set that address to a number before writin
 
 ## Project.ini
 
-A CLICK project folder keeps its hardware configuration and PLC name in `Project.ini`. These functions don't need CLICK installed. They raise `ValueError` for unknown hardware or a malformed record.
+A CLICK project folder keeps its hardware configuration and PLC name in `Project.ini`. These functions don't need CLICK installed. They raise `ValueError` for a malformed record or a module ID that is not an integer.
 
 ### Installed modules
 
@@ -187,6 +187,13 @@ for position, module in modules.expansions.items():
 ```
 
 `slots` is keyed by CLICK PLUS CPU slot, 0 and 1. `expansions` is keyed by position, 1 through 8. Empty positions are left out. In a project that CLICK 4.00 saved, an option slot with no module is not empty, because it holds C2-FILL, the slot cover. `slots` lists C2-FILL as a module with no I/O. Each `Module` has the point counts `discrete_inputs`, `discrete_outputs`, `analog_inputs` and `analog_outputs`.
+
+```python
+for unknown in modules.unknown:
+    print(unknown.location, unknown.position, unknown.module_id)  # expansion 2 9999
+```
+
+`unknown` lists each module whose ID is not in pyclickplc's catalog, in physical order. The catalog has every module in the module tables of CLICK 2.60, 3.43, 3.71, 3.92 and 4.00. An ID that is not in the catalog comes from another CLICK version or from a damaged file. `read_modules`, `read_io_layout` and `read_channel_parameters` leave an unknown module out of what they return. The other modules keep their positions. If the CPU's ID is unknown, `cpu` is None and `slots` is empty, because the CPU model sets how many slots there are.
 
 ### Channel parameters
 
@@ -213,7 +220,7 @@ for io in read_io_layout("Project.ini"):
 # expansion 1 C0-08NE3 ('X101', ..., 'X108') ()
 ```
 
-You get one `ModuleIO` per installed module, in physical order. `inputs` and `outputs` are its X and Y addresses. `analog_inputs` and `analog_outputs` are its channels' DF addresses, with `None` for a channel that has none.
+You get one `ModuleIO` for each installed module in the catalog, in physical order. `inputs` and `outputs` are its X and Y addresses. `analog_inputs` and `analog_outputs` are its channels' DF addresses, with `None` for a channel that has none.
 
 ### PLC name
 

@@ -16,6 +16,7 @@ import pytest
 from pyclickplc import (
     Module,
     ModuleIO,
+    UnknownModule,
     read_io_layout,
     read_modules,
     read_plc_name,
@@ -186,9 +187,14 @@ def test_malformed_active_channel_data_raises(tmp_path, record):
         _read(tmp_path, "[SystemConfig]\nItem2=161\n[SystemConfigData]\nItem2=" + record)
 
 
-def test_unknown_hardware_raises_instead_of_guessing(tmp_path):
-    with pytest.raises(ValueError, match="Unsupported module ID 9999"):
-        _read(tmp_path, "[SystemConfig]\nItem2=9999")
+def test_channel_parameters_skip_an_unknown_module(tmp_path):
+    # The unknown module's channel record is malformed. The reader does not read it.
+    result = _read(
+        tmp_path,
+        "[SystemConfig]\nItem2=9999\nItem3=161\n[SystemConfigData]\nItem2=header\tshort\nItem3="
+        + _channels("DF11", "DF12", "DF13", "DF14"),
+    )
+    assert result == ChannelParameters(frozenset({"DF11", "DF12", "DF13", "DF14"}))
 
 
 def test_missing_and_invalid_files(tmp_path):
@@ -360,6 +366,83 @@ def test_layout_agrees_with_channel_parameters(tmp_path):
     assert parameters.outputs == {a for io in layout for a in io.analog_outputs if a}
 
 
+def test_unknown_expansion_leaves_the_others_at_their_positions(tmp_path):
+    layout = _layout(tmp_path, "[SystemConfig]\nItem1=209\nItem2=8\nItem3=9999\nItem4=16\n")
+    modules = read_modules(tmp_path / "Project.ini")
+
+    assert dict(modules.expansions) == {
+        1: Module(8, "C0-08ND3", 8, 0, 0, 0),
+        3: Module(16, "C0-16ND3", 16, 0, 0, 0),
+    }
+    assert modules.unknown == (UnknownModule("expansion", 2, 9999),)
+    _, first, third = layout
+    assert (first.position, first.inputs) == (1, _points("X", (101, 108)))
+    assert (third.position, third.inputs) == (3, _points("X", (301, 316)))
+
+
+def test_unknown_module_in_an_option_slot(tmp_path):
+    layout = _layout(tmp_path, "[SystemConfig]\nItem1=199\nItem2=11\nItem10=9999\nItem11=8195\n")
+    modules = read_modules(tmp_path / "Project.ini")
+
+    assert modules.unknown == (UnknownModule("slot", 0, 9999),)
+    assert [(io.location, io.position, io.module.model) for io in layout] == [
+        ("cpu", 0, "C2-01CPU-2"),
+        ("slot", 1, "C2-14DR"),
+        ("expansion", 1, "C0-08NE3"),
+    ]
+    assert layout[1].inputs == _points("X", (21, 28))
+    assert layout[1].outputs == _points("Y", (21, 26))
+
+
+def test_unknown_modules_are_listed_in_physical_order(tmp_path):
+    text = "[SystemConfig]\nItem1=199\nItem5=7777\nItem2=6666\nItem11=9999\nItem10=8888\n"
+    _layout(tmp_path, text)
+    assert read_modules(tmp_path / "Project.ini").unknown == (
+        UnknownModule("slot", 0, 8888),
+        UnknownModule("slot", 1, 9999),
+        UnknownModule("expansion", 1, 6666),
+        UnknownModule("expansion", 4, 7777),
+    )
+
+
+def test_unknown_cpu_reads_expansions_and_no_slots(tmp_path):
+    # The CPU's channel and the slot entries are not read, so the malformed AD1 and the
+    # unknown ID in Item11 raise nothing.
+    text = (
+        "[SystemConfig]\nItem1=9999\nItem2=11\nItem3=161\nItem10=8193\nItem11=8888\n"
+        "[CPUBuild]\nAD1=DS1,5,0\n[SystemConfigData]\nItem3="
+        + _channels("DF11", "DF12", "DF13", "DF14")
+    )
+    layout = _layout(tmp_path, text)
+    path = tmp_path / "Project.ini"
+
+    assert read_modules(path) == Modules(
+        expansions={
+            1: Module(11, "C0-08NE3", 8, 0, 0, 0),
+            2: Module(161, "C0-04AD-1", 0, 0, 4, 0),
+        },
+        unknown=(UnknownModule("cpu", 0, 9999),),
+    )
+    assert [(io.location, io.position) for io in layout] == [("expansion", 1), ("expansion", 2)]
+    assert layout[0].inputs == _points("X", (101, 108))
+    assert layout[1].analog_inputs == ("DF11", "DF12", "DF13", "DF14")
+    assert read_channel_parameters(path).inputs == {"DF11", "DF12", "DF13", "DF14"}
+
+
+def test_known_analog_module_beside_an_unknown_one(tmp_path):
+    text = (
+        "[SystemConfig]\nItem1=199\nItem10=9999\nItem11=8219\n[SystemConfigData]\nItem10=junk\n"
+        "Item11=" + _channels("DF41", "DF42", "DF43", "DF44", "DF45", "DF46")
+    )
+    (_, slot1) = _layout(tmp_path, text)
+    parameters = read_channel_parameters(tmp_path / "Project.ini")
+
+    assert (slot1.location, slot1.position, slot1.module.model) == ("slot", 1, "C2-08AR-6V")
+    assert parameters == ChannelParameters(
+        frozenset({"DF41", "DF42", "DF43", "DF44"}), frozenset({"DF45", "DF46"})
+    )
+
+
 # CLICK 4 writes the sections and keys under placeholder names, such as [Sec21] Key3_1 for
 # [SystemConfig] Item1. The values are the same module IDs.
 CLICK_4_LAYOUT = "\n".join(
@@ -396,6 +479,15 @@ def test_layout_reads_click_4_placeholder_names(tmp_path):
     assert (slot.position, expansion.position) == (0, 1)
     assert slot.analog_inputs == ("DF5", None, "DF7", "DF9")
     assert slot.analog_outputs == ("DF10", "DF11")
+
+
+def test_click_4_placeholder_names_list_an_unknown_module(tmp_path):
+    (tmp_path / "Project.ini").write_text(CLICK_4_LAYOUT.replace("Key3_2=42", "Key3_2=7"))
+    path = tmp_path / "Project.ini"
+
+    assert read_modules(path).unknown == (UnknownModule("expansion", 1, 7),)
+    assert [io.module.model for io in read_io_layout(path)] == ["C2-01CPU-2", "C2-08AR-6V"]
+    assert read_channel_parameters(path).inputs == {"DF5", "DF7", "DF9"}
 
 
 # CLICK 4 matches section and key names regardless of case and reads the first match. This was
@@ -484,7 +576,6 @@ def test_systemconfig_in_any_case_marks_a_click_3_file(tmp_path):
     "text,match",
     [
         ("[sec21]\nKey3_1=x", "invalid literal"),
-        ("[sec21]\nKey3_1=7", "Unsupported module ID 7"),
         ("[sec21]\nKey3_2=160\n[SEC22]\nKey1_2=header\tshort", "Invalid channel count"),
         ("[sec21]\nKey3_1=241\n[sec23]\nkey9=DS1,5,0", "Invalid channel address at CPUBuild.AD1"),
         # The reader refuses a line that is not INI, even in a repeated section that it drops.

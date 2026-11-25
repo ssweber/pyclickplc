@@ -71,6 +71,7 @@ PAGES: tuple[ReferencePage, ...] = (
             "validate_new_value",
             "Module",
             "Modules",
+            "UnknownModule",
             "read_modules",
             "ChannelParameters",
             "read_channel_parameters",
