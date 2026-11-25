@@ -8,8 +8,6 @@ from pyclickplc import ClickClient, ClickServer, MemoryDataProvider
 
 from ._traffic_light_loader import load_traffic_light_example
 
-TEST_PORT = 15031
-
 
 @pytest.mark.asyncio
 async def test_server_startup_shutdown_with_traffic_light_provider():
@@ -17,9 +15,10 @@ async def test_server_startup_shutdown_with_traffic_light_provider():
     provider = MemoryDataProvider()
     provider.bulk_set(module.RED_STATE.copy())
 
-    async with ClickServer(provider, host="127.0.0.1", port=TEST_PORT):
+    async with ClickServer(provider, host="127.0.0.1", port=0) as server:
         await asyncio.sleep(0.1)
-        async with ClickClient("127.0.0.1", TEST_PORT) as plc:
+        assert server.bound_port is not None
+        async with ClickClient("127.0.0.1", server.bound_port) as plc:
             txt1 = await plc.addr.read("TXT1")
             c1 = await plc.addr.read("C1")
             c2 = await plc.addr.read("C2")
