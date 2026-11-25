@@ -10,6 +10,10 @@
 - `validate_nickname` and `validate_comment` now reject a nickname or comment with a character that `first_non_cp1252_char` returns, such as `ł` or `Ж`. 0.11.3's validators accepted the character, and its `write_csv` raised `ValueError` for it. If you have such a nickname or comment, replace the character with one that cp1252 has.
 - `validate_initial_value` now accepts a Text value that is any one character that cp1252 has, such as `é` or `€`. For a character that cp1252 lacks, it returns an error such as `Not in cp1252: '\x80'`. 0.11.3 accepted only ASCII and returned `Must be ASCII` for any other character.
 
+### Added
+
+- Each pyclickplc module now lists its public names in `__all__`, and the API reference documents them on its Modules API page. These names include `pyclickplc.banks.BIT_ONLY_TYPES`, `pyclickplc.validation.INT_MAX` and `pyclickplc.addresses.xd_yd_display_to_mdb`. 0.11.3 had these names but did not say that they were public.
+
 ## 0.11.3 - 2026-11-25
 
 A fix for nickname CSV files. Upgrade if `read_csv`, `write_csv` or `format_csv` raises `ValueError` for the byte 0x81, 0x8D, 0x8F, 0x90 or 0x9D, or for the matching character.

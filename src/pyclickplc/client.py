@@ -34,6 +34,8 @@ from .modbus import (
 from .nicknames import DATA_TYPE_CODE_TO_STR
 from .validation import assert_runtime_value
 
+__all__ = ["ModbusResponse", "ClickClient"]
+
 PlcValue = bool | int | float | str
 TValue_co = TypeVar("TValue_co", bound=PlcValue, covariant=True)
 

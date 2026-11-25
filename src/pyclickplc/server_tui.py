@@ -7,6 +7,8 @@ from collections.abc import Callable
 
 from .server import ClickServer
 
+__all__ = ["run_server_tui"]
+
 
 def _print_help(output_fn: Callable[[str], None]) -> None:
     output_fn("Commands:")

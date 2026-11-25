@@ -27,6 +27,19 @@ from .validation import (
     assert_runtime_value,
 )
 
+__all__ = [
+    "MAX_DATAVIEW_ROWS",
+    "get_data_type_for_address",
+    "DataViewRecord",
+    "make_dataview_record",
+    "validate_new_value",
+    "DataViewFile",
+    "read_cdv",
+    "write_cdv",
+    "check_cdv_file",
+    "verify_cdv",
+]
+
 
 # Type codes used in CDV files to identify address types
 class _CdvStorageCode:
@@ -93,8 +106,9 @@ WRITABLE_SD: frozenset[int] = frozenset(
     }
 )
 
-# Max rows in a dataview
 MAX_DATAVIEW_ROWS = 100
+"""The most rows that a DataView holds."""
+
 DataViewValue: TypeAlias = bool | int | float | str | None
 
 

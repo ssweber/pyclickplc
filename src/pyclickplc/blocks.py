@@ -15,6 +15,23 @@ if TYPE_CHECKING:
     pass
 
 
+__all__ = [
+    "HasComment",
+    "BlockRange",
+    "BlockTag",
+    "StructuredBlockName",
+    "parse_structured_block_name",
+    "compose_structured_block_name",
+    "parse_block_tag",
+    "strip_block_tag",
+    "format_block_tag",
+    "is_block_name_available",
+    "find_paired_tag_index",
+    "compute_all_block_ranges",
+    "validate_block_span",
+]
+
+
 class HasComment(Protocol):
     """Protocol for objects that have a comment and optional memory_type attribute."""
 

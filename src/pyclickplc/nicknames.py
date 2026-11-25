@@ -32,6 +32,17 @@ from .banks import (
     is_valid_address,
 )
 
+__all__ = [
+    "CSV_ENCODING",
+    "first_non_cp1252_char",
+    "AddressRecordMap",
+    "REQUIRED_COLUMNS",
+    "read_csv",
+    "format_csv",
+    "write_csv",
+    "read_mdb_csv",
+]
+
 # CSV column names (matching CLICK software export format)
 CSV_COLUMNS = ["Address", "Data Type", "Nickname", "Initial Value", "Retentive", "Address Comment"]
 
@@ -267,8 +278,11 @@ class AddressRecordMap(dict[int, AddressRecord]):
 # A spreadsheet may write True or 1.
 _RETENTIVE_ON = frozenset({"yes", "true", "1"})
 
-# The columns that read_csv requires by default. A caller can pass other columns in *required*.
 REQUIRED_COLUMNS = ("Address", "Nickname")
+"""The columns that `read_csv` requires by default.
+
+A caller can pass other columns in *required*.
+"""
 
 
 def _is_blank(row: Mapping[str | None, str | list[str] | None]) -> bool:

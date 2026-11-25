@@ -18,6 +18,8 @@ from pathlib import Path
 from .addresses import format_address_display, parse_address
 from .banks import BANKS, DataType, is_valid_address
 
+__all__ = ["PlcDataReadError", "read_plc_data", "write_plc_data"]
+
 _SECTION_START = re.compile(r"^<(\w+)=START>$")
 _SECTION_END = re.compile(r"^</(\w+)=END>$")
 

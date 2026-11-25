@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 # CSV_ENCODING names a codec that is Python's cp1252 with those five bytes added. Importing
 # this module registers the codec.
 CSV_ENCODING = "pyclickplc_cp1252"
+"""The name of the codec that `read_csv` and `write_csv` use for the nickname CSV."""
 
 _CP1252_DECODING_TABLE = "".join(
     bytes([byte]).decode("cp1252", errors="ignore") or chr(byte) for byte in range(256)

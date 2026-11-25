@@ -16,6 +16,7 @@ EXPECTED_REFERENCE_SOURCES = {
     PurePosixPath("reference/api/addressing.md"),
     PurePosixPath("reference/api/validation.md"),
     PurePosixPath("reference/api/advanced.md"),
+    PurePosixPath("reference/api/modules.md"),
 }
 EXPECTED_AUTHORED_SOURCES = {
     PurePosixPath("index.md"),

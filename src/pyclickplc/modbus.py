@@ -13,6 +13,15 @@ from typing import cast
 
 from .banks import BANKS, DataType
 
+__all__ = [
+    "ModbusMapping",
+    "MODBUS_MAPPINGS",
+    "plc_to_modbus",
+    "modbus_to_plc",
+    "pack_value",
+    "unpack_value",
+]
+
 # ==============================================================================
 # DataType-derived constants
 # ==============================================================================
@@ -140,6 +149,7 @@ MODBUS_MAPPINGS: dict[str, ModbusMapping] = {
         writable=_MODBUS_WRITABLE_SD,
     ),
 }
+"""The `ModbusMapping` of each memory bank, keyed by bank name."""
 
 # Split mappings by type for reverse lookups
 _COIL_MAPPINGS: list[tuple[str, ModbusMapping]] = [

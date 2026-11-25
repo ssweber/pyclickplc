@@ -26,4 +26,4 @@ Auto-generated from source. See [API Reference overview](reference/index.md) for
 
 ## API stability
 
-The public API is stable: client, service, server, file I/O, address, and validation. The low-level Modbus mapping helpers and bank metadata (`ModbusMapping`, `plc_to_modbus`, `BANKS`) may still change between minor versions.
+Every name in `pyclickplc.__all__` or in a module's `__all__` is public. If a release renames or removes a public name, the CHANGELOG lists it under Breaking changes. The [Modules API](reference/api/modules.md) page lists each module's public names.

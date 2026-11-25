@@ -9,6 +9,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum
 
+__all__ = [
+    "DataType",
+    "DATA_TYPE_DISPLAY",
+    "DATA_TYPE_HINTS",
+    "BankConfig",
+    "BANKS",
+    "MEMORY_TYPE_TO_DATA_TYPE",
+    "BIT_ONLY_TYPES",
+    "MEMORY_TYPE_BASES",
+    "DEFAULT_RETENTIVE",
+    "INTERLEAVED_PAIRS",
+    "PAIRED_RETENTIVE_TYPES",
+    "NON_EDITABLE_TYPES",
+    "is_valid_address",
+]
+
 # ==============================================================================
 # Data Types
 # ==============================================================================
@@ -25,7 +41,6 @@ class DataType(IntEnum):
     TXT = 6  # TXT - single character (initial value in cp1252, DataView new value 0..255)
 
 
-# Display names for DataType values
 DATA_TYPE_DISPLAY: dict[int, str] = {
     DataType.BIT: "BIT",
     DataType.INT: "INT",
@@ -34,8 +49,8 @@ DATA_TYPE_DISPLAY: dict[int, str] = {
     DataType.HEX: "HEX",
     DataType.TXT: "TXT",
 }
+"""The display name of each `DataType`, such as `"INT2"`."""
 
-# Hint text for initial value fields by DataType
 DATA_TYPE_HINTS: dict[int, str] = {
     DataType.BIT: "0 or 1 (checkbox)",
     DataType.INT: "Range: `-32768` to `32767`",
@@ -44,6 +59,7 @@ DATA_TYPE_HINTS: dict[int, str] = {
     DataType.HEX: "Range: '0000' to 'FFFF'",
     DataType.TXT: "Single cp1252 char: eg 'A' or 'é' (DataView new value: code 0..255)",
 }
+"""The hint text for an initial-value field, keyed by `DataType`."""
 
 
 # ==============================================================================
@@ -115,13 +131,13 @@ BANKS: dict[str, BankConfig] = {
 # ==============================================================================
 
 
-# DataType by memory type (derived from BANKS)
 MEMORY_TYPE_TO_DATA_TYPE: dict[str, int] = {name: b.data_type for name, b in BANKS.items()}
+"""The `DataType` of each memory type, taken from `BANKS`."""
 
-# Types that only hold bit values
 BIT_ONLY_TYPES: frozenset[str] = frozenset(
     name for name, b in BANKS.items() if b.data_type == DataType.BIT
 )
+"""The memory types whose addresses hold only bits: X, Y, C, T, CT and SC."""
 
 
 # ==============================================================================
@@ -129,7 +145,6 @@ BIT_ONLY_TYPES: frozenset[str] = frozenset(
 # ==============================================================================
 
 
-# Base values for AddrKey calculation (Primary Key in MDB)
 MEMORY_TYPE_BASES: dict[str, int] = {
     "X": 0x0000000,
     "Y": 0x1000000,
@@ -148,11 +163,15 @@ MEMORY_TYPE_BASES: dict[str, int] = {
     "SD": 0xE000000,
     "TXT": 0xF000000,
 }
+"""The AddrKey base of each memory type.
+
+An AddrKey is the primary key of an address in CLICK's MDB database. `get_addr_key` adds the
+MDB address to the base.
+"""
 
 # Reverse mapping: type_index -> memory_type
 _INDEX_TO_TYPE: dict[int, str] = {v >> 24: k for k, v in MEMORY_TYPE_BASES.items()}
 
-# Default retentive values by memory type (from CLICK documentation)
 DEFAULT_RETENTIVE: dict[str, bool] = {
     "X": False,
     "Y": False,
@@ -175,6 +194,10 @@ DEFAULT_RETENTIVE: dict[str, bool] = {
     "SD": False,  # Retentive cannot be changed
     "TXT": True,
 }
+"""Whether each memory type is retentive by default.
+
+The values come from CLICK's documentation.
+"""
 
 # Canonical set of interleaved type pairs
 INTERLEAVED_TYPE_PAIRS: frozenset[frozenset[str]] = frozenset(
@@ -184,19 +207,22 @@ INTERLEAVED_TYPE_PAIRS: frozenset[frozenset[str]] = frozenset(
     }
 )
 
-# Bidirectional lookup for interleaved pairs
 INTERLEAVED_PAIRS: dict[str, str] = {
     "T": "TD",
     "TD": "T",
     "CT": "CTD",
     "CTD": "CT",
 }
+"""The partner of each timer and counter memory type.
 
-# Memory types that share retentive with their paired type
+T maps to TD and TD to T. CT maps to CTD and CTD to CT.
+"""
+
 PAIRED_RETENTIVE_TYPES: dict[str, str] = {"TD": "T", "CTD": "CT"}
+"""The memory types whose Retentive setting follows a paired type: TD follows T, CTD follows CT."""
 
-# Memory types where InitialValue/Retentive cannot be edited
 NON_EDITABLE_TYPES: frozenset[str] = frozenset({"SC", "SD", "XD", "YD"})
+"""The memory types whose initial value and Retentive setting cannot be edited."""
 
 
 # ==============================================================================

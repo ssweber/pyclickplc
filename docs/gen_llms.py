@@ -32,6 +32,7 @@ SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("Advanced API", "reference/api/advanced.md"),
             ("Client API", "reference/api/client.md"),
             ("Files API", "reference/api/files.md"),
+            ("Modules API", "reference/api/modules.md"),
             ("Server API", "reference/api/server.md"),
             ("Service API", "reference/api/service.md"),
             ("Validation API", "reference/api/validation.md"),
