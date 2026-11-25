@@ -2,9 +2,11 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
-## Unreleased
+## 0.11.3 - 2026-11-25
 
-### Breaking changes
+A fix for nickname CSV files. Upgrade if your nickname CSV holds one of the bytes 0x81, 0x8D, 0x8F, 0x90 or 0x9D, or if you write a nickname or comment that holds one of the matching characters.
+
+### Changed
 
 - `CSV_ENCODING` is now `"pyclickplc_cp1252"`, the name of a codec that pyclickplc registers when you import it. 0.11.2 set it to `"cp1252"`. If you encode `format_csv` text yourself, encode it as `CSV_ENCODING`, because Python's `"cp1252"` raises `UnicodeEncodeError` for U+0081, U+008D, U+008F, U+0090 and U+009D.
 
