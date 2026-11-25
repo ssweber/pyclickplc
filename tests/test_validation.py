@@ -537,10 +537,28 @@ class TestValidateInitialValue:
         assert valid is False
         assert "single char" in error
 
-    def test_txt_non_ascii(self):
-        valid, error = validate_initial_value("\u00e9", DataType.TXT)
-        assert valid is False
-        assert "ASCII" in error
+    @pytest.mark.parametrize("char", ["A", "~", "\x7f", "€", "\x81", "\xa0", "é", "ÿ"])
+    def test_txt_accepts_cp1252_char(self, char):
+        assert validate_initial_value(char, DataType.TXT) == (True, "")
+
+    @pytest.mark.parametrize("char", ["\x80", "ł"])
+    def test_txt_rejects_char_not_in_cp1252(self, char):
+        assert validate_initial_value(char, DataType.TXT) == (False, f"Not in cp1252: {char!r}")
+
+    def test_txt_initial_value_agrees_with_format_csv(self):
+        disagreements = []
+        for char in [*(chr(code) for code in range(0x21)), *AGREEMENT_SAMPLE]:
+            record = AddressRecord(
+                memory_type="TXT", address=1, data_type=DataType.TXT, initial_value=char
+            )
+            try:
+                format_csv([record])
+                written = True
+            except ValueError:
+                written = False
+            if validate_initial_value(char, DataType.TXT)[0] != written:
+                disagreements.append(char)
+        assert disagreements == []
 
 
 # ==============================================================================

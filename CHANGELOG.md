@@ -8,6 +8,7 @@
 
 - `read_modules`, `read_io_layout` and `read_channel_parameters` now leave out a module whose ID is not in pyclickplc's catalog and return the modules that they know. 0.11.3 raised `ValueError: Unsupported module ID` for such a module. To find the modules that were left out, read `Modules.unknown`, a tuple of `UnknownModule`.
 - `validate_nickname` and `validate_comment` now reject a nickname or comment with a character that `first_non_cp1252_char` returns, such as `ł` or `Ж`. 0.11.3's validators accepted the character, and its `write_csv` raised `ValueError` for it. If you have such a nickname or comment, replace the character with one that cp1252 has.
+- `validate_initial_value` now accepts a Text value that is any one character that cp1252 has, such as `é` or `€`. For a character that cp1252 lacks, it returns an error such as `Not in cp1252: '\x80'`. 0.11.3 accepted only ASCII and returned `Must be ASCII` for any other character.
 
 ## 0.11.3 - 2026-11-25
 
