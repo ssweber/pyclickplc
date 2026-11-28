@@ -12,7 +12,7 @@ from typing import Any, ClassVar, Generic, Literal, TypeAlias, TypeVar, cast, ov
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ConnectionException, ModbusException, ModbusIOException
 
-from ._cp1252 import txt_byte_to_char, txt_char_to_byte
+from ._cp1252 import txt_byte_to_char
 from .addresses import (
     AddressNormalizerMixin,
     AddressRecord,
@@ -21,7 +21,7 @@ from .addresses import (
     xd_yd_display_to_mdb,
     xd_yd_mdb_to_display,
 )
-from .banks import BANKS
+from .banks import BANKS, DataType
 from .modbus import (
     MAX_READ_COILS,
     MAX_READ_REGISTERS,
@@ -452,7 +452,7 @@ class AddressAccessor(Generic[TValue_co]):
         # Read current register to preserve the other byte
         regs = await self._plc._read_registers(reg_addr, 1, "TXT")
         reg_val = regs[0]
-        byte_val = (txt_char_to_byte(char) or 0) if char else 0
+        byte_val = pack_value(char, DataType.TXT)[0]
 
         if index % 2 == 1:
             # Odd: low byte

@@ -754,6 +754,21 @@ class TestDataViewFileIO:
 
         assert verify_cdv(cdv, rows, has_new_values=True) == []
 
+    def test_verify_cdv_txt_byte_matches_its_cp1252_character(self, tmp_path):
+        cdv = tmp_path / "test.cdv"
+        lines = ["-1,0,0\n", f"TXT1,{_CdvStorageCode.TXT},128\n"]
+        for _ in range(99):
+            lines.append(",0\n")
+        cdv.write_text("".join(lines), encoding="utf-16")
+
+        rows = create_empty_dataview()
+        rows[0].address = "TXT1"
+        rows[0].data_type = DataType.TXT
+        rows[0].new_value = 128
+        assert verify_cdv(cdv, rows, has_new_values=True) == []
+        rows[0].new_value = "\u20ac"
+        assert verify_cdv(cdv, rows, has_new_values=True) == []
+
 
 class TestCheckCdv:
     def test_check_cdv_file_valid(self, tmp_path):

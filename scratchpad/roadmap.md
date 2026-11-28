@@ -24,8 +24,8 @@ passed that commit, and nothing in the PR waits on Sam (his judgment, a CLICK ch
   socket only when the accept is cancelled, and public API gives no way to reach the task that would close
   it. Needs: no change here. Someone should report it to CPython.
 - **A Text initial value of `€` starts the PLC with another byte.** CLICK accepts any cp1252 character as a Text
-  initial value and stores its code point. A PLC was observed to load the low byte of that code point. So `€`
-  (U+20AC) starts as 0xAC, which is `¬`. The same happens to each of the 27 characters that cp1252 maps above
-  U+00FF. `validate_initial_value` accepts these characters. pyrung warns about them. ClickNick plans a warning
+  initial value and saves its code point in the project. A PLC was observed to load the low byte of that code
+  point. So `€` (U+20AC) starts as 0xAC, which is `¬`. The same happens to each of the 27 characters that cp1252
+  maps above U+00FF. `validate_initial_value` accepts these characters. pyrung warns about them. ClickNick plans a warning
   in its Address Editor, and it would call pyclickplc's check if pyclickplc had one. Needs: Sam's judgment, on
   whether pyclickplc adds that check.

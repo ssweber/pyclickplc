@@ -500,7 +500,7 @@ def display_to_datatype(value: str, data_type: DataType) -> int | float | bool |
 
         if data_type == DataType.TXT:
             if len(value) == 1:
-                return value
+                return value if txt_char_to_byte(value) is not None else None
             code = int(value)
             return txt_byte_to_char(code) if 0 < code < 256 else ""
 

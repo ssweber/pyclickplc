@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast, runtime_checkable
 
-from ._cp1252 import txt_byte_to_char, txt_char_to_byte
+from ._cp1252 import txt_byte_to_char
 from .addresses import AddressNormalizerMixin, format_address_display, parse_address
 from .banks import BANKS, DataType
 from .modbus import (
@@ -518,12 +518,10 @@ class _ClickDeviceContext:
                 txt_base_index = (index - 1) // 2 * 2 + 1  # Base of pair
                 low_addr = _format_plc_address("TXT", txt_base_index)
                 high_addr = _format_plc_address("TXT", txt_base_index + 1)
-                low_val = self.provider.read(low_addr)
-                high_val = self.provider.read(high_addr)
-                low_text = str(low_val)
-                high_text = str(high_val)
-                low_byte = (txt_char_to_byte(low_text) or 0) if low_text else 0
-                high_byte = (txt_char_to_byte(high_text) or 0) if high_text else 0
+                # pack_value raises for a character outside the table, and the caller then
+                # answers exception 04, as it does for a bad value in any other bank.
+                low_byte = pack_value(self.provider.read(low_addr), DataType.TXT)[0]
+                high_byte = pack_value(self.provider.read(high_addr), DataType.TXT)[0]
                 result.append(low_byte | (high_byte << 8))
                 i += 1
                 continue

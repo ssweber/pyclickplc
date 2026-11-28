@@ -738,6 +738,13 @@ class TestAddressInterface:
         assert len(result) == 2
 
     @pytest.mark.asyncio
+    async def test_read_txt_range_through_cp1252(self):
+        plc = _make_plc()
+        _set_read_registers(plc, [0x80 | (0x92 << 8)])
+        result = await plc.addr.read("txt1-txt2")
+        assert dict(result) == {"TXT1": "\u20ac", "TXT2": "\u2019"}
+
+    @pytest.mark.asyncio
     async def test_read_case_insensitive(self):
         plc = _make_plc()
         regs = pack_value(0.0, DataType.FLOAT)

@@ -599,6 +599,11 @@ class TestPackValue:
         with pytest.raises(ValueError, match="cp1252"):
             pack_value("\x80", DataType.TXT)
 
+    @pytest.mark.parametrize("value", ["AB", 65])
+    def test_txt_refuses_a_value_that_is_not_one_character(self, value):
+        with pytest.raises(ValueError, match="cp1252"):
+            pack_value(value, DataType.TXT)
+
     # --- BIT raises ---
 
     def test_bit_raises(self):

@@ -73,9 +73,9 @@ _DF_DECIMALS = 8
 _DF_MAX_DIGITS = 40
 _DF_KEPT_LIMIT = 10_547_249 * 10**12
 
-# CLICK writes a TXT space, a control character or a character above 0x7E as "$" and its code
-# in uppercase hex, without leading zeros. A space becomes "$20", a carriage return "$D" and 0xC8
-# "$C8". CLICK writes every other character as itself, without quotes. So '"' is written as '"',
+# CLICK writes a TXT byte that is a space, a control character or above 0x7E as "$" and the
+# byte in uppercase hex, without leading zeros. A space becomes "$20", a carriage return "$D"
+# and 0xC8 "$C8". CLICK writes every other character as itself, without quotes. So '"' is written as '"',
 # and "$" as a lone "$". A TXT cell holds one character, so a cell that holds "$" and hex digits
 # is a code. CLICK also writes "," as itself, and the comma splits the row into one cell too many.
 _TXT_ESCAPE = re.compile(r"\$([0-9A-Fa-f]{1,2})")
@@ -349,7 +349,7 @@ def _format_float(value: bool | int | float | str, addr: str) -> str:
 def _format_text(value: bool | int | float | str, addr: str) -> str:
     """Return the text that CLICK writes in a TXT cell for *value*.
 
-    That is the character itself, or ``$`` and the character's code in hex.
+    That is the character itself, or ``$`` and the hex of the TXT byte for the character.
     """
     if value == "" or value == "\x00":
         return ""

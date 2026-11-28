@@ -1,7 +1,7 @@
-"""The cp1252 codec of the nickname CSV, and the check for a character that it cannot hold.
+"""The cp1252 codec of the nickname CSV, the check for a character that it cannot hold, and
+the map between a TXT byte and its character.
 
-``nicknames.py`` and ``validation.py`` both import this module, and it imports no other
-module of pyclickplc. Importing it registers the codec.
+This module imports no other module of pyclickplc. Importing it registers the codec.
 """
 
 from __future__ import annotations
@@ -88,10 +88,16 @@ def first_non_cp1252_char(text: str) -> str | None:
     return None
 
 
-# A CLICK TXT address holds one byte. The PLC stores the cp1252 byte for a text constant, so
-# pyclickplc maps a TXT byte to a character with the same 256 characters as CSV_ENCODING.
+# A CLICK TXT address holds one byte. A PLC stores the cp1252 byte for a text constant. So
+# pyclickplc maps each TXT byte to the character that CSV_ENCODING decodes it to.
 def txt_byte_to_char(byte: int) -> str:
-    """Return the character for the TXT byte *byte* (0..255)."""
+    """Return the character for the TXT byte *byte*.
+
+    Raises:
+        ValueError: *byte* is not in 0..255.
+    """
+    if not 0 <= byte <= 0xFF:
+        raise ValueError(f"TXT byte {byte} is not in 0..255")
     return _CP1252_DECODING_TABLE[byte]
 
 

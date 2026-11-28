@@ -46,6 +46,13 @@ class TestGetValuesFailure:
         address = 0 if func_code in (1, 2) else 28672
         assert ctx.getValues(func_code, address, 1) == 4
 
+    @pytest.mark.parametrize("value", ["\x80", "\u0100", "AB", 65])
+    def test_txt_value_outside_the_table_is_device_failure(self, value):
+        provider = MemoryDataProvider()
+        provider._data["TXT1"] = value
+        ctx = _ClickDeviceContext(provider)
+        assert ctx.getValues(3, 36864, 1) == 4
+
 
 class TestMemoryDataProvider:
     """Tests for MemoryDataProvider defaults, set/get, and normalization."""

@@ -437,7 +437,9 @@ def pack_value(value: bool | int | float | str, data_type: DataType) -> list[int
         raise ValueError("BIT values use coils, not registers")
 
     if data_type == DataType.TXT:
-        byte = txt_char_to_byte(str(value)) if value != "" else 0
+        if value == "":
+            return [0]
+        byte = txt_char_to_byte(value) if isinstance(value, str) else None
         if byte is None:
             raise ValueError(f"TXT value {value!r} is not a character that cp1252 has")
         return [byte]
