@@ -518,8 +518,8 @@ class _ClickDeviceContext:
                 txt_base_index = (index - 1) // 2 * 2 + 1  # Base of pair
                 low_addr = _format_plc_address("TXT", txt_base_index)
                 high_addr = _format_plc_address("TXT", txt_base_index + 1)
-                # pack_value raises for a character outside the table, and the caller then
-                # answers exception 04, as it does for a bad value in any other bank.
+                # pack_value raises for a value that is not one character of the table.
+                # getValues then answers exception 04, the same as for a bad value in another bank.
                 low_byte = pack_value(self.provider.read(low_addr), DataType.TXT)[0]
                 high_byte = pack_value(self.provider.read(high_addr), DataType.TXT)[0]
                 result.append(low_byte | (high_byte << 8))

@@ -75,9 +75,9 @@ _DF_KEPT_LIMIT = 10_547_249 * 10**12
 
 # CLICK writes a TXT byte that is a space, a control character or above 0x7E as "$" and the
 # byte in uppercase hex, without leading zeros. A space becomes "$20", a carriage return "$D"
-# and 0xC8 "$C8". CLICK writes every other character as itself, without quotes. So '"' is written as '"',
-# and "$" as a lone "$". A TXT cell holds one character, so a cell that holds "$" and hex digits
-# is a code. CLICK also writes "," as itself, and the comma splits the row into one cell too many.
+# and 0xC8 "$C8". CLICK writes every other character as itself, without quotes. So '"' is
+# written as '"', and "$" as a lone "$". A TXT cell holds one character, so a cell that holds
+# "$" and hex digits is a code. CLICK also writes "," as itself, and the comma splits the row into one cell too many.
 _TXT_ESCAPE = re.compile(r"\$([0-9A-Fa-f]{1,2})")
 
 # Defaults per data type (used by skip_default)
