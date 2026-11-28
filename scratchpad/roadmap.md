@@ -23,7 +23,9 @@ passed that commit, and nothing in the PR waits on Sam (his judgment, a CLICK ch
   ResourceWarning. The server keeps listening. The cause is in asyncio. `IocpProactor.accept` closes that
   socket only when the accept is cancelled, and public API gives no way to reach the task that would close
   it. Needs: no change here. Someone should report it to CPython.
-- **The Text rules disagree about some characters.** An initial value is a cp1252 character, so the euro sign
-  is valid and U+0080 is not. A runtime, DataView or PLC data value is a character with a code from 0 to 255, so
-  U+0080 is valid and the euro sign (U+20AC) is not. A PLC was seen to store the Text byte 0xC8 unchanged. No one knows
-  what a PLC holds after CLICK writes a project whose Text initial value is the euro sign. Needs: a real PLC.
+- **A Text initial value of `€` starts the PLC with another byte.** CLICK accepts any cp1252 character as a Text
+  initial value and stores its code point. A PLC was observed to load the low byte of that code point. So `€`
+  (U+20AC) starts as 0xAC, which is `¬`. The same happens to each of the 27 characters that cp1252 maps above
+  U+00FF. `validate_initial_value` accepts these characters. pyrung warns about them. ClickNick plans a warning
+  in its Address Editor, and it would call pyclickplc's check if pyclickplc had one. Needs: Sam's judgment, on
+  whether pyclickplc adds that check.

@@ -373,6 +373,13 @@ class TestAddressAccessorReadSingle:
         result = await plc.txt.read(2)
         assert result == {"TXT2": "B"}
 
+    @pytest.mark.asyncio
+    async def test_read_txt_bytes_through_cp1252(self):
+        plc = _make_plc()
+        _set_read_registers(plc, [0x80 | (0x92 << 8)])
+        assert await plc.txt.read(1) == {"TXT1": "€"}
+        assert await plc.txt.read(2) == {"TXT2": "’"}
+
 
 # ==============================================================================
 # AddressAccessor — read range
@@ -586,7 +593,7 @@ class TestAddressAccessorWrite:
     async def test_write_txt_too_long_raises(self):
         plc = _make_plc()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
+            ValueError, match="TXT1 TXT value must be blank or a single character that cp1252 has"
         ):
             await plc.txt.write(1, "AB")
 
@@ -594,7 +601,7 @@ class TestAddressAccessorWrite:
     async def test_write_txt_above_ff_raises(self):
         plc = _make_plc()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
+            ValueError, match="TXT1 TXT value must be blank or a single character that cp1252 has"
         ):
             await plc.txt.write(1, "\u0100")
 
@@ -604,6 +611,19 @@ class TestAddressAccessorWrite:
         await plc.txt.write(1, chr(200))
         mock = _get_write_registers_mock(plc)
         assert mock.call_args.args[1] == [200]
+
+    @pytest.mark.asyncio
+    async def test_write_txt_sends_the_cp1252_byte(self):
+        plc = _make_plc()
+        await plc.txt.write(1, "€")
+        mock = _get_write_registers_mock(plc)
+        assert mock.call_args.args[1] == [0x80]
+
+    @pytest.mark.asyncio
+    async def test_write_txt_refuses_a_character_cp1252_lacks(self):
+        plc = _make_plc()
+        with pytest.raises(ValueError, match="cp1252"):
+            await plc.txt.write(1, "\x80")
 
     @pytest.mark.asyncio
     async def test_write_not_writable_x(self):

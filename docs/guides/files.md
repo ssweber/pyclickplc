@@ -121,7 +121,7 @@ Returns a flat dict mapping normalized addresses to native Python values (`bool`
 CLICK writes the cases below in a way that `read_plc_data` has to handle:
 
 - CLICK shows `Err-Format` for a DF value it can't display. `read_plc_data` returns `float("nan")` for it.
-- CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code. `read_plc_data` returns the character (`$20` is `" "`, `$C8` is `"\xc8"`).
+- CLICK writes a TXT space, control character or byte above 0x7E as `$` and its hex code. `read_plc_data` returns the cp1252 character for that byte: `$20` is `" "`, `$80` is `"€"` and `$C8` is `"È"`.
 - CLICK writes a TXT comma without quotes. Each comma adds a cell to its row. `read_plc_data` joins the two cells again and returns `","`.
 
 If a TXT row holds a comma and also an empty address, `read_plc_data` may not be able to tell which address holds what:

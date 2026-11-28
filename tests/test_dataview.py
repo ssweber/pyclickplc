@@ -307,6 +307,8 @@ class TestStorageToDatatype:
         assert storage_to_datatype("65", DataType.TXT) == "A"
         assert storage_to_datatype("90", DataType.TXT) == "Z"
         assert storage_to_datatype("32", DataType.TXT) == " "
+        assert storage_to_datatype("128", DataType.TXT) == "€"
+        assert storage_to_datatype("129", DataType.TXT) == "\x81"
 
     def test_empty_value(self):
         assert storage_to_datatype("", DataType.INT) is None
@@ -357,6 +359,8 @@ class TestDatatypeToStorage:
         assert datatype_to_storage(48, DataType.TXT) == "48"
         assert datatype_to_storage(65, DataType.TXT) == "65"
         assert datatype_to_storage(90, DataType.TXT) == "90"
+        assert datatype_to_storage("€", DataType.TXT) == "128"
+        assert datatype_to_storage("\x80", DataType.TXT) == ""
 
     def test_none_value(self):
         assert datatype_to_storage(None, DataType.INT) == ""
@@ -448,6 +452,14 @@ class TestDisplayToDatatype:
 
     def test_txt_numeric(self):
         assert display_to_datatype("65", DataType.TXT) == "A"
+        assert display_to_datatype("128", DataType.TXT) == "€"
+
+    def test_validate_new_value_txt_uses_cp1252(self):
+        assert validate_new_value("€", DataType.TXT) == (True, "")
+        assert validate_new_value("\x80", DataType.TXT) == (
+            False,
+            "Must be a character that cp1252 has",
+        )
 
     def test_empty_value(self):
         assert display_to_datatype("", DataType.INT) is None

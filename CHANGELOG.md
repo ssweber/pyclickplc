@@ -2,6 +2,12 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
+## Unreleased
+
+### Breaking changes
+
+- `ClickClient`, `ClickServer`, `pack_value`, `unpack_value`, `read_plc_data`, `write_plc_data` and the DataView functions now map a TXT byte to its cp1252 character, so the byte 0x80 is `€` and 0x92 is `’`. 0.12.0 mapped a byte to the character with the same code, such as U+0080. Write `€` where you wrote `"\x80"`, because these functions now refuse a TXT character that cp1252 lacks.
+
 ## 0.12.0 - 2026-11-25
 
 This release has three breaking changes. Read Breaking changes first if you validate nicknames, comments or Text initial values, or if you read a Project.ini that has a module that pyclickplc does not know. If you import from a module such as `pyclickplc.banks`, the Modules API page now lists the names that you can rely on.

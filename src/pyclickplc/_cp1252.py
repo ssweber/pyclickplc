@@ -86,3 +86,23 @@ def first_non_cp1252_char(text: str) -> str | None:
     except UnicodeEncodeError as exc:
         return text[exc.start]
     return None
+
+
+# A CLICK TXT address holds one byte. The PLC stores the cp1252 byte for a text constant, so
+# pyclickplc maps a TXT byte to a character with the same 256 characters as CSV_ENCODING.
+def txt_byte_to_char(byte: int) -> str:
+    """Return the character for the TXT byte *byte* (0..255)."""
+    return _CP1252_DECODING_TABLE[byte]
+
+
+def txt_char_to_byte(char: str) -> int | None:
+    """Return the TXT byte for the one character *char*, or None if cp1252 does not have it.
+
+    Return None too if *char* is not one character.
+    """
+    if len(char) != 1:
+        return None
+    try:
+        return char.encode(CSV_ENCODING)[0]
+    except UnicodeEncodeError:
+        return None

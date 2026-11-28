@@ -169,7 +169,7 @@ class TestMemoryDataProvider:
     def test_set_rejects_invalid_txt(self):
         p = MemoryDataProvider()
         with pytest.raises(
-            ValueError, match="TXT1 TXT value must be blank or a single character with code 0..255"
+            ValueError, match="TXT1 TXT value must be blank or a single character that cp1252 has"
         ):
             p.set("TXT1", "AB")
 
@@ -370,6 +370,13 @@ class TestContextRegisterReads:
         result = ctx.getValues(3, 36914, 1)
         assert result == [ord("Z") | (ord("Y") << 8)]
 
+    def test_read_txt_register_holds_the_cp1252_bytes(self):
+        p = MemoryDataProvider()
+        p.set("TXT1", "€")
+        p.set("TXT2", "’")
+        ctx = _ClickDeviceContext(p)
+        assert ctx.getValues(3, 36864, 1) == [0x80 | (0x92 << 8)]
+
 
 # ==============================================================================
 # _ClickDeviceContext — coil writes
@@ -522,6 +529,13 @@ class TestContextRegisterWrites:
         assert ctx.setValues(6, 36864, [0x41C8]) is None
         assert p.get("TXT1") == chr(0xC8)
         assert p.get("TXT2") == "A"
+
+    def test_fc06_write_txt_stores_the_cp1252_characters(self):
+        p = MemoryDataProvider()
+        ctx = _ClickDeviceContext(p)
+        assert ctx.setValues(6, 36864, [0x80 | (0x92 << 8)]) is None
+        assert p.get("TXT1") == "€"
+        assert p.get("TXT2") == "’"
 
     def test_fc16_write_txt_high_index(self):
         p = MemoryDataProvider()
