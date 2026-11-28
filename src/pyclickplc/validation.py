@@ -10,7 +10,7 @@ import math
 import re
 import struct
 
-from ._cp1252 import first_non_cp1252_char
+from ._cp1252 import first_non_cp1252_char, txt_char_to_byte
 from .banks import (
     DataType,
 )
@@ -458,12 +458,12 @@ def assert_runtime_value(
     if data_type == DataType.TXT:
         if type(value) is not str:
             raise ValueError(
-                f"{target} TXT value must be blank or a single character with code 0..255."
+                f"{target} TXT value must be blank or a single character that cp1252 has."
             )
         if value == "":
             return
-        if len(value) != 1 or ord(value) > 0xFF:
+        if len(value) != 1 or txt_char_to_byte(value) is None:
             raise ValueError(
-                f"{target} TXT value must be blank or a single character with code 0..255."
+                f"{target} TXT value must be blank or a single character that cp1252 has."
             )
         return

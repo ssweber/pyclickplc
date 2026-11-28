@@ -591,6 +591,19 @@ class TestPackValue:
     def test_txt_space(self):
         assert pack_value(" ", DataType.TXT) == [32]
 
+    def test_txt_packs_the_cp1252_byte(self):
+        assert pack_value("€", DataType.TXT) == [0x80]
+        assert pack_value("\x81", DataType.TXT) == [0x81]
+
+    def test_txt_refuses_a_character_cp1252_lacks(self):
+        with pytest.raises(ValueError, match="cp1252"):
+            pack_value("\x80", DataType.TXT)
+
+    @pytest.mark.parametrize("value", ["AB", 65])
+    def test_txt_refuses_a_value_that_is_not_one_character(self, value):
+        with pytest.raises(ValueError, match="cp1252"):
+            pack_value(value, DataType.TXT)
+
     # --- BIT raises ---
 
     def test_bit_raises(self):
@@ -658,6 +671,11 @@ class TestUnpackValue:
 
     def test_txt_a(self):
         assert unpack_value([65], DataType.TXT) == "A"
+
+    def test_txt_unpacks_through_cp1252(self):
+        assert unpack_value([0x80], DataType.TXT) == "€"
+        assert unpack_value([0x92], DataType.TXT) == "’"
+        assert unpack_value([0x9D], DataType.TXT) == "\x9d"
 
     def test_int2_zero(self):
         assert unpack_value([0, 0], DataType.INT2) == 0

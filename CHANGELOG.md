@@ -2,6 +2,13 @@
 
 <!-- Entries follow the CHANGELOG rule in the bob plugin's `writing` skill. -->
 
+## Unreleased
+
+### Breaking changes
+
+- pyclickplc now reads a TXT byte as its cp1252 character and writes a character as its cp1252 byte, so the byte 0x80 is `"€"` and 0x92 is `"’"`. 0.12.0 read a byte as the character with the same code, such as `"\x80"`. This covers `ClickClient`, `ClickServer` and the `DataProvider` values that it passes and expects, `MemoryDataProvider`, `pack_value`, `unpack_value`, `assert_runtime_value`, `read_plc_data`, `write_plc_data`, `validate_new_value` and `DataViewFile`.
+  - Write `"€"` where you wrote `"\x80"`. These functions now refuse a TXT character that cp1252 lacks, and `ClickServer` answers exception 04 when a provider holds one.
+
 ## 0.12.0 - 2026-11-25
 
 This release has three breaking changes. Read Breaking changes first if you validate nicknames, comments or Text initial values, or if you read a Project.ini that has a module that pyclickplc does not know. If you import from a module such as `pyclickplc.banks`, the Modules API page now lists the names that you can rely on.

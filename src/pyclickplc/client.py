@@ -12,6 +12,7 @@ from typing import Any, ClassVar, Generic, Literal, TypeAlias, TypeVar, cast, ov
 from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ConnectionException, ModbusException, ModbusIOException
 
+from ._cp1252 import txt_byte_to_char
 from .addresses import (
     AddressNormalizerMixin,
     AddressRecord,
@@ -20,7 +21,7 @@ from .addresses import (
     xd_yd_display_to_mdb,
     xd_yd_mdb_to_display,
 )
-from .banks import BANKS
+from .banks import BANKS, DataType
 from .modbus import (
     MAX_READ_COILS,
     MAX_READ_REGISTERS,
@@ -306,10 +307,10 @@ class AddressAccessor(Generic[TValue_co]):
         reg_val = regs[0]
         if index % 2 == 1:
             # Odd: low byte
-            return chr(reg_val & 0xFF)
+            return txt_byte_to_char(reg_val & 0xFF)
         else:
             # Even: high byte
-            return chr((reg_val >> 8) & 0xFF)
+            return txt_byte_to_char((reg_val >> 8) & 0xFF)
 
     async def _read_txt_range(self, start: int, end: int) -> ModbusResponse[TValue_co]:
         """Read a range of TXT addresses."""
@@ -328,9 +329,9 @@ class AddressAccessor(Generic[TValue_co]):
             reg_offset = (idx - 1) // 2 - first_reg
             reg_val = regs[reg_offset]
             if idx % 2 == 1:
-                ch = chr(reg_val & 0xFF)
+                ch = txt_byte_to_char(reg_val & 0xFF)
             else:
-                ch = chr((reg_val >> 8) & 0xFF)
+                ch = txt_byte_to_char((reg_val >> 8) & 0xFF)
             result[_format_bank_address("TXT", idx)] = cast(TValue_co, ch)
 
         return ModbusResponse(result)
@@ -451,7 +452,7 @@ class AddressAccessor(Generic[TValue_co]):
         # Read current register to preserve the other byte
         regs = await self._plc._read_registers(reg_addr, 1, "TXT")
         reg_val = regs[0]
-        byte_val = ord(char) & 0xFF if char else 0
+        byte_val = pack_value(char, DataType.TXT)[0]
 
         if index % 2 == 1:
             # Odd: low byte

@@ -15,6 +15,7 @@ from collections.abc import Iterable, Mapping
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from pathlib import Path
 
+from ._cp1252 import txt_byte_to_char, txt_char_to_byte
 from .addresses import format_address_display, parse_address
 from .banks import BANKS, DataType, is_valid_address
 
@@ -72,11 +73,11 @@ _DF_DECIMALS = 8
 _DF_MAX_DIGITS = 40
 _DF_KEPT_LIMIT = 10_547_249 * 10**12
 
-# CLICK writes a TXT space, a control character or a character above 0x7E as "$" and its code
-# in uppercase hex, without leading zeros. A space becomes "$20", a carriage return "$D" and 0xC8
-# "$C8". CLICK writes every other character as itself, without quotes. So '"' is written as '"',
-# and "$" as a lone "$". A TXT cell holds one character, so a cell that holds "$" and hex digits
-# is a code. CLICK also writes "," as itself, and the comma splits the row into one cell too many.
+# CLICK writes a TXT byte that is a space, a control character or above 0x7E as "$" and the
+# byte in uppercase hex, without leading zeros. A space becomes "$20", a carriage return "$D"
+# and 0xC8 "$C8". CLICK writes every other character as itself, without quotes. So '"' is
+# written as '"', and "$" as a lone "$". A TXT cell holds one character, so a cell that holds
+# "$" and hex digits is a code. CLICK also writes "," as itself, and the comma splits the row into one cell too many.
 _TXT_ESCAPE = re.compile(r"\$([0-9A-Fa-f]{1,2})")
 
 # Defaults per data type (used by skip_default)
@@ -102,7 +103,7 @@ def _parse_value(raw: str, data_type: DataType) -> bool | int | float | str:
         return int(raw, 16)
     if data_type == DataType.TXT:
         escaped = _TXT_ESCAPE.fullmatch(raw)
-        return chr(int(escaped.group(1), 16)) if escaped else raw
+        return txt_byte_to_char(int(escaped.group(1), 16)) if escaped else raw
     return raw  # pragma: no cover
 
 
@@ -348,18 +349,17 @@ def _format_float(value: bool | int | float | str, addr: str) -> str:
 def _format_text(value: bool | int | float | str, addr: str) -> str:
     """Return the text that CLICK writes in a TXT cell for *value*.
 
-    That is the character itself, or ``$`` and the character's code in hex.
+    That is the character itself, or ``$`` and the hex of the TXT byte for the character.
     """
     if value == "" or value == "\x00":
         return ""
-    if not isinstance(value, str) or len(value) != 1 or ord(value) > 0xFF:
-        raise ValueError(f"{addr} value {_show(value)} is not a single character with code 0..255.")
+    if not isinstance(value, str) or len(value) != 1 or (code := txt_char_to_byte(value)) is None:
+        raise ValueError(f"{addr} value {_show(value)} is not a single character that cp1252 has.")
     if value == ",":
         raise ValueError(
             f"{addr} value ',': write_plc_data does not write a TXT comma, because nobody has "
             f"tested whether CLICK's Write Data into PLC reads one. Give {addr} another character."
         )
-    code = ord(value)
     if code <= 0x20 or code >= 0x7F:
         return f"${code:X}"
     return value
@@ -410,7 +410,7 @@ def write_plc_data(
 
     Raises:
         ValueError: A DF value is not a number in the float32 range, or is a NaN or
-            an infinity. Or a TXT value is not one character with code 0..255, or is a
+            an infinity. Or a TXT value is not one character that cp1252 has, or is a
             comma. The message names the address. CLICK's editor can't enter a NaN or
             an infinity, though a program or a Modbus write can still put one in the
             PLC. Nobody has tested whether CLICK's Write Data into PLC reads a TXT comma.

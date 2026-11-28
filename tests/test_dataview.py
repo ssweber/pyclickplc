@@ -307,6 +307,8 @@ class TestStorageToDatatype:
         assert storage_to_datatype("65", DataType.TXT) == "A"
         assert storage_to_datatype("90", DataType.TXT) == "Z"
         assert storage_to_datatype("32", DataType.TXT) == " "
+        assert storage_to_datatype("128", DataType.TXT) == "€"
+        assert storage_to_datatype("129", DataType.TXT) == "\x81"
 
     def test_empty_value(self):
         assert storage_to_datatype("", DataType.INT) is None
@@ -357,6 +359,8 @@ class TestDatatypeToStorage:
         assert datatype_to_storage(48, DataType.TXT) == "48"
         assert datatype_to_storage(65, DataType.TXT) == "65"
         assert datatype_to_storage(90, DataType.TXT) == "90"
+        assert datatype_to_storage("€", DataType.TXT) == "128"
+        assert datatype_to_storage("\x80", DataType.TXT) == ""
 
     def test_none_value(self):
         assert datatype_to_storage(None, DataType.INT) == ""
@@ -448,6 +452,14 @@ class TestDisplayToDatatype:
 
     def test_txt_numeric(self):
         assert display_to_datatype("65", DataType.TXT) == "A"
+        assert display_to_datatype("128", DataType.TXT) == "€"
+
+    def test_validate_new_value_txt_uses_cp1252(self):
+        assert validate_new_value("€", DataType.TXT) == (True, "")
+        assert validate_new_value("\x80", DataType.TXT) == (
+            False,
+            "Must be a character that cp1252 has",
+        )
 
     def test_empty_value(self):
         assert display_to_datatype("", DataType.INT) is None
@@ -740,6 +752,21 @@ class TestDataViewFileIO:
         rows[0].data_type = DataType.INT
         rows[0].new_value = 1.0
 
+        assert verify_cdv(cdv, rows, has_new_values=True) == []
+
+    def test_verify_cdv_txt_byte_matches_its_cp1252_character(self, tmp_path):
+        cdv = tmp_path / "test.cdv"
+        lines = ["-1,0,0\n", f"TXT1,{_CdvStorageCode.TXT},128\n"]
+        for _ in range(99):
+            lines.append(",0\n")
+        cdv.write_text("".join(lines), encoding="utf-16")
+
+        rows = create_empty_dataview()
+        rows[0].address = "TXT1"
+        rows[0].data_type = DataType.TXT
+        rows[0].new_value = 128
+        assert verify_cdv(cdv, rows, has_new_values=True) == []
+        rows[0].new_value = "\u20ac"
         assert verify_cdv(cdv, rows, has_new_values=True) == []
 
 

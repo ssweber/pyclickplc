@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeAlias
 
+from ._cp1252 import txt_byte_to_char, txt_char_to_byte
 from .addresses import format_address_display, normalize_address, parse_address
 from .banks import MEMORY_TYPE_TO_DATA_TYPE, DataType
 from .validation import (
@@ -362,7 +363,7 @@ def storage_to_datatype(value: str, data_type: DataType) -> int | float | bool |
 
         if data_type == DataType.TXT:
             code = int(value)
-            return chr(code) if 0 < code < 256 else ""
+            return txt_byte_to_char(code) if 0 < code < 256 else ""
 
         return None
 
@@ -415,7 +416,10 @@ def datatype_to_storage(value: int | float | bool | str | None, data_type: DataT
 
         if data_type == DataType.TXT:
             if isinstance(value, str):
-                return str(ord(value)) if value else "0"
+                if not value:
+                    return "0"
+                byte = txt_char_to_byte(value)
+                return "" if byte is None else str(byte)
             return str(int(value))
 
         return ""
@@ -496,9 +500,9 @@ def display_to_datatype(value: str, data_type: DataType) -> int | float | bool |
 
         if data_type == DataType.TXT:
             if len(value) == 1:
-                return value
+                return value if txt_char_to_byte(value) is not None else None
             code = int(value)
-            return chr(code) if 0 < code < 256 else ""
+            return txt_byte_to_char(code) if 0 < code < 256 else ""
 
         return None
 
@@ -511,11 +515,10 @@ def validate_new_value(display_str: str, data_type: DataType) -> tuple[bool, str
     if not display_str:
         return True, ""
     if data_type == DataType.TXT:
-        # Accept codes 0 to 255, because a CLICK PLC stores a Text byte above 127 unchanged.
         if len(display_str) != 1:
             return False, "Must be single char"
-        if ord(display_str) > 0xFF:
-            return False, "Must be a character with code 0..255"
+        if txt_char_to_byte(display_str) is None:
+            return False, "Must be a character that cp1252 has"
         return True, ""
     return _validate_typed_value(display_str, data_type)
 
@@ -583,7 +586,7 @@ def _coerce_for_compare(value: DataViewValue, data_type: DataType) -> DataViewVa
         if isinstance(value, str):
             return value
         if isinstance(value, int) and 0 <= value <= 255:
-            return chr(value)
+            return txt_byte_to_char(value)
         return None
 
     return value

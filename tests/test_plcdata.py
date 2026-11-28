@@ -427,6 +427,15 @@ class TestWriteBasic:
         assert data["TXT2"] == "i"
         assert data["TXT3"] == ""
 
+    def test_txt_byte_above_127_is_its_cp1252_character(self, tmp_path: Path) -> None:
+        out = tmp_path / "out.csv"
+        write_plc_data(out, {"TXT1": "€", "TXT2": "\x81"}, banks=["TXT"])
+        assert "$80" in out.read_text(encoding="ascii")
+        data = read_plc_data(out)
+        assert (data["TXT1"], data["TXT2"]) == ("€", "\x81")
+        with pytest.raises(ValueError, match="TXT1 value"):
+            write_plc_data(out, {"TXT1": "\x80"}, banks=["TXT"])
+
     def test_write_dd_bank(self, tmp_path: Path) -> None:
         out = tmp_path / "out.csv"
         write_plc_data(out, {"DD1": 100000}, banks=["DD"])

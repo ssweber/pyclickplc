@@ -11,6 +11,8 @@ Every value you read or write is a native Python type.
 | `DF` | `float` | `3.14` |
 | `TXT` | `str` | `"A"` |
 
+A `TXT` address holds one byte. pyclickplc reads the byte as its cp1252 character and writes a character as its cp1252 byte. The byte 0x80 is `"€"`. Python's `cp1252` codec has no character for the bytes 0x81, 0x8D, 0x8F, 0x90 and 0x9D. pyclickplc reads each of them as the control character with the same number, such as `"\x81"`.
+
 No raw Modbus registers — the client handles packing and unpacking automatically.
 
 ## Read return shapes

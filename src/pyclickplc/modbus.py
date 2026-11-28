@@ -11,6 +11,7 @@ import struct
 from dataclasses import dataclass
 from typing import cast
 
+from ._cp1252 import txt_byte_to_char, txt_char_to_byte
 from .banks import BANKS, DataType
 
 __all__ = [
@@ -436,7 +437,12 @@ def pack_value(value: bool | int | float | str, data_type: DataType) -> list[int
         raise ValueError("BIT values use coils, not registers")
 
     if data_type == DataType.TXT:
-        return [ord(str(value)) & 0xFFFF]
+        if value == "":
+            return [0]
+        byte = txt_char_to_byte(value) if isinstance(value, str) else None
+        if byte is None:
+            raise ValueError(f"TXT value {value!r} is not a character that cp1252 has")
+        return [byte]
 
     fmt = STRUCT_FORMATS[data_type]
     if data_type == DataType.FLOAT:
@@ -469,7 +475,7 @@ def unpack_value(registers: list[int], data_type: DataType) -> int | float | str
         The unpacked Python value
     """
     if data_type == DataType.TXT:
-        return chr(registers[0] & 0xFF)
+        return txt_byte_to_char(registers[0] & 0xFF)
 
     fmt = STRUCT_FORMATS[data_type]
 
